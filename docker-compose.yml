@@ -1,0 +1,104 @@
+# ============================================================
+# SmartData — TEMEL (base) compose dosyası
+# ============================================================
+
+services:
+  # 1. Kullanıcı Arayüzü (Nuxt/Vue)
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    networks:
+      - smartdata-net
+
+  # 2. Ana API ve İş Mantığı (FastAPI)
+  backend:
+    build: ./backend
+    environment:
+      # AI Servis Bağlantıları
+      - EMBEDDING_API_URL=http://embedding:8001
+      - RERANKER_API_URL=http://reranker:8002
+      - LLM_API_URL=http://llm:8000
+      # PostgreSQL bağlantısı
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      embedding:
+        condition: service_started
+      reranker:
+        condition: service_started
+      llm:
+        condition: service_started
+    networks:
+      - smartdata-net
+
+  # 3. AI: Embedding Modeli
+  embedding:
+    build: ./models/embedding
+    networks:
+      - smartdata-net
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+
+  # 4. AI: Reranker Modeli
+  reranker:
+    build: ./models/reranker
+    networks:
+      - smartdata-net
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+
+  # 5. AI: LLM Modeli (vLLM)
+  llm:
+    # İmaj (image) ve donanım (devices/deploy) ayarları 
+    # nvidia/intel override dosyalarından otomatik gelecek!
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+    networks:
+      - smartdata-net
+
+  # 6. Veri Kazıma Örümcekleri (Scrapy)
+  scraper:
+    build: ./scraper
+    depends_on:
+      - backend
+    networks:
+      - smartdata-net
+
+  # ---- Veritabanları ---
+  postgres:
+    image: postgres:15-alpine
+    container_name: smartdata-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - smartdata-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: smartdata-qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - smartdata-net
+
+networks:
+  smartdata-net:
+    driver: bridge
+
+volumes:
+  mongo_data:
+  postgres_data:
+  qdrant_data:

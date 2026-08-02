@@ -1,0 +1,30 @@
+# ============================================================
+# PROD override
+# ============================================================
+
+services:
+  frontend:
+    restart: always
+    ports:
+      - "3000:3000"
+
+  backend:
+    restart: always
+
+  embedding:
+    restart: always
+
+  reranker:
+    restart: always
+
+  llm:
+    restart: always
+
+  scraper:
+    restart: on-failure
+
+  postgres:
+    restart: always
+
+  qdrant:
+    restart: always

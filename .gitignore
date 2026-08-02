@@ -1,0 +1,87 @@
+# =========================
+# GİZLİ BİLGİLER VE KEYLER (ÇOK ÖNEMLİ)
+# =========================
+.env
+.env.*
+*.pem
+credentials.json
+secrets/
+ollama_cache/
+model_cache/
+# =========================
+# PYTHON (Backend, Scrapy, Models)
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+temp/
+hf_cache/
+# Sanal Ortamlar (Virtual Environments)
+venv/
+.venv/
+env/
+.env_python/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Scrapy / Veri Kazıma Çıktıları (Örnek)
+*.csv
+*.xml
+
+# =========================
+# FRONTEND (Node.js, Vue, Nuxt, React vb.)
+# =========================
+node_modules/
+dist/
+build/
+.nuxt/
+.output/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# DOCKER
+# =========================
+.docker/
+docker-volume/
+docker-data/
+
+# =========================
+# İŞLETİM SİSTEMİ VE IDE (Windows & Editörler)
+# =========================
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# IDE'ler (VS Code, PyCharm vb.)
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
