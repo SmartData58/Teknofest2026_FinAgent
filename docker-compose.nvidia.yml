@@ -1,0 +1,55 @@
+services:
+  embedding:
+    build:
+      context: ./models/embedding
+      args:
+        BASE_IMAGE: nvidia/cuda:12.1.0-runtime-ubuntu22.04
+        HARDWARE: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+              
+  reranker:
+    build:
+      context: ./models/reranker
+      args:
+        HARDWARE: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  llm:
+    image: ollama/ollama:latest
+    command: serve
+    environment:
+      - OLLAMA_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,*
+      - OLLAMA_KEEP_ALIVE=-1  # Modeli VRAM'de sonsuza kadar tutar
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./ollama_cache:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # İŞTE EKSİK OLAN VE EKLEDİĞİMİZ KISIM BURASI:
+  backend:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
