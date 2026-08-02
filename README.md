@@ -12,7 +12,7 @@
 
 **Katılım Bankacılığı için NLP, RAG ve Hibrit Çıkarım Destekli Finansal Veri Analiz Platformu**
 
-[Ana Özellikler](#-ana-özellikler)   •[Teknoloji Yığını](#-teknoloji-yigini) • [Sistem Mimarisi](#-sistem-mimarisi) • [Adımlar](#-adımlar)
+[Ana Özellikler](#-ana-özellikler)   •[Teknoloji Yığını](#-teknoloji-yığını) • [Sistem Mimarisi](#-sistem-mimarisi) • [Adımlar](#-adımlar)
 
 </div>
 
