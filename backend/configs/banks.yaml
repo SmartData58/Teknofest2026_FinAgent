@@ -1,0 +1,148 @@
+meta:
+  kaynak: "https://www.bddk.org.tr/Kurulus/Liste/77"
+  dogrulama_tarihi: "2026-07-14"
+  toplam_banka: 10
+
+bankalar:
+
+  - id: albaraka
+    ad: "Albaraka Türk Katılım Bankası A.Ş."
+    kisa_ad: "Albaraka Türk"
+    # 2026-07-15 keşif: alan adı DEĞİŞMİŞ (albarakaturk.com.tr → albaraka.com.tr).
+    # Eski adres yönlendiriyor ama yönlendirme WAF'a takılabiliyor —
+    # doğrudan yeni alan adı kullanılıyor. Site statik, ~40 kampanya.
+    web_sitesi: "https://www.albaraka.com.tr"
+    kampanya_url:
+      - "https://www.albaraka.com.tr/tr/kampanyalar"    # 2026-07-15 doğrulandı
+    spider: albaraka
+    dinamik: false
+    aktif: true
+
+  - id: kuveytturk
+    ad: "Kuveyt Türk Katılım Bankası A.Ş."
+    kisa_ad: "Kuveyt Türk"
+    web_sitesi: "https://www.kuveytturk.com.tr"
+    # 2026-07-14 pilot ile DOĞRULANDI: statik HTML, iki kategori sayfası var.
+    # (Arşiv sayfası bilinçli dışarıda — bitmiş kampanyalar karşılaştırmaya girmez.)
+    kampanya_url:
+      - "https://www.kuveytturk.com.tr/kampanyalar/kendim-icin"
+      - "https://www.kuveytturk.com.tr/kampanyalar/isim-icin"
+    spider: kuveytturk
+    dinamik: false
+    aktif: true
+
+  - id: turkiye_finans
+    ad: "Türkiye Finans Katılım Bankası A.Ş."
+    kisa_ad: "Türkiye Finans"
+    web_sitesi: "https://www.turkiyefinans.com.tr"
+    # 2026-07-15 doğrulandı: SharePoint tabanlı ama statik; 9 kategori sayfası
+    # (liste spider içindeki KATEGORILER sözlüğünde). Biten-Kampanyalar hariç.
+    kampanya_url:
+      - "https://www.turkiyefinans.com.tr/tr-tr/kampanyalar/Sayfalar/default.aspx"
+    spider: turkiye_finans
+    dinamik: false
+    aktif: true
+
+  - id: vakif_katilim
+    ad: "Vakıf Katılım Bankası A.Ş."
+    kisa_ad: "Vakıf Katılım"
+    web_sitesi: "https://www.vakifkatilim.com.tr"
+    # 2026-07-15 keşif: liste sayfası JavaScript ile yükleniyor (statik HTML'de
+    # kampanya kartları yok; görünen 3 link site kabuğundaki bildirim menüsünden).
+    # → Playwright fazında yazılacak. Detay deseni: /tr/kendim-icin/kampanyalar/detay/<slug>
+    kampanya_url:
+      - "https://www.vakifkatilim.com.tr/tr/kendim-icin/kampanyalar/mevcut-kampanyalar"
+    spider: vakif_katilim
+    dinamik: true
+    aktif: true
+
+  - id: ziraat_katilim
+    ad: "Ziraat Katılım Bankası A.Ş."
+    kisa_ad: "Ziraat Katılım"
+    web_sitesi: "https://www.ziraatkatilim.com.tr"
+    # 2026-07-15 keşif: F5 TSPD bot koruması var (JavaScript challenge —
+    # sayfa 5.7KB'lik JS kabuğu döndürüyor). requests ile çekilemez.
+    # 2026-07-16 Playwright denemesi: challenge ÇÖZÜLSE DE sunucu
+    # "Request Rejected" döndürüyor. Denenenler: Chromium (headless +
+    # xvfb altında headed), Firefox, maskeli/maskesiz kimlik, önce ana
+    # sayfadan oturum kurma — hepsi reddedildi. curl aynı anda 200 alıyor,
+    # yani IP engelli değil; TSPD challenge SONUCUNDAKİ parmak izini
+    # (muhtemelen veri merkezi IP itibarı + ortam sinyalleri) reddediyor.
+    # Proxy/kimlik gizleme katmanlarına GİRİLMEDİ (bilinçli sınır).
+    # → aktif: false. İleride farklı ağdan (ofis/ev IP) yeniden denenebilir.
+    kampanya_url:
+      - "https://www.ziraatkatilim.com.tr/kampanyalar"
+    spider: ziraat_katilim
+    dinamik: true
+    aktif: false
+
+  - id: emlak_katilim
+    ad: "Türkiye Emlak Katılım Bankası A.Ş."
+    kisa_ad: "Emlak Katılım"
+    # 2026-07-16 keşif: emlakbank.com.tr → emlakkatilim.com.tr yönlendiriyor.
+    # F5 TSPD koruması var ama Playwright Chromium'u (varsayılan kimlik,
+    # headless) GEÇİRİYOR — Ziraat'taki kadar katı yapılandırılmamış.
+    # /kampanyalar 404; gerçek listeler bireysel (60 kampanya) + kurumsal (1).
+    # networkidle hiç gelmiyor → spider domcontentloaded + ek bekleme kullanır.
+    web_sitesi: "https://www.emlakkatilim.com.tr"
+    kampanya_url:
+      - "https://www.emlakkatilim.com.tr/tr/bireysel/kampanyalar"  # 2026-07-16 doğrulandı
+      - "https://www.emlakkatilim.com.tr/tr/kurumsal/kampanyalar"  # 2026-07-16 doğrulandı
+    spider: emlak_katilim
+    dinamik: true
+    aktif: true
+
+  - id: hayat_finans
+    ad: "Hayat Finans Katılım Bankası A.Ş."
+    kisa_ad: "Hayat Finans"
+    # 2026-07-16 keşif: "dijital banka → dinamik" öngörüsü YANLIŞ çıktı —
+    # site sunucuda render ediliyor, requests yeterli (16 kampanya).
+    # "www" çıplak alana yönlendiriyor; taban URL yönlendirme sonrası hâli.
+    web_sitesi: "https://hayatfinans.com.tr"
+    kampanya_url:
+      - "https://hayatfinans.com.tr/kampanyalar"               # 2026-07-16 doğrulandı
+    spider: hayat_finans
+    dinamik: false
+    aktif: true
+
+  - id: dunya_katilim
+    ad: "Dünya Katılım Bankası A.Ş."
+    kisa_ad: "Dünya Katılım"
+    web_sitesi: "https://www.dunyakatilim.com.tr"
+    # 2026-07-16 keşif: statik, 5 kampanya. "www" çıplak alana yönlendiriyor.
+    # Slug'larda büyük harf olabiliyor ("altin-kesemTicari").
+    kampanya_url:
+      - "https://dunyakatilim.com.tr/kampanyalar"              # 2026-07-16 doğrulandı
+    spider: dunya_katilim
+    dinamik: false
+    aktif: true
+
+  - id: tom_katilim
+    ad: "T.O.M. Katılım Bankası A.Ş."
+    kisa_ad: "TOM Katılım"
+    # 2026-07-16 keşif: kurumsal site (tombank.com.tr) kampanya barındırmıyor;
+    # /kampanyalar.html resmî kampanya portalına yönlendiriyor:
+    # hadiyanindakibanka.com ("Hadi" — TOM Bank'ın dijital bankacılık markası).
+    # Portal statik, 10 kampanya; "dinamik" öngörüsü yanlış çıktı.
+    web_sitesi: "https://www.tombank.com.tr"
+    kampanya_url:
+      - "https://hadiyanindakibanka.com/hadi-kazan/kampanyalar"  # 2026-07-16 doğrulandı
+    spider: tom_katilim
+    dinamik: false
+    aktif: true
+
+  - id: adil_katilim
+    ad: "Adil Katılım Bankası A.Ş."
+    kisa_ad: "Adil Katılım"
+    # 2026-07-14 BDDK doğrulamasında tespit edilen YENİ banka.
+    # İlk iskelette yoktu; BDDK kontrolü sayesinde eklendi.
+    # 2026-07-16 keşif: /kampanyalar ana sayfaya yönlendiriyor; sitede
+    # kampanya/duyuru sayfası YOK (yeni kurulmuş banka, henüz kampanya
+    # yayınlamıyor). Öngörülen plana uygun olarak aktif: false yapıldı —
+    # ileriki koşularda tekrar kontrol edilecek.
+    web_sitesi: "https://www.adilkatilim.com.tr"
+    kampanya_url:
+      - "https://www.adilkatilim.com.tr/kampanyalar"           # 2026-07-16: sayfa yok
+    spider: adil_katilim
+    dinamik: false
+    aktif: false
