@@ -1,0 +1,1 @@
+export { default as DotMatrix } from "./DotMatrix.vue"
