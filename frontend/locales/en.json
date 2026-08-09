@@ -1,0 +1,48 @@
+{
+  "landing": {
+    "nav": {
+      "assistant": "Assistant",
+      "problem": "Problem & Solution",
+      "architecture": "System Architecture",
+      "team": "Team & Mission"
+    },
+    "hero": {
+      "title": "Smart Finance Assistant"
+    },
+    "problem": {
+      "title": "Problem and Solution Approach",
+      "problemTitle": "Problem",
+      "problemText": "In participation banking, campaign texts are written in different formats and with different terminology, making manual comparison difficult. This delays bank employees and customers in choosing the most advantageous product.",
+      "solutionTitle": "Solution",
+      "solutionText": "Collecting data via web scraping, analyzing texts and extracting information with Turkish NLP models, converting the extracted data into a standard, comparable format, and presenting the results to users through an interactive dashboard and a Q&A chatbot."
+    },
+    "architecture": {
+      "title": "System Architecture",
+      "step1": "1. Web Scraping",
+      "step2": "2. Regex + ModernBERT-TR",
+      "step3": "3. PostgreSQL",
+      "step4": "4. Qdrant & Qwen2.5 7B",
+      "step5": "5. Dashboard & Chatbot"
+    },
+    "vision": {
+      "title": "Vision",
+      "text": "To be the pioneer of natural language processing based comparison and analysis solutions in participation banking in Turkey."
+    },
+    "mission": {
+      "title": "Mission",
+      "text": "To automatically extract critical financial information from participation banks' product texts, providing bank employees and customers with clear, comparable, and accessible data."
+    },
+    "team": {
+      "title": "SmartData Team",
+      "roleCaptain": "Team Captain",
+      "roleComputerEng": "Computer Engineering",
+      "roleMis": "Management Info. Systems",
+      "roleAiEng": "AI Engineering"
+    },
+    "scrollHint": "Keep scrolling to start chatting ↓",
+    "transition": {
+      "title": "Switching to chat...",
+      "subtitle": "Preparing the Smart Finance Assistant"
+    }
+  }
+}
