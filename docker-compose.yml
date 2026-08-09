@@ -34,12 +34,17 @@ services:
       - smartdata-net
 
   # 3. AI: Embedding Modeli
+  # 3. AI: Embedding Modeli
   embedding:
     build: ./models/embedding
     networks:
       - smartdata-net
     environment:
       - HF_TOKEN=${HF_TOKEN}
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+      # Daha önce konuştuğumuz kod eşleştirmesi varsa onu da alt satıra ekleyebilirsin:
+      # - ./models/embedding:/app
 
   # 4. AI: Reranker Modeli
   reranker:
@@ -48,6 +53,9 @@ services:
       - smartdata-net
     environment:
       - HF_TOKEN=${HF_TOKEN}
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+      # - ./models/reranker:/app
 
   # 5. AI: LLM Modeli (vLLM)
   llm:
@@ -68,7 +76,7 @@ services:
     networks:
       - smartdata-net
 
-  # ---- Veritabanları ---
+  # ---- Veritabanları ----
   postgres:
     image: postgres:15-alpine
     container_name: smartdata-postgres
@@ -85,6 +93,27 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+      
+  mongodb:
+    image: mongo:latest
+    container_name: smartdata-mongodb
+    environment:
+      # Güvenlik için kullanıcı adı ve şifre tanımlıyoruz.
+      # .env dosyasından çekebilir veya varsayılan bırakabilirsin.
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-admin123}
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - smartdata-net
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
 
   qdrant:
     image: qdrant/qdrant:latest

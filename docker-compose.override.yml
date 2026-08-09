@@ -33,14 +33,20 @@ services:
       - "11434:11434" # Ollama'nın varsayılan portu
 
   scraper:
+    ports:
+      - "8004:8002" # Sol taraf (8004) host bilgisayarın, sağ taraf (8002) konteynerin portu
     volumes:
-      - ./scraper:/app
-
+      - .:/app
 
   postgres:
     ports:
       - "5432:5432"
 
+  mongodb:
+    ports:
+      - "27017:27017"
+
+      
   qdrant:
     ports:
       - "6333:6333"
