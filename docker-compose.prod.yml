@@ -26,5 +26,8 @@ services:
   postgres:
     restart: always
 
+  mongodb:
+    restart: always
+
   qdrant:
     restart: always
