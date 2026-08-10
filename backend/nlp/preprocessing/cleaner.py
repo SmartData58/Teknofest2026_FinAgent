@@ -27,6 +27,15 @@ unicode_esleme = {
         "₺": "TL",         # tek formata getirme
 }
 
+_GURULTU = [
+    re.compile(r"Kampanyayı\s+Paylaş(?:\s+\S+'\s*d[ae]\s+paylaş)*", re.IGNORECASE),
+    
+    re.compile(r"\S+'\s*d[ae]\s+paylaş", re.IGNORECASE),
+    
+    re.compile(r"Sayfayı\s+Yazdır|Sayfa\s+Görüntüsü|Sayfa\s+İçeriği", re.IGNORECASE),
+    re.compile(r"Ana\s+Sayfa\s*/\s*Kampanyalar\s*/?", re.IGNORECASE),
+]
+
 def unicode_normalize(metin: str) -> str:
     
     #bazı web kopyalamalarından gelen verilerde ş,ç,ğ... gibi harfler tabanda iki farklı karakterin 
@@ -42,12 +51,18 @@ def bosluk_duzelt(metin: str) -> str:
     #ardışık birden fazla boşluğu teke indir
     return " ".join(metin.split())
 
+def gurultu_temizle(metin: str) -> str:
+    for desen in _GURULTU:
+        metin = desen.sub(" ", metin)
+    return metin
+
 
 def temizle(metin: str) -> str:
     #temizlik adımlarını gerçekleştirir
     if not metin:
         return "" 
     metin = unicode_normalize(metin)
+    metin = gurultu_temizle(metin)
     metin= bosluk_duzelt(metin)
     
     return metin 
