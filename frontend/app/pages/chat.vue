@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import DotMatrix from "~/components/loaders/DotMatrix.vue"
+import { useChatStore } from '~/stores/chatStore'
 
 const mounted = ref(false)
 const chatHistory = ref([])
@@ -8,11 +9,22 @@ const userMessage = ref('')
 const isLoading = ref(false)
 const isStreaming = ref(false)
 
+const chatStore = useChatStore()
+
 // --- Kaynaklar ve Dosyalar İçin Box Modal (Drawer) State'leri ---
 const showSourceModal = ref(false)
 const activeSource = ref(null)
 const activeFile = ref(null) 
-const activeModalType = ref('source') // 'source' veya 'file'
+const activeModalType = ref('source') 
+
+// 🚀 TOKAT 1: Şık Toast Bildirim Sistemi!
+const toastMessage = ref('')
+const showToast = (msg) => {
+  toastMessage.value = msg
+  setTimeout(() => {
+    toastMessage.value = ''
+  }, 3000)
+}
 
 const openSourceModal = (source) => {
   activeSource.value = source
@@ -27,21 +39,277 @@ const openFileModal = (file) => {
 }
 
 const downloadFile = (file, event) => {
-  event.stopPropagation() // Tıklamada panelin açılmasını engelle
-  const a = document.createElement('a')
-  a.href = file.url
-  a.download = file.name
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
+  event.stopPropagation() 
+  
+  if (file.isReport) {
+    const iframe = document.getElementById('report-iframe')
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.print()
+    }
+  } else {
+    const a = document.createElement('a')
+    a.href = file.url
+    a.download = file.name
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
 }
 
-const useThinking = ref(false)
+const isExporting = ref({})
+const isExportingExcel = ref({})
+
+const exportToExcel = async (index) => {
+  const originalElement = document.getElementById('message-content-' + index)
+  if (!originalElement) return
+
+  const tables = originalElement.querySelectorAll('table')
+  
+  if (tables.length === 0) {
+    // 🚀 TOKAT 2: İğrenç alert gitti, yerine şık toast bildirimi geldi!
+    showToast("Bu mesajda dışa aktarılacak tablo bulunamadı.")
+    return
+  }
+
+  if (isExportingExcel.value[index]) return;
+  isExportingExcel.value[index] = true;
+  
+  try {
+      if (!window.XLSX) {
+        const script = document.createElement('script')
+        script.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js'
+        document.head.appendChild(script)
+        await new Promise(resolve => script.onload = resolve)
+      }
+
+      const wb = window.XLSX.utils.book_new()
+      
+      tables.forEach((table, i) => {
+        const clonedTable = table.cloneNode(true)
+        
+        let tableHtml = clonedTable.innerHTML;
+        tableHtml = tableHtml.replace(/<\/?ins[^>]*>/gi, '');
+        tableHtml = tableHtml.replace(/<\/?small[^>]*>/gi, '');
+        tableHtml = tableHtml.replace(/<\/?span[^>]*>/gi, '');
+        tableHtml = tableHtml.replace(/•\*/g, '•'); 
+        clonedTable.innerHTML = tableHtml;
+
+        let maxCols = 0;
+        clonedTable.querySelectorAll('tr').forEach(tr => {
+            if (tr.children.length > maxCols) maxCols = tr.children.length;
+        });
+
+        const emptyRow = document.createElement('tr');
+        const emptyCell = document.createElement('td');
+        emptyCell.colSpan = maxCols;
+        emptyCell.innerText = "";
+        emptyRow.appendChild(emptyCell);
+
+        const footerRow = document.createElement('tr');
+        const footerCell = document.createElement('td');
+        footerCell.colSpan = maxCols;
+        footerCell.innerText = "Bu rapor, SmartData takımı tarafından geliştirilen FinAgent Yapay Zeka asistanı tarafından otomatik olarak oluşturulmuştur.";
+        footerRow.appendChild(footerCell);
+        
+        clonedTable.appendChild(emptyRow);
+        clonedTable.appendChild(footerRow);
+
+        const ws = window.XLSX.utils.table_to_sheet(clonedTable)
+
+        const range = window.XLSX.utils.decode_range(ws['!ref'] || "A1:A1");
+        let rowCount = range.e.r + 1;
+
+        const json = window.XLSX.utils.sheet_to_json(ws, { header: 1 })
+        const colWidths = []
+        
+        for (let r = 0; r < json.length; r++) {
+          const row = json[r] || []
+          for (let c = 0; c < maxCols; c++) {
+            const cellValue = row[c] ? row[c].toString() : ""
+            const lines = cellValue.split('\n')
+            let maxLineLen = 10; 
+            lines.forEach(l => { 
+                if (l.length > maxLineLen) maxLineLen = l.length 
+            })
+            
+            if (!colWidths[c]) colWidths[c] = 10;
+            if (maxLineLen > colWidths[c]) {
+               colWidths[c] = Math.min(maxLineLen + 2, 80); 
+            }
+          }
+        }
+        ws['!cols'] = colWidths.map(w => ({ wch: w }))
+
+        if (!ws['!merges']) ws['!merges'] = [];
+        ws['!merges'].push({
+            s: { r: rowCount - 1, c: 0 }, 
+            e: { r: rowCount - 1, c: maxCols - 1 } 
+        });
+
+        for (let R = 0; R < rowCount; R++) {
+            for (let C = 0; C < maxCols; C++) {
+                const cellRef = window.XLSX.utils.encode_cell({ c: C, r: R });
+                
+                if (!ws[cellRef]) {
+                    ws[cellRef] = { t: 's', v: '' }; 
+                }
+                
+                const cell = ws[cellRef];
+
+                cell.s = {
+                    alignment: { wrapText: true, vertical: 'top' },
+                    border: {
+                        top: { style: 'thin', color: { rgb: "CBD5E1" } },
+                        bottom: { style: 'thin', color: { rgb: "CBD5E1" } },
+                        left: { style: 'thin', color: { rgb: "CBD5E1" } },
+                        right: { style: 'thin', color: { rgb: "CBD5E1" } }
+                    }
+                };
+
+                if (R === 0) {
+                    cell.s.font = { bold: true, color: { rgb: "FFFFFF" } };
+                    cell.s.fill = { fgColor: { rgb: "2563EB" } };
+                    cell.s.alignment = { vertical: 'center', horizontal: 'center', wrapText: true };
+                }
+                
+                if (R === rowCount - 2) {
+                    cell.s = {}; 
+                }
+
+                if (R === rowCount - 1) {
+                    cell.s = {
+                        font: { italic: true, color: { rgb: "6B7280" } },
+                        alignment: { vertical: 'center', horizontal: 'center' }
+                    };
+                }
+            }
+        }
+
+        window.XLSX.utils.book_append_sheet(wb, ws, "Tablo " + (i + 1))
+      })
+
+      const fileName = `FinAgent_Tablolar_${new Date().getTime()}.xlsx`
+      window.XLSX.writeFile(wb, fileName)
+
+  } catch (err) {
+      console.error("Excel oluşturulurken hata:", err)
+      showToast("Excel oluşturulurken bir hata meydana geldi.")
+  } finally {
+      isExportingExcel.value[index] = false;
+  }
+}
+
+const exportToPDF = async (index) => {
+  if (isExporting.value[index]) return;
+  isExporting.value[index] = true;
+  
+  try {
+      const originalElement = document.getElementById('message-content-' + index)
+      if (!originalElement) return
+
+      let rawHtml = originalElement.innerHTML.replace(/class="[^"]*"/g, '')
+      rawHtml = rawHtml.replace(/&lt;\/?span[^&]*&gt;/gi, '');
+      rawHtml = rawHtml.replace(/&lt;\/?small[^&]*&gt;/gi, '');
+
+      const currentDate = new Date().toLocaleDateString('tr-TR', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      const fullHtmlString = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>FinAgent_Rapor</title>
+          <style>
+            @page { size: A4 portrait; margin: 0; }
+            * { box-sizing: border-box; }
+            body { 
+              font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+              color: #1f2937; padding: 15mm; margin: 0; line-height: 1.5; font-size: 11px; background-color: #fff; 
+              -webkit-print-color-adjust: exact; 
+              print-color-adjust: exact; 
+            }
+            .report-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+              border-bottom: 2px solid #2563eb;
+              padding-bottom: 10px;
+              margin-bottom: 15px;
+            }
+            .report-header .brand { font-size: 22px; font-weight: 800; color: #2563eb; letter-spacing: -0.5px; margin: 0; }
+            .report-header .brand span { color: #6b7280; font-weight: 400; font-size: 16px; }
+            .report-header .meta { text-align: right; font-size: 10px; color: #6b7280; }
+            .report-header .meta strong { display: block; color: #111827; font-size: 11px; margin-top: 2px; }
+            h1, h2, h3 { color: #111827; margin-top: 15px; margin-bottom: 8px; }
+            h1 { font-size: 16px; }
+            h2 { font-size: 14px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+            h3 { font-size: 12px; color: #2563eb; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 15px; table-layout: fixed; }
+            tr { page-break-inside: avoid; }
+            th, td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; vertical-align: top; word-wrap: break-word; font-size: 10px; }
+            th { background-color: #f8fafc; font-weight: 600; color: #111827; }
+            tbody tr:nth-child(even) { background-color: #f9fafb; }
+            p, li { margin-bottom: 5px; font-size: 11px; }
+            ul { margin-left: 15px; margin-bottom: 12px; }
+            pre { background-color: #f1f5f9; padding: 10px; border-radius: 6px; font-size: 9px; white-space: pre-wrap; word-wrap: break-word; border: 1px solid #e2e8f0; }
+            strong { font-weight: 600; color: #000; }
+            .report-footer {
+              position: fixed;
+              bottom: 10mm;
+              left: 15mm;
+              right: 15mm;
+              border-top: 1px solid #e5e7eb;
+              padding-top: 8px;
+              font-size: 9px;
+              color: #9ca3af;
+              text-align: center;
+              background-color: #fff;
+              z-index: 10;
+            }
+            .report-content { padding-bottom: 15mm; }
+          </style>
+        </head>
+        <body>
+          <div class="report-footer">
+            Bu rapor, SmartData takımı tarafından geliştirilen FinAgent Yapay Zeka asistanı tarafından otomatik olarak oluşturulmuştur.
+          </div>
+          <div class="report-header">
+            <div class="brand">FinAgent <span>Raporu</span></div>
+            <div class="meta">
+              <div>Oluşturulma Tarihi</div>
+              <strong>${currentDate}</strong>
+            </div>
+          </div>
+          <div class="report-content">
+            ${rawHtml}
+          </div>
+        </body>
+        </html>
+      `;
+
+      const fileName = `FinAgent_Rapor_${new Date().getTime()}.pdf`
+
+      activeFile.value = {
+        name: fileName,
+        isReport: true, 
+        htmlContent: fullHtmlString
+      }
+      activeModalType.value = 'file'
+      showSourceModal.value = true
+
+  } catch (err) {
+      console.error("Rapor oluşturulurken hata:", err)
+      showToast("Rapor oluşturulurken bir hata meydana geldi.")
+  } finally {
+      isExporting.value[index] = false;
+  }
+}
+
 const fileInput = ref(null)
 const selectedFiles = ref([])
 const maxFiles = 3
 const isDragging = ref(false)
 const loadingText = ref('İşlem başlatılıyor...')
+const useThinking = ref(false)
 
 const chatContainer = ref(null)
 const scrollAnchor = ref(null) 
@@ -71,7 +339,7 @@ const triggerFileInput = () => fileInput.value.click()
 const handleFileSelect = (event) => {
   const files = Array.from(event.target.files)
   if (selectedFiles.value.length + files.length > maxFiles) {
-    alert(`En fazla ${maxFiles} dosya yükleyebilirsiniz.`)
+    showToast(`En fazla ${maxFiles} dosya yükleyebilirsiniz.`)
     event.target.value = '' 
     return
   }
@@ -83,7 +351,7 @@ const handleDrop = (event) => {
   isDragging.value = false
   const files = Array.from(event.dataTransfer.files)
   if (selectedFiles.value.length + files.length > maxFiles) {
-    alert(`En fazla ${maxFiles} dosya yükleyebilirsiniz.`)
+    showToast(`En fazla ${maxFiles} dosya yükleyebilirsiniz.`)
     return
   }
   selectedFiles.value.push(...files)
@@ -107,7 +375,6 @@ const scrollToBottom = () => {
   })
 }
 
-// 🚀 TOKAT 1: Yapay zekanın saçmaladığı "<span>" sızıntılarını kökünden temizliyoruz!
 const formatMessage = (text) => {
   if (!text) return '';
   let html = text.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -129,12 +396,11 @@ const formatMessage = (text) => {
       
       let rowContent = line.replace(/^[ \t]*\||\|[ \t]*$/g, ''); 
       
-      // br ve madde işaretlerini güzelleştirme
       rowContent = rowContent.replace(/&lt;br\s*\/?[&gt;]?/gi, '<br class="mt-2 mb-1">');
       rowContent = rowContent.replace(/(?:&amp;)?(?:&gt;|gt;)\s*[\*•-]?/gi, '<br class="mt-2 mb-1"><span class="text-blue-500 font-bold mr-1.5">•</span>');
-      
-      // 🚀 YENİ: Modelin ürettiği <span ...> ve </span> gibi ucube yazıları tamamen sil!
       rowContent = rowContent.replace(/&lt;\/?span[^&]*&gt;/gi, '');
+      rowContent = rowContent.replace(/&lt;\/?small[^&]*&gt;/gi, '');
+      rowContent = rowContent.replace(/&lt;\/?ins[^&]*&gt;/gi, '');
 
       const cells = rowContent.split('|');
       tableHtml += '<tr class="border-b border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">';
@@ -180,7 +446,6 @@ const sendMessage = async () => {
   const attachedFiles = selectedFiles.value.map(f => ({
     name: f.name,
     type: f.type,
-    // Dosyanın türüne göre (resim mi pdf mi) özel kontrol yapmak için
     isImage: f.type.startsWith('image/'),
     url: URL.createObjectURL(f) 
   }))
@@ -315,6 +580,21 @@ const sendMessage = async () => {
     @drop.prevent="handleDrop"
   >
 
+    <!-- 🚀 TOKAT 3: Zarif Toast Bildirimi Tasarımı -->
+    <Transition
+      enter-active-class="transition duration-300 ease-out"
+      enter-from-class="opacity-0 -translate-y-4"
+      enter-to-class="opacity-100 translate-y-0"
+      leave-active-class="transition duration-200 ease-in"
+      leave-from-class="opacity-100 translate-y-0"
+      leave-to-class="opacity-0 -translate-y-4"
+    >
+      <div v-if="toastMessage" class="fixed top-10 left-1/2 -translate-x-1/2 z-[200] bg-neutral-800 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3">
+        <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <span class="text-sm font-medium">{{ toastMessage }}</span>
+      </div>
+    </Transition>
+
     <Transition
       enter-active-class="transition duration-300 ease-out"
       enter-from-class="opacity-0 scale-95"
@@ -374,7 +654,6 @@ const sendMessage = async () => {
                            class="flex items-center justify-between gap-3 p-1.5 pl-3 pr-2 bg-black/20 hover:bg-black/30 rounded-lg text-sm font-medium cursor-pointer transition-colors w-full sm:w-auto"
                            title="Dosyayı önizle">
                         <div class="flex items-center gap-1.5 overflow-hidden">
-                            <!-- Dosya İkonu -->
                             <svg class="w-4 h-4 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
                             <span class="truncate max-w-[150px] md:max-w-[200px]">{{ file.name }}</span>
                         </div>
@@ -397,27 +676,68 @@ const sendMessage = async () => {
                   <div class="flex-1 overflow-x-auto max-w-full">
                     
                     <div 
+                      :id="'message-content-' + index"
                       class="whitespace-pre-wrap leading-relaxed text-[15px]" 
                       v-html="formatMessage(msg.content)">
                     </div>
                     
-                    <Transition
-                      enter-active-class="transition-all duration-500 delay-100 ease-out"
-                      enter-from-class="opacity-0 translate-y-2"
-                      enter-to-class="opacity-100 translate-y-0"
-                    >
-                      <div v-if="msg.sources && msg.sources.length > 0" class="mt-4 pt-3 border-t border-neutral-200 dark:border-neutral-700/50">
-                        <p class="text-[11px] font-bold tracking-wider uppercase text-neutral-400 mb-2">Veritabanı Kaynakları</p>
-                        <div class="flex flex-wrap gap-2">
-                          <button v-for="src in msg.sources" :key="src.index" @click="openSourceModal(src)" 
-                                  class="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800/50 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors flex items-center gap-1.5 group shadow-sm">
-                            <svg class="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-                            Kaynak [{{ src.index }}] 
-                            <span class="text-blue-400 dark:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">Göster &rarr;</span>
-                          </button>
-                        </div>
+                    <div class="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700/50 flex flex-wrap justify-between items-center gap-4">
+                      
+                      <div class="flex-1 min-w-[200px]">
+                        <Transition
+                          enter-active-class="transition-all duration-500 delay-100 ease-out"
+                          enter-from-class="opacity-0 translate-y-2"
+                          enter-to-class="opacity-100 translate-y-0"
+                        >
+                          <div v-if="msg.sources && msg.sources.length > 0">
+                            <p class="text-[11px] font-bold tracking-wider uppercase text-neutral-400 mb-2">Veritabanı Kaynakları</p>
+                            <div class="flex flex-wrap gap-2">
+                              <button v-for="src in msg.sources" :key="src.index" @click="openSourceModal(src)" 
+                                      class="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800/50 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors flex items-center gap-1.5 group shadow-sm">
+                                <svg class="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                                Kaynak [{{ src.index }}] 
+                                <span class="text-blue-400 dark:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">Göster &rarr;</span>
+                              </button>
+                            </div>
+                          </div>
+                        </Transition>
                       </div>
-                    </Transition>
+
+                      <div class="flex items-center gap-2 shrink-0">
+                        <button 
+                          v-if="msg.content.trim() !== ''"
+                          :disabled="isExportingExcel[index] || (isStreaming && index === chatHistory.length - 1)"
+                          @click="exportToExcel(index)" 
+                          class="text-xs flex items-center gap-1.5 text-green-700 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 transition-colors px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-lg shadow-sm hover:bg-green-100 dark:hover:bg-green-900/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <template v-if="!isExportingExcel[index]">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                            Excel İndir
+                          </template>
+                          <template v-else>
+                            <svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            Oluşturuluyor...
+                          </template>
+                        </button>
+
+                        <button 
+                          v-if="msg.content.trim() !== ''"
+                          :disabled="isExporting[index] || (isStreaming && index === chatHistory.length - 1)"
+                          @click="exportToPDF(index)" 
+                          class="text-xs flex items-center gap-1.5 text-neutral-600 dark:text-neutral-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors px-3 py-1.5 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-sm hover:shadow active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <template v-if="!isExporting[index]">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            Raporu Görüntüle
+                          </template>
+                          <template v-else>
+                            <svg class="animate-spin w-4 h-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            Oluşturuluyor...
+                          </template>
+                        </button>
+                      </div>
+
+                    </div>
                   </div>
                 </div>
               </div>
@@ -493,7 +813,6 @@ const sendMessage = async () => {
         </div>
       </div>
 
-      <!-- ORTAK KAYAN PANEL (DRAWER) -->
       <Transition
         enter-active-class="transform transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
         enter-from-class="translate-x-[120%] opacity-0 scale-95"
@@ -518,16 +837,15 @@ const sendMessage = async () => {
             </div>
           </div>
           
-          <!-- 🚀 TOKAT 2: Dosya önizleme kısmını tamamen kutuya hapsediyoruz! -->
-          <div class="flex-1 overflow-hidden bg-neutral-50 dark:bg-[#121212] flex items-center justify-center">
+          <div class="flex-1 overflow-hidden bg-neutral-50 dark:bg-[#121212] flex items-center justify-center relative">
             <template v-if="activeModalType === 'source'">
                 <div class="w-full h-full overflow-y-auto p-5 custom-scrollbar">
                     <pre class="whitespace-pre-wrap text-[12.5px] font-mono leading-relaxed text-neutral-600 dark:text-neutral-300 p-4 rounded-xl border border-neutral-200 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/50">{{ activeSource?.icerik }}</pre>
                 </div>
             </template>
             <template v-else>
-                <!-- Resimse resim etiketi, PDF ise iframe ile tam sığacak şekilde ayarladık -->
                 <img v-if="activeFile?.isImage" :src="activeFile?.url" class="w-full h-full object-contain p-4" />
+                <iframe v-else-if="activeFile?.isReport" id="report-iframe" :srcdoc="activeFile?.htmlContent" class="w-full h-full border-none bg-white"></iframe>
                 <iframe v-else :src="activeFile?.url" class="w-full h-full border-none bg-white"></iframe>
             </template>
           </div>
@@ -535,7 +853,8 @@ const sendMessage = async () => {
           <div v-if="activeModalType === 'file'" class="p-4 border-t border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex justify-between items-center">
               <span class="text-xs font-medium text-neutral-500 truncate max-w-[200px]">{{ activeFile?.name }}</span>
               <button @click="downloadFile(activeFile, $event)" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 transition-colors">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                  <svg v-if="activeFile?.isReport" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                  <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                   İndir
               </button>
           </div>
