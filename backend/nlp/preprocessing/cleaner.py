@@ -56,13 +56,24 @@ def gurultu_temizle(metin: str) -> str:
         metin = desen.sub(" ", metin)
     return metin
 
-
 def temizle(metin: str) -> str:
-    #temizlik adımlarını gerçekleştirir
+    # temizlik adımlarını gerçekleştirir
     if not metin:
         return "" 
+        
+    # --- YENİ EKLENEN GİYOTİN: Bankanın standart çöplerini kesip at ---
+    cop_belirtecleri = [
+        "Yukarıdaki QR kodunu", 
+        "Merhaba, ben Alba", 
+        "ÇEREZ AYDINLATMA METNİ"
+    ]
+    for belirtec in cop_belirtecleri:
+        if belirtec in metin:
+            metin = metin.split(belirtec)[0] # Belirteci gördüğün an sonrasını çöpe at
+    # ------------------------------------------------------------------
+
     metin = unicode_normalize(metin)
     metin = gurultu_temizle(metin)
-    metin= bosluk_duzelt(metin)
+    metin = bosluk_duzelt(metin)
     
-    return metin 
+    return metin
