@@ -1,7 +1,6 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import DotMatrix from "~/components/loaders/DotMatrix.vue"
-import { useChatStore } from '~/stores/chatStore'
 
 const mounted = ref(false)
 const chatHistory = ref([])
@@ -9,12 +8,9 @@ const userMessage = ref('')
 const isLoading = ref(false)
 const isStreaming = ref(false)
 
-const chatStore = useChatStore()
-
 // --- Kaynaklar ve Dosyalar İçin Box Modal (Drawer) State'leri ---
 const showSourceModal = ref(false)
 const activeSource = ref(null)
-// 🚀 TOKAT 1: Sağdaki panelde artık sadece DB kaynakları değil, yüklenen dosyaları da önizleyeceğiz!
 const activeFile = ref(null) 
 const activeModalType = ref('source') // 'source' veya 'file'
 
@@ -24,14 +20,12 @@ const openSourceModal = (source) => {
   showSourceModal.value = true
 }
 
-// 🚀 TOKAT 2: Dosyayı yeni sekmeye atmak yerine sağdaki şık panele açıyoruz!
 const openFileModal = (file) => {
   activeFile.value = file
   activeModalType.value = 'file'
   showSourceModal.value = true
 }
 
-// 🚀 TOKAT 3: Direkt indirme tuşu fonksiyonu
 const downloadFile = (file, event) => {
   event.stopPropagation() // Tıklamada panelin açılmasını engelle
   const a = document.createElement('a')
@@ -55,11 +49,15 @@ const scrollAnchor = ref(null)
 onMounted(() => {
   requestAnimationFrame(() => { mounted.value = true })
 
-  if (chatStore.initialPrompt || chatStore.initialFiles.length > 0) {
-    userMessage.value = chatStore.initialPrompt
-    selectedFiles.value = [...chatStore.initialFiles]
+  const sharedPrompt = useState('sharedPrompt', () => '')
+  const sharedFiles = useState('sharedFiles', () => [])
 
-    chatStore.clearChatData()
+  if (sharedPrompt.value || sharedFiles.value.length > 0) {
+    userMessage.value = sharedPrompt.value
+    selectedFiles.value = [...sharedFiles.value]
+
+    sharedPrompt.value = ''
+    sharedFiles.value = []
 
     setTimeout(() => {
       sendMessage()
@@ -109,6 +107,7 @@ const scrollToBottom = () => {
   })
 }
 
+// 🚀 TOKAT 1: Yapay zekanın saçmaladığı "<span>" sızıntılarını kökünden temizliyoruz!
 const formatMessage = (text) => {
   if (!text) return '';
   let html = text.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -130,9 +129,13 @@ const formatMessage = (text) => {
       
       let rowContent = line.replace(/^[ \t]*\||\|[ \t]*$/g, ''); 
       
+      // br ve madde işaretlerini güzelleştirme
       rowContent = rowContent.replace(/&lt;br\s*\/?[&gt;]?/gi, '<br class="mt-2 mb-1">');
       rowContent = rowContent.replace(/(?:&amp;)?(?:&gt;|gt;)\s*[\*•-]?/gi, '<br class="mt-2 mb-1"><span class="text-blue-500 font-bold mr-1.5">•</span>');
       
+      // 🚀 YENİ: Modelin ürettiği <span ...> ve </span> gibi ucube yazıları tamamen sil!
+      rowContent = rowContent.replace(/&lt;\/?span[^&]*&gt;/gi, '');
+
       const cells = rowContent.split('|');
       tableHtml += '<tr class="border-b border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">';
       
@@ -177,6 +180,8 @@ const sendMessage = async () => {
   const attachedFiles = selectedFiles.value.map(f => ({
     name: f.name,
     type: f.type,
+    // Dosyanın türüne göre (resim mi pdf mi) özel kontrol yapmak için
+    isImage: f.type.startsWith('image/'),
     url: URL.createObjectURL(f) 
   }))
   
@@ -310,8 +315,6 @@ const sendMessage = async () => {
     @drop.prevent="handleDrop"
   >
 
-
-
     <Transition
       enter-active-class="transition duration-300 ease-out"
       enter-from-class="opacity-0 scale-95"
@@ -365,7 +368,6 @@ const sendMessage = async () => {
                 <div v-if="msg.role === 'user'" class="flex justify-end w-full">
                   <div class="bg-blue-600 text-white rounded-t-2xl rounded-bl-2xl rounded-br-sm px-5 py-3.5 max-w-[85%] shadow-sm text-left leading-relaxed flex flex-col group">
                     
-                    <!-- 🚀 TOKAT 4: SOHBET İÇİNDE KULLANICININ YÜKLEDİĞİ DOSYALAR -->
                     <div v-if="msg.files && msg.files.length > 0" class="flex flex-wrap gap-2 mb-3">
                       <div v-for="(file, fIndex) in msg.files" :key="fIndex" 
                            @click="openFileModal(file)"
@@ -377,7 +379,6 @@ const sendMessage = async () => {
                             <span class="truncate max-w-[150px] md:max-w-[200px]">{{ file.name }}</span>
                         </div>
                         
-                        <!-- 🚀 İNDİRME BUTONU (İndir ikonuna tıklandığında paneli açmadan direkt indirir) -->
                         <button @click="downloadFile(file, $event)" class="p-1.5 rounded bg-white/10 hover:bg-white/30 transition-colors flex-shrink-0" title="İndir">
                            <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         </button>
@@ -446,6 +447,7 @@ const sendMessage = async () => {
         </div>
 
         <div class="w-full max-w-4xl mx-auto px-4 pb-4 pointer-events-auto relative z-20">
+          
           <Transition
             enter-active-class="transition-all duration-300 cubic-bezier(0.4, 0, 0.2, 1)"
             enter-from-class="opacity-0 translate-y-2 scale-95"
@@ -454,12 +456,12 @@ const sendMessage = async () => {
             leave-from-class="opacity-100 translate-y-0 scale-100"
             leave-to-class="opacity-0 translate-y-2 scale-95"
           >
-            <div v-if="selectedFiles.length > 0" class="absolute -top-14 left-4 right-4 flex items-center p-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl shadow-lg overflow-x-auto gap-2">
-              <div v-for="(file, index) in selectedFiles" :key="index" class="flex items-center gap-2 bg-neutral-100 dark:bg-neutral-700 p-2 rounded-lg border border-neutral-200 dark:border-neutral-600 whitespace-nowrap">
-                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                <span class="text-sm font-medium text-neutral-700 dark:text-neutral-200 truncate max-w-[120px]">{{ file.name }}</span>
-                <button @click="removeFile(index)" type="button" class="ml-1 p-1 text-neutral-400 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-md transition-colors">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            <div v-if="selectedFiles.length > 0" class="absolute bottom-full left-4 mb-2 flex items-center gap-2 max-w-[90%] overflow-x-auto custom-scrollbar pb-1 z-30">
+              <div v-for="(file, index) in selectedFiles" :key="index" class="flex items-center gap-1.5 bg-white dark:bg-neutral-800 px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-700 shadow-sm whitespace-nowrap">
+                <svg class="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                <span class="text-[12px] font-medium text-neutral-600 dark:text-neutral-300 truncate max-w-[120px]">{{ file.name }}</span>
+                <button @click.prevent="removeFile(index)" type="button" class="ml-0.5 p-0.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
               </div>
             </div>
@@ -491,8 +493,7 @@ const sendMessage = async () => {
         </div>
       </div>
 
-      <!-- 🚀 YENİ: ORTAK KAYAN PANEL (DRAWER) -->
-      <!-- Hem veritabanı kaynakları hem de yüklenen dosyalar burada şık bir şekilde önizlenir! -->
+      <!-- ORTAK KAYAN PANEL (DRAWER) -->
       <Transition
         enter-active-class="transform transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
         enter-from-class="translate-x-[120%] opacity-0 scale-95"
@@ -503,7 +504,6 @@ const sendMessage = async () => {
       >
         <div v-if="showSourceModal" class="absolute right-4 top-4 bottom-4 w-[340px] lg:w-[480px] bg-white dark:bg-neutral-900 rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-neutral-200 dark:border-neutral-800 flex flex-col z-50 overflow-hidden">
           
-          <!-- Modal Header (Duruma göre değişir) -->
           <div class="flex justify-between items-center p-5 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50">
             <h3 class="text-[15px] font-bold flex items-center gap-2 text-neutral-800 dark:text-white">
               <svg v-if="activeModalType === 'source'" class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
@@ -518,20 +518,20 @@ const sendMessage = async () => {
             </div>
           </div>
           
-          <!-- Modal Body (Duruma göre Veritabanı Metni veya Dosya Frame'i) -->
-          <div class="flex-1 overflow-y-auto custom-scrollbar bg-neutral-50 dark:bg-[#121212]">
+          <!-- 🚀 TOKAT 2: Dosya önizleme kısmını tamamen kutuya hapsediyoruz! -->
+          <div class="flex-1 overflow-hidden bg-neutral-50 dark:bg-[#121212] flex items-center justify-center">
             <template v-if="activeModalType === 'source'">
-                <div class="p-5">
+                <div class="w-full h-full overflow-y-auto p-5 custom-scrollbar">
                     <pre class="whitespace-pre-wrap text-[12.5px] font-mono leading-relaxed text-neutral-600 dark:text-neutral-300 p-4 rounded-xl border border-neutral-200 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/50">{{ activeSource?.icerik }}</pre>
                 </div>
             </template>
             <template v-else>
-                <!-- IFRAME ile Dosyayı Gömülü Gösterme -->
-                <iframe :src="activeFile?.url" class="w-full h-full border-none bg-white"></iframe>
+                <!-- Resimse resim etiketi, PDF ise iframe ile tam sığacak şekilde ayarladık -->
+                <img v-if="activeFile?.isImage" :src="activeFile?.url" class="w-full h-full object-contain p-4" />
+                <iframe v-else :src="activeFile?.url" class="w-full h-full border-none bg-white"></iframe>
             </template>
           </div>
           
-          <!-- Dosya İndirme Alt Barı (Sadece Dosya Önizlemede Çıkar) -->
           <div v-if="activeModalType === 'file'" class="p-4 border-t border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex justify-between items-center">
               <span class="text-xs font-medium text-neutral-500 truncate max-w-[200px]">{{ activeFile?.name }}</span>
               <button @click="downloadFile(activeFile, $event)" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 transition-colors">
