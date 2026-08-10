@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import DotMatrix from "~/components/loaders/DotMatrix.vue"
+import { useChatStore } from '~/stores/chatStore'
 
 const mounted = ref(false)
 const chatHistory = ref([])
@@ -8,13 +9,37 @@ const userMessage = ref('')
 const isLoading = ref(false)
 const isStreaming = ref(false)
 
-// --- Kaynaklar (Box Modal) State'leri ---
+const chatStore = useChatStore()
+
+// --- Kaynaklar ve Dosyalar İçin Box Modal (Drawer) State'leri ---
 const showSourceModal = ref(false)
 const activeSource = ref(null)
+// 🚀 TOKAT 1: Sağdaki panelde artık sadece DB kaynakları değil, yüklenen dosyaları da önizleyeceğiz!
+const activeFile = ref(null) 
+const activeModalType = ref('source') // 'source' veya 'file'
 
 const openSourceModal = (source) => {
   activeSource.value = source
+  activeModalType.value = 'source'
   showSourceModal.value = true
+}
+
+// 🚀 TOKAT 2: Dosyayı yeni sekmeye atmak yerine sağdaki şık panele açıyoruz!
+const openFileModal = (file) => {
+  activeFile.value = file
+  activeModalType.value = 'file'
+  showSourceModal.value = true
+}
+
+// 🚀 TOKAT 3: Direkt indirme tuşu fonksiyonu
+const downloadFile = (file, event) => {
+  event.stopPropagation() // Tıklamada panelin açılmasını engelle
+  const a = document.createElement('a')
+  a.href = file.url
+  a.download = file.name
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
 }
 
 const useThinking = ref(false)
@@ -29,6 +54,17 @@ const scrollAnchor = ref(null)
 
 onMounted(() => {
   requestAnimationFrame(() => { mounted.value = true })
+
+  if (chatStore.initialPrompt || chatStore.initialFiles.length > 0) {
+    userMessage.value = chatStore.initialPrompt
+    selectedFiles.value = [...chatStore.initialFiles]
+
+    chatStore.clearChatData()
+
+    setTimeout(() => {
+      sendMessage()
+    }, 500)
+  }
 })
 
 const goHome = () => navigateTo('/')
@@ -65,10 +101,6 @@ const clearFiles = () => {
   if (fileInput.value) fileInput.value.value = ''
 }
 
-const openFile = (url) => {
-  if (url) window.open(url, '_blank')
-}
-
 const scrollToBottom = () => {
   nextTick(() => {
     if (scrollAnchor.value) {
@@ -77,24 +109,20 @@ const scrollToBottom = () => {
   })
 }
 
-// 🚀 TOKAT 1: Tabloları harf harf akarken bile canlı (Live) işleyen yeni Markdown Motoru!
 const formatMessage = (text) => {
   if (!text) return '';
   let html = text.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;');
   html = html.replace(/\n{3,}/g, '\n\n');
   
-  // Tablo satırlarını anlık yakalayan Regex
   html = html.replace(/(?:^[ \t]*\|.*(?:\n|$))+/gm, (match) => {
     
     const lines = match.trim().split('\n');
     if (lines.length === 0) return match; 
     
-    // Tablo iskeletini (Wrapper) en baştan çiziyoruz ki harfler içine dolsun
     let tableHtml = '<div class="overflow-x-auto my-6 shadow-sm rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800/80 transition-all duration-300"><table class="w-full text-sm text-left border-collapse">';
     let isBody = false;
     
     lines.forEach((line, index) => {
-      // Ayrıştırıcı satırı (|---|---|) render etmiyoruz, sadece gövdeye geçtiğimizi anlıyoruz
       if (line.match(/^[ \t]*\|[\s\-\.:]+\|/)) {
         isBody = true;
         return;
@@ -102,7 +130,6 @@ const formatMessage = (text) => {
       
       let rowContent = line.replace(/^[ \t]*\||\|[ \t]*$/g, ''); 
       
-      // Çöplük işaretleri şık listelere çevirme (Anlık akarken bile çalışır)
       rowContent = rowContent.replace(/&lt;br\s*\/?[&gt;]?/gi, '<br class="mt-2 mb-1">');
       rowContent = rowContent.replace(/(?:&amp;)?(?:&gt;|gt;)\s*[\*•-]?/gi, '<br class="mt-2 mb-1"><span class="text-blue-500 font-bold mr-1.5">•</span>');
       
@@ -111,10 +138,8 @@ const formatMessage = (text) => {
       
       cells.forEach(cell => {
         if (!isBody && index === 0) { 
-          // Başlık satırı
           tableHtml += `<th class="px-5 py-4 bg-neutral-100/80 dark:bg-neutral-800/90 font-bold text-neutral-800 dark:text-neutral-200 border-r border-neutral-200 dark:border-neutral-700 last:border-0 align-top">${cell.trim()}</th>`;
         } else { 
-          // Gövde hücresi (Yazılar buraya harf harf dolar)
           tableHtml += `<td class="px-5 py-4 text-neutral-600 dark:text-neutral-300 border-r border-neutral-200 dark:border-neutral-700 last:border-0 align-top leading-relaxed">${cell.trim()}</td>`;
         }
       });
@@ -151,6 +176,7 @@ const sendMessage = async () => {
   const text = userMessage.value || `${selectedFiles.value.length} dosya gönderildi.`
   const attachedFiles = selectedFiles.value.map(f => ({
     name: f.name,
+    type: f.type,
     url: URL.createObjectURL(f) 
   }))
   
@@ -284,15 +310,7 @@ const sendMessage = async () => {
     @drop.prevent="handleDrop"
   >
 
-    <header class="flex-shrink-0 z-30 w-full flex items-center justify-center px-6 py-4 bg-white/70 dark:bg-neutral-800/70 backdrop-blur-md border-b border-neutral-200/50 dark:border-neutral-700/50">
-      <button @click="goHome" class="absolute left-6 text-sm font-medium text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200 transition-colors flex items-center gap-1 group">
-        <svg class="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
-        Geri Dön
-      </button>
-      <h1 class="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-cyan-500">
-        Akıllı Finans Asistanı
-      </h1>
-    </header>
+
 
     <Transition
       enter-active-class="transition duration-300 ease-out"
@@ -314,7 +332,7 @@ const sendMessage = async () => {
       
       <div 
         class="flex-1 h-full flex flex-col transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]"
-        :class="showSourceModal ? 'lg:pr-[380px]' : 'pr-0'"
+        :class="showSourceModal ? 'lg:pr-[380px] lg:mr-[10px]' : 'pr-0'"
       >
         <div 
           ref="chatContainer"
@@ -346,15 +364,26 @@ const sendMessage = async () => {
                 
                 <div v-if="msg.role === 'user'" class="flex justify-end w-full">
                   <div class="bg-blue-600 text-white rounded-t-2xl rounded-bl-2xl rounded-br-sm px-5 py-3.5 max-w-[85%] shadow-sm text-left leading-relaxed flex flex-col group">
+                    
+                    <!-- 🚀 TOKAT 4: SOHBET İÇİNDE KULLANICININ YÜKLEDİĞİ DOSYALAR -->
                     <div v-if="msg.files && msg.files.length > 0" class="flex flex-wrap gap-2 mb-3">
                       <div v-for="(file, fIndex) in msg.files" :key="fIndex" 
-                           @click="openFile(file.url)"
-                           class="flex items-center gap-1.5 p-1.5 px-3 bg-black/20 hover:bg-black/30 rounded-lg text-sm font-medium w-fit cursor-pointer transition-colors"
-                           title="Dosyayı aç">
-                        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
-                        <span class="truncate max-w-[180px]">{{ file.name }}</span>
+                           @click="openFileModal(file)"
+                           class="flex items-center justify-between gap-3 p-1.5 pl-3 pr-2 bg-black/20 hover:bg-black/30 rounded-lg text-sm font-medium cursor-pointer transition-colors w-full sm:w-auto"
+                           title="Dosyayı önizle">
+                        <div class="flex items-center gap-1.5 overflow-hidden">
+                            <!-- Dosya İkonu -->
+                            <svg class="w-4 h-4 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
+                            <span class="truncate max-w-[150px] md:max-w-[200px]">{{ file.name }}</span>
+                        </div>
+                        
+                        <!-- 🚀 İNDİRME BUTONU (İndir ikonuna tıklandığında paneli açmadan direkt indirir) -->
+                        <button @click="downloadFile(file, $event)" class="p-1.5 rounded bg-white/10 hover:bg-white/30 transition-colors flex-shrink-0" title="İndir">
+                           <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        </button>
                       </div>
                     </div>
+
                     <span class="whitespace-pre-wrap">{{ msg.content }}</span>
                   </div>
                 </div>
@@ -462,6 +491,8 @@ const sendMessage = async () => {
         </div>
       </div>
 
+      <!-- 🚀 YENİ: ORTAK KAYAN PANEL (DRAWER) -->
+      <!-- Hem veritabanı kaynakları hem de yüklenen dosyalar burada şık bir şekilde önizlenir! -->
       <Transition
         enter-active-class="transform transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
         enter-from-class="translate-x-[120%] opacity-0 scale-95"
@@ -470,25 +501,45 @@ const sendMessage = async () => {
         leave-from-class="translate-x-0 opacity-100 scale-100"
         leave-to-class="translate-x-[120%] opacity-0 scale-95"
       >
-        <div v-if="showSourceModal" class="absolute right-4 top-4 bottom-4 w-[340px] lg:w-[360px] bg-white dark:bg-neutral-900 rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-neutral-200 dark:border-neutral-800 flex flex-col z-50 overflow-hidden">
+        <div v-if="showSourceModal" class="absolute right-4 top-4 bottom-4 w-[340px] lg:w-[480px] bg-white dark:bg-neutral-900 rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-neutral-200 dark:border-neutral-800 flex flex-col z-50 overflow-hidden">
           
+          <!-- Modal Header (Duruma göre değişir) -->
           <div class="flex justify-between items-center p-5 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50">
             <h3 class="text-[15px] font-bold flex items-center gap-2 text-neutral-800 dark:text-white">
-              <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
-              Veritabanı Kaydı 
+              <svg v-if="activeModalType === 'source'" class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+              <svg v-else class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
+              {{ activeModalType === 'source' ? 'Veritabanı Kaydı' : 'Dosya Önizleme' }}
             </h3>
             <div class="flex items-center gap-2">
-              <span class="text-[11px] font-bold tracking-wider text-blue-700 bg-blue-100 dark:bg-blue-900/50 dark:text-blue-300 px-2 py-1 rounded border border-blue-200 dark:border-blue-800/50">ID: {{ activeSource?.kampanya_id }}</span>
+              <span v-if="activeModalType === 'source'" class="text-[11px] font-bold tracking-wider text-blue-700 bg-blue-100 dark:bg-blue-900/50 dark:text-blue-300 px-2 py-1 rounded border border-blue-200 dark:border-blue-800/50">ID: {{ activeSource?.kampanya_id }}</span>
               <button @click="showSourceModal = false" class="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
             </div>
           </div>
           
-          <div class="flex-1 p-5 overflow-y-auto custom-scrollbar">
-            <pre class="whitespace-pre-wrap text-[12.5px] font-mono leading-relaxed text-neutral-600 dark:text-neutral-300 bg-neutral-50 dark:bg-[#121212] p-4 rounded-xl border border-neutral-100 dark:border-neutral-800/80">{{ activeSource?.icerik }}</pre>
+          <!-- Modal Body (Duruma göre Veritabanı Metni veya Dosya Frame'i) -->
+          <div class="flex-1 overflow-y-auto custom-scrollbar bg-neutral-50 dark:bg-[#121212]">
+            <template v-if="activeModalType === 'source'">
+                <div class="p-5">
+                    <pre class="whitespace-pre-wrap text-[12.5px] font-mono leading-relaxed text-neutral-600 dark:text-neutral-300 p-4 rounded-xl border border-neutral-200 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/50">{{ activeSource?.icerik }}</pre>
+                </div>
+            </template>
+            <template v-else>
+                <!-- IFRAME ile Dosyayı Gömülü Gösterme -->
+                <iframe :src="activeFile?.url" class="w-full h-full border-none bg-white"></iframe>
+            </template>
           </div>
           
+          <!-- Dosya İndirme Alt Barı (Sadece Dosya Önizlemede Çıkar) -->
+          <div v-if="activeModalType === 'file'" class="p-4 border-t border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex justify-between items-center">
+              <span class="text-xs font-medium text-neutral-500 truncate max-w-[200px]">{{ activeFile?.name }}</span>
+              <button @click="downloadFile(activeFile, $event)" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 transition-colors">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                  İndir
+              </button>
+          </div>
+
         </div>
       </Transition>
 
