@@ -6,8 +6,8 @@ import yaml
 from pathlib import Path
 
 # backend. takılarını sildik ve PROJE_KOK importunu kaldırdık
-from db.database import get_session, init_db
-from db.models import Banka
+from backend.db.database import get_session, init_db
+from backend.db.models import Banka
 
 # Docker konteyneri içinde ana dizinimizi (/app) kendimiz tanımlıyoruz
 BASE_DIR = Path(__file__).resolve().parent.parent
