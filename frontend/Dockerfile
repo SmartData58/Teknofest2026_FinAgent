@@ -1,5 +1,5 @@
 # Hafif ve daha güncel bir Node.js imajı kullanıyoruz (18 yerine 20)
-FROM node:20-slim
+FROM node:22-alpine
 
 # Konteyner içindeki çalışma dizini
 WORKDIR /app

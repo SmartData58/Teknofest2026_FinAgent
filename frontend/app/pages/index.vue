@@ -16,11 +16,24 @@ let ctx;
 const hasNavigated = ref(false)
 const isTransitioning = ref(false)
 
+// 🚀 TOKAT: Geçişi temiz (hard) bir navigasyona çevirdik ki Chat sayfasının scroll motoru kilitlenmesin!
 const startTransition = () => {
   if (hasNavigated.value) return
   hasNavigated.value = true
   isTransitioning.value = true
+  
+  // Önce Lenis'i kibarca kapatıyoruz
+  if (lenis) {
+    lenis.destroy()
+    lenis = null
+  }
+  if (lenisRaf) {
+    gsap.ticker.remove(lenisRaf)
+  }
+
   setTimeout(() => {
+    // ŞUNU SİL: window.location.href = '/chat'
+    // ŞUNU YAZ:
     router.push('/chat')
   }, 750)
 }
@@ -113,9 +126,6 @@ onMounted(() => {
 
         scrollerEl = document.getElementById('main-scroller')
 
-        // ---------------- LENIS SMOOTH SCROLL ----------------
-        // #main-scroller özel bir kaydırma konteyneri olduğu için
-        // Lenis'i "wrapper + content" modunda kuruyoruz.
         if (scrollerEl) {
           const content = scrollerEl.querySelector('main') || scrollerEl.firstElementChild
           lenis = new Lenis({
@@ -128,16 +138,13 @@ onMounted(() => {
             touchMultiplier: 1.6
           })
 
-          // Lenis <-> ScrollTrigger senkronizasyonu
           lenis.on('scroll', ScrollTrigger.update)
           lenisRaf = (time) => { lenis.raf(time * 1000) }
           gsap.ticker.add(lenisRaf)
           gsap.ticker.lagSmoothing(0)
         }
 
-        // ---------------- GSAP SCROLL + PARALLAX ----------------
         ctx = gsap.context(() => {
-          // 1) Bölümler kaydırdıkça yukarı süzülerek belirir
           gsap.utils.toArray('.scroll-section').forEach((section) => {
             gsap.fromTo(section,
               { opacity: 0, y: 60 },
@@ -148,7 +155,6 @@ onMounted(() => {
             )
           })
 
-          // 2) Kartlar sırayla (stagger) ve kaydırmaya bağlı açılır
           gsap.utils.toArray('.stagger-group').forEach((group) => {
             const items = group.querySelectorAll('.stagger-item')
             if (!items.length) return
@@ -161,7 +167,6 @@ onMounted(() => {
             )
           })
 
-          // 3) Başlıklar harf aralığı animasyonuyla belirir
           gsap.utils.toArray('.anim-heading').forEach((h) => {
             gsap.fromTo(h,
               { opacity: 0, y: 28, letterSpacing: '0.12em' },
@@ -172,7 +177,6 @@ onMounted(() => {
             )
           })
 
-          // 4) PARALLAX: data-parallax katmanları (hız değeri = kaydırmaya oranla kayma)
           gsap.utils.toArray('[data-parallax]').forEach((el) => {
             const speed = parseFloat(el.getAttribute('data-parallax')) || 0.1
             gsap.to(el, {
@@ -182,7 +186,6 @@ onMounted(() => {
             })
           })
 
-          // 5) Gradient bloğundaki ışık lekeleri derin parallax
           gsap.utils.toArray('.parallax-blob').forEach((blob, i) => {
             gsap.to(blob, {
               yPercent: i % 2 === 0 ? -40 : 45,
@@ -193,10 +196,8 @@ onMounted(() => {
           })
         })
 
-        // Layout hazır olunca ölçümleri tazele
         ScrollTrigger.refresh()
 
-        // ---------------- SİHİRLİ GEÇİŞ ----------------
         if (scrollerEl) {
           onScrollHandler = () => {
             if (hasNavigated.value) return
@@ -207,6 +208,8 @@ onMounted(() => {
             const viewportCenter = window.innerHeight / 2
             const passedCenter = boxCenter <= viewportCenter - 5
             const nearBottom = scrollerEl.scrollTop + scrollerEl.clientHeight >= scrollerEl.scrollHeight - 8
+            
+            // Kullanıcı chat kısmına ulaştığında geçişi tetikle
             if (passedCenter || nearBottom) startTransition()
           }
           scrollerEl.addEventListener('scroll', onScrollHandler, { passive: true })
@@ -317,7 +320,6 @@ onUnmounted(() => {
               <h2 class="anim-heading text-3xl font-bold mb-12 text-white drop-shadow-sm">Sistem Mimarisi Katmanları</h2>
 
               <div class="stagger-group flex flex-col gap-5 w-full max-w-4xl mx-auto">
-                <!-- Katman 4 -->
                 <div class="stagger-item p-5 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl shadow-lg relative overflow-hidden hover:bg-white/15 hover:-translate-y-1 transition-all duration-300">
                   <div class="absolute top-0 left-0 w-1 bg-cyan-300 h-full"></div>
                   <h3 class="text-sm uppercase tracking-widest text-cyan-200 mb-4 font-bold flex items-center justify-center gap-2">
@@ -335,7 +337,6 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <!-- Katman 3 -->
                 <div class="stagger-item p-5 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl shadow-lg relative overflow-hidden hover:bg-white/15 hover:-translate-y-1 transition-all duration-300">
                   <div class="absolute top-0 left-0 w-1 bg-blue-300 h-full"></div>
                   <h3 class="text-sm uppercase tracking-widest text-blue-200 mb-4 font-bold flex items-center justify-center gap-2">
@@ -353,7 +354,6 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <!-- Katman 2 -->
                 <div class="stagger-item p-5 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl shadow-lg relative overflow-hidden hover:bg-white/15 hover:-translate-y-1 transition-all duration-300">
                   <div class="absolute top-0 left-0 w-1 bg-indigo-300 h-full"></div>
                   <h3 class="text-sm uppercase tracking-widest text-indigo-200 mb-4 font-bold flex items-center justify-center gap-2">
@@ -380,7 +380,6 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <!-- Katman 1 -->
                 <div class="stagger-item p-5 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl shadow-lg relative overflow-hidden hover:bg-white/15 hover:-translate-y-1 transition-all duration-300">
                   <div class="absolute top-0 left-0 w-1 bg-teal-300 h-full"></div>
                   <h3 class="text-sm uppercase tracking-widest text-teal-200 mb-4 font-bold flex items-center justify-center gap-2">
