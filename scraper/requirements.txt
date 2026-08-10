@@ -1,0 +1,9 @@
+pyyaml
+sqlalchemy
+requests
+bs4
+pymongo
+uvicorn
+fastapi
+pydantic
+playwright
