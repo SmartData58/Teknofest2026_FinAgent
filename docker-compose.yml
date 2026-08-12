@@ -71,8 +71,15 @@ services:
   # 6. Veri Kazıma Örümcekleri (Scrapy)
   scraper:
     build: ./scraper
+    environment:
+      # --- MONGODB BAĞLANTI AYARLARI EKLENDİ ---
+      - MONGO_HOST=mongodb
+      - MONGO_USER=${MONGO_USER:-admin}
+      - MONGO_PASSWORD=${MONGO_PASSWORD:-admin123}
+      - MONGO_DB_NAME=${MONGO_DB_NAME:-smartdata}
     depends_on:
-      - backend
+      mongodb:
+        condition: service_healthy
     networks:
       - smartdata-net
 
