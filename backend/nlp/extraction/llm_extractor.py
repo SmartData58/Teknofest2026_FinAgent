@@ -9,8 +9,9 @@ from backend.nlp.extraction.rule_based import AlanBulgusu
 OLLAMA_URL = os.environ.get("FINAGENT_OLLAMA_URL", "http://127.0.0.1:11434")
 MODEL = os.environ.get("FINAGENT_LLM_MODEL", "qwen2.5:7b")
 LLM_GUVEN = 0.7
-ZAMAN_ASIMI = 300 # 5dk
+ZAMAN_ASIMI = 300  # 5dk
 
+# --- 1. SAYISAL ALAN ŞEMALARI ---
 ALAN_SEMASI = {
     "kar_payi_orani": (
         '"kar_payi_orani": sayı|null  '
@@ -19,15 +20,15 @@ ALAN_SEMASI = {
         "kâr payı DEĞİLDİR — bunlar için null yaz)"
     ),
     "vade_ay": (
-    '"vade_ay": tamsayı|null  '
-    '(Finansman/kredi için AY cinsinden toplam vade süresi. Yıl verilmişse 12 ile çarp. '
-    'DİKKAT: Ödemesiz dönem süresi, öteleme/erteleme ay sayısı vade DEĞİLDİR)'
+        '"vade_ay": tamsayı|null  '
+        "(Finansman/kredi için AY cinsinden toplam vade süresi. Yıl verilmişse 12 ile çarp. "
+        "DİKKAT: Ödemesiz dönem süresi, öteleme/erteleme ay sayısı vade DEĞİLDİR)"
     ),
     "taksit_sayisi": (
-    '"taksit_sayisi": tamsayı|null  '
-    '(Yalnızca metinde doğrudan uygulanan taksit sayısı. '
-    'DİKKAT: Erteleme/öteleme ay sayısı, kampanya süresi veya ek taksit sayısı '
-    'asıl taksit sayısı DEĞİLDİR)'
+        '"taksit_sayisi": tamsayı|null  '
+        "(Yalnızca metinde doğrudan uygulanan taksit sayısı. "
+        "DİKKAT: Erteleme/öteleme ay sayısı, kampanya süresi veya ek taksit sayısı "
+        "asıl taksit sayısı DEĞİLDİR)"
     ),
     "finansman_tutari": (
         '"finansman_tutari": sayı|null  '
@@ -36,12 +37,45 @@ ALAN_SEMASI = {
         "ATM çekim/yatırma limiti ve hediye tutarları finansman DEĞİLDİR)"
     ),
     "odul_miktari": (
-    '"odul_miktari": sayı|null  '
-    "(TL cinsinden hediye/çek/bonus/iade/puan tutarı. Örn: 500. "
-    "DİKKAT: Mil adedi, gram altın miktarı veya yüzde oranları ödül miktarı DEĞİLDİR. "
-    "Finansman tutarı veya taksit öteleme tutarı ödül DEĞİLDİR)"
+        '"odul_miktari": sayı|null  '
+        "(TL cinsinden hediye/çek/bonus/iade/puan tutarı. Örn: 500. "
+        "DİKKAT: Mil adedi, gram altın miktarı veya yüzde oranları ödül miktarı DEĞİLDİR. "
+        "Finansman tutarı veya taksit öteleme tutarı ödül DEĞİLDİR)"
     ),
 }
+
+# --- 2. METİNSEL / SÖZEL ALAN ŞEMALARI (YENİ EKLENEN KISIM) ---
+METINSEL_ALAN_SEMASI = {
+    "kampanya_turu": (
+        '"kampanya_turu": string|null  '
+        '(Su seceneklerden biri olmali: "Konut Finansmani", "Tasit Finansmani", '
+        '"Ihtiyac Finansmani", "Kart Kampanyasi", "Alisveris Puani Kampanyasi", '
+        '"Yeni Musteri Kampanyasi", "Yatirim Urunu Kampanyasi", "Diger". Anlasilmiyorsa null)'
+    ),
+    "kampanya_avantaji": (
+        '"kampanya_avantaji": string|null  '
+        '(Musteriye saglanan ana fayda, hediye veya avantaj metni. '
+        'Örn: "5.000 TL degerinde alisveris ceki", "Ekspertiz ucreti banka tarafindan karsilaniyor". Yoksa null)'
+    ),
+    "masraf_durumu": (
+        '"masraf_durumu": string|null  '
+        '(Dosya masrafi, tahsis ucreti veya ekspertiz masraf durumu. '
+        'Örn: "Dosya masrafi yok", "50.000 TL\'ye kadar masraf alinmiyor", "Ekspertiz ucretsiz". Yoksa null)'
+    ),
+    "kampanya_suresi": (
+        '"kampanya_suresi": string|null  '
+        '(Kampanyanin son gecerlilik tarihi veya geçerlilik süresi. '
+        'Örn: "31 Aralik 2026". Metinde tarih/sure yoksa null)'
+    ),
+}
+
+_GECERLI_KAMPANYA_TURLERI = {
+    "Konut Finansmani", "Tasit Finansmani", "Ihtiyac Finansmani",
+    "Kart Kampanyasi", "Alisveris Puani Kampanyasi",
+    "Yeni Musteri Kampanyasi", "Yatirim Urunu Kampanyasi", "Diger"
+}
+
+SORULABILIR_ALANLAR = list(ALAN_SEMASI) + list(METINSEL_ALAN_SEMASI) + ["hedef_kitle"]
 
 
 def llm_hazir() -> bool:
@@ -52,15 +86,11 @@ def llm_hazir() -> bool:
                    for m in cevap.json().get("models", []))
     except requests.RequestException:
         return False
-    
-def _prompt_kur(metin: str, istenen_alanlar: list[str]) -> str:
-    """Yalnızca EKSİK sayısal alanları soran dar kapsamlı prompt üretir.
 
-    Neden dar kapsam? (1) Kısa çıktı = CPU'da hız, (2) modelin işi ne kadar
-    dar tanımlanırsa doğruluk o kadar yüksek, (3) kuralın bulduğu alanı
-    LLM'e tekrar sormak gereksiz risk.
-    """
-    sema = ",\n  ".join(ALAN_SEMASI[a] for a in istenen_alanlar)
+
+def _prompt_kur(metin: str, istenen_alanlar: list[str]) -> str:
+    """Yalnızca EKSİK sayısal alanları soran dar kapsamlı prompt üretir."""
+    sema = ",\n  ".join(ALAN_SEMASI[a] for a in istenen_alanlar if a in ALAN_SEMASI)
     return (
         "Türkçe katılım bankası kampanya metninden bilgi çıkarıyorsun.\n"
         "KURALLAR:\n"
@@ -70,7 +100,21 @@ def _prompt_kur(metin: str, istenen_alanlar: list[str]) -> str:
         f"Şu JSON şemasıyla cevap ver:\n{{\n  {sema}\n}}\n\n"
         f"METİN: {metin}\n\nJSON:"
     )
-    
+
+
+def _sozel_prompt_kur(metin: str, istenen_alanlar: list[str]) -> str:
+    """Sözel/metinsel alanları (Tür, Avantaj, Masraf, Süre) soran prompt üretir."""
+    sema = ",\n  ".join(METINSEL_ALAN_SEMASI[a] for a in istenen_alanlar if a in METINSEL_ALAN_SEMASI)
+    return (
+        "Türkçe katılım bankası kampanya metninden bilgi çıkarıyorsun.\n"
+        "KURALLAR:\n"
+        "- SADECE metinde açıkça geçen bilgileri metne sadık kalarak aktar.\n"
+        "- Metinde belirtilmeyen veya çıkarılamayan alanlara null yaz.\n"
+        f"Şu JSON şemasıyla cevap ver:\n{{\n  {sema}\n}}\n\n"
+        f"METİN: {metin}\n\nJSON:"
+    )
+
+
 def _siniflandirma_promptu(metin: str) -> str:
     return (
         "Türkçe katılım bankası kampanya metnini sınıflandır.\n"
@@ -83,17 +127,13 @@ def _siniflandirma_promptu(metin: str) -> str:
         'Şu JSON ile cevap ver: {"hedef_kitle": ...}\n\n'
         f"METİN: {metin}\n\nJSON:"
     )
-    
+
+
 _SINIR_ON = r"(?<![\d.,])"
 _SINIR_SON = r"(?!\d)(?![.,]\d)"
 
 
 def _varyantlar(deger: float) -> set[str]:
-    """Bir sayının metinde geçebilecek Türkçe/İngilizce yazımları.
-
-      1.89   → "1.89" | "1,89"
-      50000  → "50000" | "50.000" | "50 bin"
-    """
     varyantlar = set()
     if deger == int(deger):
         tam = int(deger)
@@ -108,13 +148,6 @@ def _varyantlar(deger: float) -> set[str]:
 
 
 def sayi_konumlari(deger: float, metin: str) -> list[tuple[int, int]]:
-    """Halüsinasyon kalkanı 1. basamak: değerin metindeki SINIR-DOĞRU
-    eşleşme konumlarını döndürür. Boş liste = değer metinde bağımsız bir
-    sayı olarak YOK → uydurma kabul edilir.
-
-    Konumlar döndürülür (bool değil) çünkü 2. basamak (bağlam doğrulaması)
-    aynı konumların çevresine bakacak — iki kez arama yapılmaz.
-    """
     if deger != deger:  # NaN koruması
         return []
     konumlar = []
@@ -124,11 +157,6 @@ def sayi_konumlari(deger: float, metin: str) -> list[tuple[int, int]]:
     return konumlar
 
 
-# Listeler 15. adım ölçümündeki 19 gerçek hatadan türetildi:
-#   "%5 ekstra mil"        → kâr payı sanılmıştı  → "mil" negatif
-#   "650 TL BES bonusu"    → kâr payı sanılmıştı  → "bonus" negatif
-#   "hesap açılış tutarı"  → finansman sanılmıştı → "açıl" negatif
-#   "para yatırma limiti"  → finansman sanılmıştı → "para yatırma" negatif
 _BAGLAM_KURALLARI: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "kar_payi_orani": (
         ("kâr pay", "kar pay", "paylaşım", "oran", "maliyet oranı", "kar oranı"),
@@ -152,9 +180,8 @@ _PENCERE_GENISLIGI = 60
 
 
 def baglam_uygun_mu(alan: str, konumlar: list[tuple[int, int]], metin: str) -> bool:
-    """Konumlardan en az biri alanın bağlam kurallarını sağlıyor mu?"""
     pozitifler, negatifler = _BAGLAM_KURALLARI.get(alan, ((), ()))
-    if not pozitifler:  # bağlam kuralı tanımsız alan → yalnız 1. basamak yeter
+    if not pozitifler:
         return True
     kucuk = metin.lower()
     for bas, bit in konumlar:
@@ -167,16 +194,12 @@ def baglam_uygun_mu(alan: str, konumlar: list[tuple[int, int]], metin: str) -> b
 
 _GECERLI_KITLELER = {"yeni_musteri", "mevcut_musteri", "maas_musterisi", "segment"}
 
-
 _SEGMENT_KANITI = re.compile(
     r"esnaf|çiftçi|kobi|şah[ıi]s\s+firma|işletme\s+sahi|işletmelere|işletmeniz"
     r"|emekli|öğrenci|maaş|genç\w*\s+özel|kadın\w*\s+özel", re.IGNORECASE)
 
-SORULABILIR_ALANLAR = list(ALAN_SEMASI) + ["hedef_kitle"]
-
 
 def _ollama_json(prompt: str) -> dict | None:
-    """Ollama'ya tek istek atar, JSON cevabı döndürür (hata → None)."""
     try:
         cevap = requests.post(
             f"{OLLAMA_URL}/api/generate",
@@ -184,10 +207,9 @@ def _ollama_json(prompt: str) -> dict | None:
                 "model": MODEL,
                 "prompt": prompt,
                 "stream": False,
-                "format": "json",                    # geçerli JSON zorunlu
-                "options": {"temperature": 0,        # uydurma kapalı
-                            "num_ctx": 4096},
-                "keep_alive": "30m",                 # batch boyunca modeli RAM'de tut
+                "format": "json",
+                "options": {"temperature": 0, "num_ctx": 4096},
+                "keep_alive": "30m",
             },
             timeout=ZAMAN_ASIMI,
         )
@@ -198,29 +220,21 @@ def _ollama_json(prompt: str) -> dict | None:
 
 
 def llm_ile_cikar(metin: str, istenen_alanlar: list[str]) -> dict[str, AlanBulgusu]:
-    """Eksik alanları lokal LLM'e sorar; doğrulamadan geçenleri döndürür.
-
-    İki ayrı görev, iki ayrı istek (gerekçe: _siniflandirma_promptu notu):
-      1. sayısal ÇIKARIM (ALAN_SEMASI alanları) → iki basamaklı kalkan
-      2. hedef_kitle SINIFLANDIRMASI → kapalı liste doğrulaması
-
-    Ollama'ya ulaşılamazsa/parse hatasında BOŞ sözlük döner — pipeline
-    kural bulgularıyla yoluna devam eder (zarif geri düşüş / graceful
-    degradation: LLM bir zenginleştirme katmanı, tek hata noktası değil).
+    """Eksik alanları (Sayısal, Metinsel ve Sınıflandırma) lokal LLM'e sorar;
+    doğrulamadan geçenleri döndürür.
     """
     if not metin:
         return {}
     bulgular: dict[str, AlanBulgusu] = {}
 
-    # --- 1. istek: sayısal çıkarım ----------------------------------------
+    # --- 1. İSTEK: SAYISAL ÇIKARIM ----------------------------------------
     sayisal_alanlar = [a for a in istenen_alanlar if a in ALAN_SEMASI]
     if sayisal_alanlar:
         ham_json = _ollama_json(_prompt_kur(metin, sayisal_alanlar)) or {}
         for alan in sayisal_alanlar:
             deger = ham_json.get(alan)
             if deger is None:
-                continue  # model "metinde yok" dedi — doğru davranış, alan boş kalır
-            # Tip zorlama + iki basamaklı halüsinasyon kalkanı
+                continue
             try:
                 sayi = float(deger)
             except (TypeError, ValueError):
@@ -230,23 +244,14 @@ def llm_ile_cikar(metin: str, istenen_alanlar: list[str]) -> dict[str, AlanBulgu
                 print(f"    LLM RED (sayı sınırı): {alan}={sayi} metinde bağımsız sayı olarak yok")
                 continue
             if alan in ("vade_ay", "taksit_sayisi"):
-                # PARA değeri adet/süre olamaz (k36 denetim bulgusu, 2026-07-17):
-                # "toplam 2.000 TL bonus ... taksitli harcamalar dahildir"
-                # cümlesinde pencereye giren "taksit" kelimesi kalkanı delmiş,
-                # taksit_sayisi=2000 yazılmıştı. Eşleşmenin hemen ardında
-                # TL/₺ varsa o konum tutar demektir, aday listeden düşer.
                 konumlar = [(b, s) for b, s in konumlar
-                            if not re.match(r"\s*(tl\b|₺)", metin[s:s + 4],
-                                            re.IGNORECASE)]
+                            if not re.match(r"\s*(tl\b|₺)", metin[s:s + 4], re.IGNORECASE)]
                 if not konumlar:
                     print(f"    LLM RED (para değeri): {alan}={sayi} yalnız TL tutarı olarak geçiyor")
                     continue
-                # Makullük sınırı (ikinci kemer): taksit/vade alanları için
-                # alan bilgisi — 60 taksit / 360 ay üstü değer gerçek dünyada
-                # kampanya değil, çıkarım hatasıdır.
                 ust = 60 if alan == "taksit_sayisi" else 360
                 if not 1 <= sayi <= ust:
-                    print(f"    LLM RED (makullük): {alan}={sayi} olası aralık dışı (1-{ust})")
+                    print(f"    LLM RED (makullük): {alan}={sayi} olasi aralik disi (1-{ust})")
                     continue
             if not baglam_uygun_mu(alan, konumlar, metin):
                 print(f"    LLM RED (bağlam): {alan}={sayi} çevresinde alan kanıtı yok")
@@ -256,11 +261,29 @@ def llm_ile_cikar(metin: str, istenen_alanlar: list[str]) -> dict[str, AlanBulgu
             bulgular[alan] = AlanBulgusu(sayi, f"LLM cikarimi (metinde dogrulandi): {deger}",
                                          f"llm:{MODEL}")
 
-    # --- 2. istek: hedef kitle sınıflandırması -----------------------------
+    # --- 2. İSTEK: METİNSEL / SÖZEL ÇIKARIM (YENİ EKLENEN KISIM) -----------
+    sozel_alanlar = [a for a in istenen_alanlar if a in METINSEL_ALAN_SEMASI]
+    if sozel_alanlar:
+        ham_json = _ollama_json(_sozel_prompt_kur(metin, sozel_alanlar)) or {}
+        for alan in sozel_alanlar:
+            deger = ham_json.get(alan)
+            if not deger or not isinstance(deger, str) or deger.strip().lower() in ("null", "none", ""):
+                continue
+            
+            val = deger.strip()
+            # Kampanya türü doğrulama
+            if alan == "kampanya_turu" and val not in _GECERLI_KAMPANYA_TURLERI:
+                print(f"    LLM RED (geçersiz tür): {val} geçerli kampanya türü listesinde yok")
+                continue
+
+            bulgular[alan] = AlanBulgusu(
+                val, f"LLM sozel cikarimi: {val}", f"llm:{MODEL}"
+            )
+
+    # --- 3. İSTEK: HEDEF KİTLE SINIFLANDIRMASI -----------------------------
     if "hedef_kitle" in istenen_alanlar:
         ham_json = _ollama_json(_siniflandirma_promptu(metin)) or {}
         deger = ham_json.get("hedef_kitle")
-        # Kapalı liste doğrulaması: 4 etiket dışındaki her şey çöp
         if deger in _GECERLI_KITLELER:
             if deger == "segment" and not _SEGMENT_KANITI.search(metin):
                 print("    LLM RED (segment kanıtı): metinde segment kelimesi yok")
