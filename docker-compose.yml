@@ -61,6 +61,7 @@ services:
   llm:
     # İmaj (image) ve donanım (devices/deploy) ayarları 
     # nvidia/intel override dosyalarından otomatik gelecek!
+    
     volumes:
       - ~/.cache/huggingface:/root/.cache/huggingface
     environment:

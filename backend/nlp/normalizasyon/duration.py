@@ -9,7 +9,7 @@
 import re
 
 # BURASI DEĞİŞTİ (normalization -> normalizasyon)
-from backend.nlp.normalizasyon.money import sayi_ayikla
+from .money import sayi_ayikla
 
 # ... (kodun geri kalanı aynı)
 _VADE_DESENI = re.compile(
