@@ -3,7 +3,17 @@
 # =============================================================================
 
 import re
+import sys
+from pathlib import Path
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 from playwright.sync_api import sync_playwright
+
+# Proje ana dizinini sys.path'e ekleyerek import hatasını engeller
+PROJE_KOK = Path(__file__).resolve().parent.parent.parent
+if str(PROJE_KOK) not in sys.path:
+    sys.path.insert(0, str(PROJE_KOK))
+
 from scraper.base_scraper import TabanScraper
 
 TABAN_URL = "https://dunyakatilim.com.tr"
@@ -38,7 +48,7 @@ class DunyaKatilimSpider(TabanScraper):
 
         with sync_playwright() as p:
             browser = p.chromium.launch(
-                headless=False,
+                headless=True,
                 slow_mo=500,
                 args=["--disable-blink-features=AutomationControlled"],
             )
@@ -188,9 +198,36 @@ class DunyaKatilimSpider(TabanScraper):
         return kayitlar
 
 
+def mongo_dbye_kaydet(veriler: list[dict], mongo_uri: str = "mongodb://localhost:27017/"):
+    """Çekilen verileri MongoDB koleksiyonuna yazar (Upsert kullanarak mükerrer kaydı önler)."""
+    if not veriler:
+        print("MongoDB'ye eklenecek veri bulunamadı.")
+        return
+
+    try:
+        client = MongoClient(mongo_uri)
+        db = client["kampanya_db"]
+        koleksiyon = db["kampanyalar"]
+
+        islem_sayisi = 0
+        for veri in veriler:
+            koleksiyon.update_one(
+                {"url": veri["url"]},
+                {"$set": veri},
+                upsert=True
+            )
+            islem_sayisi += 1
+
+        print(f"\n[MongoDB] Toplam {islem_sayisi} adet kampanya MongoDB'ye başarıyla kaydedildi/güncellendi.")
+        client.close()
+
+    except PyMongoError as err:
+        print(f"\n[MongoDB Hatası] Veritabanı bağlantı/yazma hatası: {err}")
+
+
 if __name__ == "__main__":
     spider = DunyaKatilimSpider()
     print("Dünya Katılım Spider çalıştırılıyor...")
     veriler = spider.kampanyalari_topla()
-    print(f"\nToplam {len(veriler)} adet kampanya çekildi. JSON dosyasına kaydediliyor...")
-    spider.kaydet(veriler)
+    scraper=TabanScraper()
+    scraper.kaydet_mongoDB(veriler, koleksiyon_adi="dunya_katilim")

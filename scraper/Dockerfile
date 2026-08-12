@@ -1,5 +1,9 @@
 # Microsoft'un resmi Playwright Python imajı (Chromium kurulu gelir)
-FROM mcr.microsoft.com/playwright/python:v1.61.0-jammy
+# --- ESKİ HALİ ---
+# FROM mcr.microsoft.com/playwright/python:v1.61.0-jammy
+
+# --- YENİ HALİ (BUNU YAPIŞTIR) ---
+FROM mcr.microsoft.com/playwright/python:v1.62.0-jammy
 
 WORKDIR /app
 
@@ -17,4 +21,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Scraper'ı 8002 portundan dinlemeye alıyoruz
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002", "--reload"]
+CMD ["python", "-m", "uvicorn", "scraper.main:app", "--host", "0.0.0.0", "--port", "8002"]

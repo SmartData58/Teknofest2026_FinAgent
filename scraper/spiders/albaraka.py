@@ -3,8 +3,20 @@
 # =============================================================================
 
 import re
+import sys
+from pathlib import Path
+
 from playwright.sync_api import sync_playwright
+
+
+
+# Proje ana dizinini sys.path'e ekleyerek 'ModuleNotFoundError: No module named scraper' hatasını engeller
+PROJE_KOK = Path(__file__).resolve().parent.parent.parent
+if str(PROJE_KOK) not in sys.path:
+    sys.path.insert(0, str(PROJE_KOK))
+
 from scraper.base_scraper import TabanScraper
+
 
 TABAN_URL = "https://www.albaraka.com.tr"
 LISTE_URL = f"{TABAN_URL}/tr/kampanyalar"
@@ -38,7 +50,7 @@ class AlbarakaSpider(TabanScraper):
 
         with sync_playwright() as p:
             browser = p.chromium.launch(
-                headless=False,
+                headless=True,
                 slow_mo=300,
                 args=["--disable-blink-features=AutomationControlled"],
             )
@@ -75,25 +87,22 @@ class AlbarakaSpider(TabanScraper):
                 
                 while True:
                     try:
-                        # Butonu görebilmek için önce biraz aşağı kaydırıyoruz
                         page.mouse.wheel(0, 1000)
                         page.wait_for_timeout(1000)
 
                         buton = page.locator(buton_secici).first
                         
-                        # Buton görünür durumdaysa tıkla
                         if buton.is_visible(timeout=2000):
                             buton.scroll_into_view_if_needed()
                             page.wait_for_timeout(500)
                             buton.click()
                             tiklama_sayisi += 1
                             print(f"    -> 'Daha Fazla Kampanya Göster' butonuna {tiklama_sayisi}. kez tıklandı.")
-                            page.wait_for_timeout(2000)  # Yeni kartların Ajax ile yüklenmesini bekle
+                            page.wait_for_timeout(2000)
                         else:
                             print("  Tüm kampanyalar yüklendi (Buton artık görünmüyor).")
                             break
                     except Exception:
-                        # Buton tıklanamaz veya kalmazsa döngüden çık
                         break
 
                 # --- LINKLERI TOPLAMA ---
@@ -110,7 +119,6 @@ class AlbarakaSpider(TabanScraper):
                         )
 
                         slug = tam_url.split("/detay/")[-1].strip()
-                        # Ana liste linkini (/detay/) veya boş slug'ları engelle
                         if slug and slug != "detay":
                             benzersiz_linkler.add(tam_url)
 
@@ -183,9 +191,14 @@ class AlbarakaSpider(TabanScraper):
         return kayitlar
 
 
+
+
+
 if __name__ == "__main__":
     spider = AlbarakaSpider()
     print("Albaraka Spider çalıştırılıyor...")
     veriler = spider.kampanyalari_topla()
-    print(f"\nToplam {len(veriler)} adet kampanya çekildi. JSON dosyasına kaydediliyor...")
-    spider.kaydet(veriler)
+    scraper=TabanScraper()
+    scraper.kaydet_mongoDB(veriler, koleksiyon_adi="albaraka")
+    
+    
