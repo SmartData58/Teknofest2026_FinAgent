@@ -1,7 +1,7 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from db.models import Base
+from backend.db.models import Base
 
 # Ortam değişkenlerinden (.env) Postgres bilgilerini çekiyoruz (Bulamazsa varsayılanları kullanır)
 DB_USER = os.environ.get("POSTGRES_USER", "postgres")
