@@ -1,6 +1,10 @@
 import re
 from bs4 import BeautifulSoup
-
+from pathlib import Path
+import sys
+PROJE_KOK = Path(__file__).resolve().parent.parent.parent
+if str(PROJE_KOK) not in sys.path:
+    sys.path.insert(0, str(PROJE_KOK))
 from scraper.playwright_scraper import PlaywrightTabanScraper
 
 TABAN_URL = "https://www.kuveytturk.com.tr"
@@ -164,6 +168,7 @@ if __name__ == "__main__":
     spider = KuveytTurkSpider()
     kayitlar = spider.kampanyalari_topla()
     spider.kaydet(kayitlar)
+    spider.kaydet_mongoDB(kayitlar,"kuveyt_katilim")
 
     ozet = Counter(f"{k['bolum']}/{k['kategori']}" for k in kayitlar)
     print("\nBölüm/Kategori bazında dağılım:")

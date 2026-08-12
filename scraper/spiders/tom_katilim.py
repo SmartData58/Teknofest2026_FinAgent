@@ -1,6 +1,13 @@
 import re
 from datetime import datetime
 from bs4 import BeautifulSoup
+from pathlib import Path
+import sys
+PROJE_KOK = Path(__file__).resolve().parent.parent.parent
+if str(PROJE_KOK) not in sys.path:
+    sys.path.insert(0, str(PROJE_KOK))
+    
+    
 
 from scraper.playwright_scraper import PlaywrightTabanScraper
 
@@ -202,6 +209,7 @@ if __name__ == "__main__":
     spider = TomKatilimSpider()
     kayitlar = spider.kampanyalari_topla()
     spider.kaydet(kayitlar)
+    spider.kaydet_mongoDB(kayitlar,"tom_katilim")
 
     tarihi_olmayanlar = [k for k in kayitlar if k["tarih_metni"] is None]
     print(f"\n{len(tarihi_olmayanlar)} kampanyada tarih bulunamadı:")

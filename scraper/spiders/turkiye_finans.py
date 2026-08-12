@@ -1,6 +1,16 @@
 import re
+import sys
+from pathlib import Path
+PROJE_KOK = Path(__file__).resolve().parent.parent.parent
+if str(PROJE_KOK) not in sys.path:
+    sys.path.insert(0, str(PROJE_KOK))
+    
 from scraper.base_scraper import TabanScraper
 
+
+    
+    
+ 
 TABAN_URL = "https://www.turkiyefinans.com.tr"
 
 KATEGORILER = {
@@ -121,6 +131,7 @@ if __name__ == "__main__":
     spider = TurkiyeFinansSpider()
     kayitlar = spider.kampanyalari_topla()
     spider.kaydet(kayitlar)
+    spider.kaydet_mongoDB(kayitlar,"turkiye_finans")
 
     ozet = Counter(k["kategori"] for k in kayitlar)
     print("\nKategori bazında dağılım:")

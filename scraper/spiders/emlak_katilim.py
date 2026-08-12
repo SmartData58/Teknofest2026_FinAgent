@@ -1,5 +1,13 @@
 import re
+import sys
+from pathlib import Path
+
+PROJE_KOK = Path(__file__).resolve().parent.parent.parent
+if str(PROJE_KOK) not in sys.path:
+    sys.path.insert(0, str(PROJE_KOK))
+
 from scraper.playwright_scraper import PlaywrightTabanScraper
+from scraper.base_scraper import TabanScraper
 
 TABAN_URL = "https://www.emlakkatilim.com.tr"
 
@@ -12,6 +20,11 @@ DETAY_DESENLERI = [
     re.compile(r"^/tr/bireysel/kampanyalar/kampanya/[a-z0-9-]+$", re.IGNORECASE),
     re.compile(r"^/tr/kurumsal/kampanyalar/[a-z0-9-]+$", re.IGNORECASE),
 ]
+
+PROJE_KOK = Path(__file__).resolve().parent.parent.parent
+if str(PROJE_KOK) not in sys.path:
+    sys.path.insert(0, str(PROJE_KOK))
+
 
 # Farklı tarih formatlarını sırayla dener (Vakıf Katılım / Türkiye Finans'ta
 # doğrulanan aile):
@@ -118,7 +131,7 @@ if __name__ == "__main__":
 
     spider = EmlakKatilimSpider()
     kayitlar = spider.kampanyalari_topla()
-    spider.kaydet(kayitlar)
+    spider.kaydet_mongoDB(kayitlar, koleksiyon_adi="emlak_katilim")
 
     ozet = Counter(k["kategori"] for k in kayitlar)
     print("\nKategori bazında dağılım:")
@@ -129,6 +142,10 @@ if __name__ == "__main__":
     print(f"\n{len(tarihi_olmayanlar)} kampanyada tarih bulunamadı:")
     for k in tarihi_olmayanlar:
         print(f"  - {k['url']}")
+
+
+  
+    
 
     # Tam metinleri ayrı bir dosyaya yaz (terminale sığmayabilir) —
     # gerçek tarih formatını görüp regex'i kesinleştirmek için.

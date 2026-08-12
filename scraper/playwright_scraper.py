@@ -2,7 +2,14 @@ from contextlib import contextmanager
 
 from bs4 import BeautifulSoup
 
+ # scraper/db_helper.py
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
+
 from scraper.base_scraper import TabanScraper, VARSAYILAN_USER_AGENT
+
+mongo_uri: str = "mongodb://localhost:27017"
+db_name: str = "kampanyalar"
 
 # Gerçek Chrome'a daha yakın bir imza: TSPD gibi bot korumaları eski/tutarsız
 # User-Agent'ları eler. Chromium sürümüyle uyumlu tutulur.
@@ -84,6 +91,9 @@ class PlaywrightTabanScraper(TabanScraper):
             self._tarayici.close()
             self._pw.stop()
             self._sayfa = self._tarayici = self._pw = None
+
+
+
 
     # ------------------------------------------------------------------ #
     # HTTP katmanı — requests yerine Chromium render

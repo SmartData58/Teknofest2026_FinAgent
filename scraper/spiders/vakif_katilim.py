@@ -1,5 +1,13 @@
 import re
 from bs4 import BeautifulSoup
+from pathlib import Path
+import sys
+
+PROJE_KOK = Path(__file__).resolve().parent.parent.parent
+if str(PROJE_KOK) not in sys.path:
+    sys.path.insert(0, str(PROJE_KOK))
+    
+    
 
 from scraper.playwright_scraper import PlaywrightTabanScraper
 
@@ -200,6 +208,7 @@ if __name__ == "__main__":
 
     spider = VakifKatilimSpider()
     kayitlar = spider.kampanyalari_topla()
+    spider.kaydet_mongoDB(kayitlar,"vakif_katilim")
 
     with open("vakifkatilim_kampanyalar.json", "w", encoding="utf-8") as f:
         json.dump(kayitlar, f, ensure_ascii=False, indent=4)

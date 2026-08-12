@@ -3,6 +3,7 @@ import importlib
 import inspect
 import os
 from datetime import datetime
+from pathlib import Path
 
 import yaml
 from pymongo import MongoClient # YENİ: MongoDB kütüphanesi eklendi
@@ -10,7 +11,6 @@ from pymongo import MongoClient # YENİ: MongoDB kütüphanesi eklendi
 from backend.db.database import get_session, init_db
 from backend.db.models import Banka, ScrapeLog
 from scraper.base_scraper import TabanScraper
-from pathlib import Path
 
 PROJE_KOK = Path(__file__).resolve().parent.parent
 

@@ -3,6 +3,10 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+ # scraper/db_helper.py
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
+
 import requests
 from bs4 import BeautifulSoup
 
@@ -14,6 +18,7 @@ VARSAYILAN_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 )
+
 
 
 class TabanScraper:
@@ -32,6 +37,8 @@ class TabanScraper:
     bekleme_saniye: float = 1.5   # istekler arası nezaket beklemesi
     deneme_sayisi: int = 3        # hata hâlinde toplam deneme
     zaman_asimi: int = 30         # tek isteğin saniye limiti
+    mongo_uri: str = "mongodb://localhost:27017"
+    db_name: str = "kampanyalar"
 
     def __init__(self) -> None:
         # Session: aynı siteye art arda isteklerde TCP bağlantısını yeniden
@@ -129,6 +136,41 @@ class TabanScraper:
         )
         print(f"  Kaydedildi: {dosya} ({len(kayitlar)} kampanya)")
         return dosya
+
+
+    def kaydet_mongoDB(self, veriler: list[dict], koleksiyon_adi: str) -> None:
+        """Çekilen verileri MongoDB koleksiyonuna yazar (Upsert kullanarak mükerrer kaydı önler).
+
+        mongo_uri ve db_name class varsayılanlarından gelir; çağıran taraf
+        yalnızca hedef koleksiyon adını verir.
+        """
+        if not veriler:
+            print("MongoDB'ye eklenecek veri bulunamadı.")
+            return
+
+        try:
+            client = MongoClient(self.mongo_uri)
+            db = client[self.db_name]
+            koleksiyon = db[koleksiyon_adi]
+
+            islem_sayisi = 0
+            for veri in veriler:
+                koleksiyon.update_one(
+                    {"url": veri["url"]}, {"$set": veri}, upsert=True
+                )
+                islem_sayisi += 1
+
+            print(
+                f"\n[MongoDB] Toplam {islem_sayisi} adet kampanya "
+                f"'{koleksiyon_adi}' koleksiyonuna başarıyla kaydedildi/güncellendi."
+            )
+            client.close()
+
+        except PyMongoError as err:
+            print(f"\n[MongoDB Hatası] Veritabanı bağlantı/yazma hatası: {err}")
+
+
+  
 
     # ------------------------------------------------------------------ #
     # Yardımcılar
