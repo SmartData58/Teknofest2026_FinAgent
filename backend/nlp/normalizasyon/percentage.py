@@ -8,7 +8,7 @@
 import re
 
 # BURASI DEĞİŞTİ (normalization -> normalizasyon)
-from backend.nlp.normalizasyon.money import sayi_ayikla
+from .money import sayi_ayikla
 
 # ... (kodun geri kalanı aynı)
 _YUZDE_DESENI = re.compile(

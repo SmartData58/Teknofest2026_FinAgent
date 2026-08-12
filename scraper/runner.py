@@ -62,7 +62,7 @@ def spider_sinifini_bul(spider_adi: str) -> type[TabanScraper]:
 
 
 def bankayi_calistir(banka_conf: dict, db) -> None:
-    """Tek bankanın spider'ını çalıştırır; verileri MongoDB 'kampanyalar' koleksiyonuna kaydeder."""
+    """Tek bankanın spider'ını çalıştırır; verileri MongoDB 'kampanyalar' koleksiyonuna kaydeder ve detaylı log tutar."""
     kod = banka_conf["id"]
     kisa_ad = banka_conf.get("kisa_ad", kod)
     spider_adi = banka_conf.get("spider", kod)
@@ -79,13 +79,20 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
     raw_collection = db["kampanyalar"]
     log_collection = db["scrape_logs"]
 
-    simdi = datetime.now(timezone.utc)
+    baslangic_zamanı = datetime.now(timezone.utc)
+    tarih_str = baslangic_zamanı.strftime("%Y%m%d_%H%M%S")
+
+    # --- İSTEDİĞİNİZ LOG ŞEMASI YAPISI ---
     log_kaydi = {
-        "banka_kodu": kod,
-        "tarih": simdi,
-        "durum": "hata",
-        "kampanya_sayisi": 0,
-        "hata_mesaji": None
+        "_id": f"scrape_{kod}_{tarih_str}",
+        "bank_id": kod,
+        "started_at": baslangic_zamanı.isoformat(),
+        "finished_at": None,
+        "status": "failed",  # ['completed', 'failed', 'partial']
+        "total_campaigns_found": 0,
+        "new_campaigns": 0,
+        "updated_campaigns": 0,
+        "errors": []
     }
 
     try:
@@ -94,16 +101,19 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
 
         # Spider'dan gelen ham verileri alıyoruz
         raw_kayitlar = list(spider.kampanyalari_topla())
+        log_kaydi["total_campaigns_found"] = len(raw_kayitlar)
 
         if not raw_kayitlar:
             print("  ℹ️ Çekilen kampanya verisi bulunamadı (0 kayıt).")
-            log_kaydi["durum"] = "kismi"
+            log_kaydi["status"] = "partial"
+            log_kaydi["finished_at"] = datetime.now(timezone.utc).isoformat()
             log_collection.insert_one(log_kaydi)
             return
 
-        # --- DOĞRUDAN MONGODB'YE KAYDETME ---
-        eklenen_guncellenen = 0
-        
+        # --- DOĞRUDAN MONGODB'YE KAYDETME VE SAYAÇLAR ---
+        yeni_sayisi = 0
+        guncellenen_sayisi = 0
+
         for kayit in raw_kayitlar:
             # Pydantic / Dataclass / Dict dönüştürme güvenliği
             if hasattr(kayit, "dict"):
@@ -119,7 +129,7 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
             kayit_dict["banka_kodu"] = kod
             kayit_dict["mulkiyet_turu"] = mulkiyet_turu
             kayit_dict["buyukluk_kategorisi"] = buyukluk_kategorisi
-            kayit_dict["cekilis_tarihi"] = simdi
+            kayit_dict["cekilis_tarihi"] = datetime.now(timezone.utc).isoformat()
             kayit_dict["is_processed"] = False
 
             # URL / Link alanı kontrolü
@@ -127,30 +137,43 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
 
             if kampanya_url:
                 kayit_dict["url"] = kampanya_url
-                
-                raw_collection.update_one(
+
+                sonuc = raw_collection.update_one(
                     {"url": kampanya_url},
                     {"$set": kayit_dict},
                     upsert=True,
                 )
-                eklenen_guncellenen += 1
+
+                # Yeni mi eklendi yoksa güncellendi mi tespiti
+                if sonuc.upserted_id is not None:
+                    yeni_sayisi += 1
+                elif sonuc.modified_count > 0:
+                    guncellenen_sayisi += 1
             else:
-                print(f"  ⚠️ URL alanı eksik olan kayıt MongoDB'ye yazılmadı: {kayit_dict.get('baslik', 'Başlıksız')}")
+                hata_msg = f"URL alanı eksik kayıt Atlandı: {kayit_dict.get('baslik', 'Başlıksız')}"
+                log_kaydi["errors"].append(hata_msg)
+                print(f"  ⚠️ {hata_msg}")
 
-        print(f"  🍃 MongoDB 'kampanyalar' koleksiyonuna {eklenen_guncellenen} kayıt başarıyla kaydedildi/güncellendi.")
+        log_kaydi["new_campaigns"] = yeni_sayisi
+        log_kaydi["updated_campaigns"] = guncellenen_sayisi
+        log_kaydi["status"] = "completed"
 
-        log_kaydi["durum"] = "basarili"
-        log_kaydi["kampanya_sayisi"] = len(raw_kayitlar)
+        print(f"  🍃 MongoDB 'kampanyalar' koleksiyonuna {yeni_sayisi} yeni, {guncellenen_sayisi} güncellenen kayıt yazıldı.")
 
     except NotImplementedError:
-        log_kaydi["hata_mesaji"] = "spider henüz yazılmadı"
+        log_kaydi["errors"].append("Spider henüz yazılmadı (NotImplementedError)")
+        log_kaydi["status"] = "partial"
         print("  ⏭️ Spider henüz yazılmadı, atlanıyor.")
     except Exception as hata:
-        log_kaydi["hata_mesaji"] = f"{hata.__class__.__name__}: {hata}"
-        print(f"  ❌ HATA: {log_kaydi['hata_mesaji']}")
+        hata_str = f"{hata.__class__.__name__}: {hata}"
+        log_kaydi["errors"].append(hata_str)
+        log_kaydi["status"] = "failed"
+        print(f"  ❌ HATA: {hata_str}")
 
-    # İşlem logunu MongoDB 'scrape_logs' koleksiyonuna kaydet
-    log_collection.insert_one(log_kaydi)
+    finally:
+        # Bitiş zamanını kaydet ve logu yaz
+        log_kaydi["finished_at"] = datetime.now(timezone.utc).isoformat()
+        log_collection.insert_one(log_kaydi)
 
 
 def main() -> None:
@@ -173,7 +196,6 @@ def main() -> None:
         elif args.banka:
             hedefler = list(bankalar_col.find({"id": args.banka}))
             if not hedefler:
-                # Kullanıcıya geçerli ID'leri göstermek için sorgula
                 tum_bankalar = [b["id"] for b in bankalar_col.find({}, {"id": 1})]
                 gecerli_idler = ", ".join(tum_bankalar) if tum_bankalar else "Hiç banka kayıtlı değil"
                 parser.error(
