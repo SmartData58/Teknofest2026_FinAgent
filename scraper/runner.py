@@ -2,122 +2,194 @@ import argparse
 import importlib
 import inspect
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
-from pymongo import MongoClient # YENİ: MongoDB kütüphanesi eklendi
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 
-from backend.db.database import get_session, init_db
-from backend.db.models import Banka, ScrapeLog
 from scraper.base_scraper import TabanScraper
 
 PROJE_KOK = Path(__file__).resolve().parent.parent
 
 # --- MONGODB BAĞLANTI AYARLARI ---
-# Docker compose dosyasındaki ayarlara uygun olarak bağlanıyoruz
 MONGO_USER = os.getenv("MONGO_USER", "admin")
 MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "admin123")
-# Docker ağında MongoDB servisinin adı 'mongodb' olduğu için o adrese gidiyoruz
-# --- ESKİ HALİ ---
-# MONGO_URI = f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@mongodb:27017/"
+MONGO_HOST = os.getenv("MONGO_HOST", "mongodb")  # Docker içi servis adı
+MONGO_PORT = os.getenv("MONGO_PORT", "27017")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "smartdata")
 
-# --- YENİ HALİ (BUNU YAPIŞTIR) ---
-MONGO_URI = "mongodb://admin:admin123@mongodb:27017/?authSource=admin"
+DEFAULT_URI = f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
+MONGO_URI = os.getenv("MONGO_URI", DEFAULT_URI)
 
-# MongoDB Client'ını başlat ve koleksiyonu seç
-mongo_client = MongoClient(MONGO_URI)
-mongo_db = mongo_client["smartdata"]
-raw_collection = mongo_db["raw_campaigns"]
+
+def get_mongo_db():
+    """MongoDB istemcisini başlatır ve veritabanı nesnesini döndürür."""
+    client = MongoClient(MONGO_URI)
+    db = client[MONGO_DB_NAME]
+    return client, db
 
 
 def spider_sinifini_bul(spider_adi: str) -> type[TabanScraper]:
-    """scraper/spiders/<ad>.py içindeki TabanScraper alt sınıfını döndürür."""
-    modul = importlib.import_module(f"scraper.spiders.{spider_adi}")
+    """scraper/spiders/<ad>.py veya spiders/<ad>.py içindeki TabanScraper alt sınıfını döndürür."""
+    modul_yollari = [
+        f"scraper.spiders.{spider_adi}",
+        f"spiders.{spider_adi}",
+    ]
+
+    modul = None
+    for yol in modul_yollari:
+        try:
+            modul = importlib.import_module(yol)
+            break
+        except ModuleNotFoundError:
+            continue
+
+    if not modul:
+        raise RuntimeError(
+            f"'{spider_adi}' modülü 'scraper.spiders' veya 'spiders' paketleri altında bulunamadı."
+        )
+
     for _, nesne in inspect.getmembers(modul, inspect.isclass):
-        if (issubclass(nesne, TabanScraper)
-                and nesne.__module__ == modul.__name__):
+        if (
+            issubclass(nesne, TabanScraper)
+            and nesne is not TabanScraper
+            and nesne.__module__ == modul.__name__
+        ):
             return nesne
-    raise RuntimeError(f"{spider_adi} modülünde TabanScraper alt sınıfı yok")
+
+    raise RuntimeError(f"'{spider_adi}' modülünde TabanScraper alt sınıfı bulunamadı.")
 
 
-def bankayi_calistir(banka_conf: dict) -> None:
-    """Tek bankanın spider'ını çalıştırır ve sonucu MongoDB'ye aktarır."""
+def bankayi_calistir(banka_conf: dict, db) -> None:
+    """Tek bankanın spider'ını çalıştırır; verileri MongoDB 'kampanyalar' koleksiyonuna kaydeder."""
     kod = banka_conf["id"]
-    print(f"\n=== {banka_conf['kisa_ad']} ({kod}) ===")
+    kisa_ad = banka_conf.get("kisa_ad", kod)
+    spider_adi = banka_conf.get("spider", kod)
 
-    with get_session() as session:
-        banka = session.query(Banka).filter_by(kod=kod).first()
-        if banka is None:
-            print("  Banka veritabanında yok — önce 'python -m backend.db.seed' çalıştırın")
+    # MongoDB bankalar koleksiyonundan okunan Meta Bilgiler
+    mulkiyet_turu = banka_conf.get("mulkiyet_turu", "özel")
+    buyukluk_kategorisi = banka_conf.get("buyukluk_kategorisi", "belirtilmedi")
+
+    print(f"\n==========================================")
+    print(f"🚀 [{kod.upper()}] {kisa_ad} Tarama Başlatılıyor...")
+    print(f"📊 Mülkiyet: {mulkiyet_turu.upper()} | Ölçek: {buyukluk_kategorisi.upper()}")
+    print(f"==========================================")
+
+    raw_collection = db["kampanyalar"]
+    log_collection = db["scrape_logs"]
+
+    simdi = datetime.now(timezone.utc)
+    log_kaydi = {
+        "banka_kodu": kod,
+        "tarih": simdi,
+        "durum": "hata",
+        "kampanya_sayisi": 0,
+        "hata_mesaji": None
+    }
+
+    try:
+        spider_class = spider_sinifini_bul(spider_adi)
+        spider = spider_class()
+
+        # Spider'dan gelen ham verileri alıyoruz
+        raw_kayitlar = list(spider.kampanyalari_topla())
+
+        if not raw_kayitlar:
+            print("  ℹ️ Çekilen kampanya verisi bulunamadı (0 kayıt).")
+            log_kaydi["durum"] = "kismi"
+            log_collection.insert_one(log_kaydi)
             return
 
-        log = ScrapeLog(banka_id=banka.id, durum="hata", kampanya_sayisi=0)
-        try:
-            spider = spider_sinifini_bul(banka_conf["spider"])()
-            kayitlar = list(spider.kampanyalari_topla())
-            
-            # Eski JSON kaydetme metodunu istersen yedek amaçlı tutabilirsin
-            # veya tamamen kaldırabilirsin. Şimdilik koruyoruz:
-            spider.kaydet(kayitlar)
+        # --- DOĞRUDAN MONGODB'YE KAYDETME ---
+        eklenen_guncellenen = 0
+        
+        for kayit in raw_kayitlar:
+            # Pydantic / Dataclass / Dict dönüştürme güvenliği
+            if hasattr(kayit, "dict"):
+                kayit_dict = kayit.dict()
+            elif hasattr(kayit, "model_dump"):
+                kayit_dict = kayit.model_dump()
+            elif isinstance(kayit, dict):
+                kayit_dict = kayit.copy()
+            else:
+                kayit_dict = dict(kayit)
 
-            # --- YENİ: MONGODB'YE VERİ AKTARIMI ---
-            if kayitlar:
-                eklenen_guncellenen = 0
-                for kayit in kayitlar:
-                    # Kayda metadata (üst veri) ekliyoruz
-                    kayit["banka_kodu"] = kod
-                    kayit["cekilis_tarihi"] = datetime.utcnow()
-                    kayit["is_processed"] = False # NLP Pipeline'ı için bayrak
-                    
-                    # Upsert (Update or Insert) Mantığı:
-                    # Eğer bu URL veritabanında varsa üzerine yazar, yoksa yeni kayıt açar.
-                    raw_collection.update_one(
-                        {"url": kayit.get("url")}, 
-                        {"$set": kayit}, 
-                        upsert=True
-                    )
-                    eklenen_guncellenen += 1
+            # Metadata ekleme
+            kayit_dict["banka_kodu"] = kod
+            kayit_dict["mulkiyet_turu"] = mulkiyet_turu
+            kayit_dict["buyukluk_kategorisi"] = buyukluk_kategorisi
+            kayit_dict["cekilis_tarihi"] = simdi
+            kayit_dict["is_processed"] = False
+
+            # URL / Link alanı kontrolü
+            kampanya_url = kayit_dict.get("url") or kayit_dict.get("link")
+
+            if kampanya_url:
+                kayit_dict["url"] = kampanya_url
                 
-                print(f"  MongoDB'ye {eklenen_guncellenen} adet kayıt başarıyla aktarıldı/güncellendi.")
+                raw_collection.update_one(
+                    {"url": kampanya_url},
+                    {"$set": kayit_dict},
+                    upsert=True,
+                )
+                eklenen_guncellenen += 1
+            else:
+                print(f"  ⚠️ URL alanı eksik olan kayıt MongoDB'ye yazılmadı: {kayit_dict.get('baslik', 'Başlıksız')}")
 
-            log.durum = "basarili" if kayitlar else "kismi"
-            log.kampanya_sayisi = len(kayitlar)
-            log.hata_mesaji = None
-        except NotImplementedError:
-            log.hata_mesaji = "spider henüz yazılmadı"
-            print("  Spider henüz yazılmadı, atlanıyor")
-        except Exception as hata:
-            log.hata_mesaji = f"{hata.__class__.__name__}: {hata}"
-            print(f"  HATA: {log.hata_mesaji}")
+        print(f"  🍃 MongoDB 'kampanyalar' koleksiyonuna {eklenen_guncellenen} kayıt başarıyla kaydedildi/güncellendi.")
 
-        session.add(log)
-        session.commit()
+        log_kaydi["durum"] = "basarili"
+        log_kaydi["kampanya_sayisi"] = len(raw_kayitlar)
+
+    except NotImplementedError:
+        log_kaydi["hata_mesaji"] = "spider henüz yazılmadı"
+        print("  ⏭️ Spider henüz yazılmadı, atlanıyor.")
+    except Exception as hata:
+        log_kaydi["hata_mesaji"] = f"{hata.__class__.__name__}: {hata}"
+        print(f"  ❌ HATA: {log_kaydi['hata_mesaji']}")
+
+    # İşlem logunu MongoDB 'scrape_logs' koleksiyonuna kaydet
+    log_collection.insert_one(log_kaydi)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="FinAgent veri toplama çalıştırıcısı")
-    parser.add_argument("banka", nargs="?", help="banks.yaml'daki banka id'si")
-    parser.add_argument("--hepsi", action="store_true", help="aktif tüm bankaları çek")
+    parser = argparse.ArgumentParser(description="FinAgent / SmartData Veri Toplama Çalıştırıcısı")
+    parser.add_argument("banka", nargs="?", help="MongoDB 'bankalar' koleksiyonundaki banka id'si (ör. albaraka)")
+    parser.add_argument("--hepsi", action="store_true", help="Aktif tüm bankaları sırayla çek")
     args = parser.parse_args()
 
-    init_db()
+    mongo_client = None
+    try:
+        mongo_client, db = get_mongo_db()
+        bankalar_col = db["bankalar"]
 
-    with open(PROJE_KOK / "backend" / "configs" / "banks.yaml", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+        # Hedef bankaları doğrudan MongoDB 'bankalar' koleksiyonundan çekiyoruz
+        if args.hepsi:
+            hedefler = list(bankalar_col.find({"aktif": True}))
+            if not hedefler:
+                print("⚠️ MongoDB 'bankalar' koleksiyonunda aktif banka bulunamadı!")
+                return
+        elif args.banka:
+            hedefler = list(bankalar_col.find({"id": args.banka}))
+            if not hedefler:
+                # Kullanıcıya geçerli ID'leri göstermek için sorgula
+                tum_bankalar = [b["id"] for b in bankalar_col.find({}, {"id": 1})]
+                gecerli_idler = ", ".join(tum_bankalar) if tum_bankalar else "Hiç banka kayıtlı değil"
+                parser.error(
+                    f"'{args.banka}' MongoDB 'bankalar' koleksiyonunda bulunamadı. Geçerli id'ler: {gecerli_idler}"
+                )
+        else:
+            parser.error("Lütfen bir banka id'si belirtin (ör. python runner.py albaraka) ya da --hepsi kullanın.")
 
-    if args.hepsi:
-        hedefler = [b for b in config["bankalar"] if b["aktif"]]
-    elif args.banka:
-        hedefler = [b for b in config["bankalar"] if b["id"] == args.banka]
-        if not hedefler:
-            parser.error(f"'{args.banka}' banks.yaml'da yok. Geçerli id'ler: "
-                         + ", ".join(b["id"] for b in config["bankalar"]))
-    else:
-        parser.error("Banka id'si verin ya da --hepsi kullanın")
+        for banka_conf in hedefler:
+            bankayi_calistir(banka_conf, db)
 
-    for banka_conf in hedefler:
-        bankayi_calistir(banka_conf)
+    except PyMongoError as err:
+        print(f"\n❌ MongoDB Bağlantı/Yazma Hatası: {err}")
+    finally:
+        if mongo_client:
+            mongo_client.close()
 
 
 if __name__ == "__main__":
