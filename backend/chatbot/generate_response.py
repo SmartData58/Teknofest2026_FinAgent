@@ -1,5 +1,5 @@
 # =============================================================================
-# generate_responses.py — Yapay Zeka Yanıt Üretim Motoru
+# generate_responses.py — Yapay Zeka Yanıt Üretim Motoru (HYBRID RAG)
 # =============================================================================
 
 import os
@@ -15,13 +15,16 @@ from langchain_core.embeddings import Embeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 
-# Intent tespit motorundan gerekli yapıları içe aktarıyoruz
-from chatbot.intent import niyet_bul, Mesaj, Niyet, RAG_CEVAP_PROMPTU
+# 1. ARKADAŞININ YAZDIĞI HARİKA NİYET MOTORU
+from chatbot.intent_engine import niyet_bul, Mesaj, Niyet, RAG_CEVAP_PROMPTU
+
+# 2. BİZİM YAZDIĞIMIZ OTONOM TEXT-TO-MONGO VE GRAFİK ARAÇLARI
+from chatbot.tools import safe_json_parse, grafigi_hazirla_mongo_dinamik
+from chatbot.agents import sql_agent_chain
 
 TEMP_DIR = "./temp"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
-# Ortam Değişkenleri
 QDRANT_URL = os.getenv("QDRANT_HOST", "http://qdrant:6333")
 EMBEDDING_API_URL = os.getenv("EMBEDDING_URL", "http://embedding:8001/api/embed")
 RERANKER_API_URL = os.getenv("RERANKER_URL", "http://reranker:8002/api/rerank")
@@ -69,7 +72,6 @@ def get_vector_store():
 
 
 async def rerank_documents(query: str, docs: List) -> List:
-    """Qdrant'tan gelen belgeleri Reranker servisi ile yeniden sıralar."""
     if not docs:
         return []
 
@@ -91,14 +93,13 @@ async def rerank_documents(query: str, docs: List) -> List:
 
             reranked_docs = [docs[i] for i in ranked_indices if i < len(docs)]
             return reranked_docs[:4]
-
         except Exception as e:
             logger.error(f"Reranker Servis Hatası: {e}. Varsayılan Qdrant sıralaması kullanılıyor.")
             return docs[:4]
 
 
 # -----------------------------------------------------------------------------
-# ANA CEVAP ÜRETİM STREAM GENERATOR
+# ANA CEVAP ÜRETİM STREAM GENERATOR (HYBRID RAG)
 # -----------------------------------------------------------------------------
 
 async def generate_response_stream(
@@ -108,30 +109,22 @@ async def generate_response_stream(
     history_json: str = "[]",
     files: List = None,
 ) -> AsyncGenerator[str, None]:
-    """Kullanıcı mesajını ve dosyaları işler, Niyet tespiti yapar ve yanıtı SSE/Stream olarak döner."""
     
-    # 1. Sohbet Geçmişini Parse Et
     try:
         parsed_history = json.loads(history_json)
     except Exception:
         parsed_history = []
 
-    gecmis_mesajlar = [
-        Mesaj(rol=msg.get("role", "user"), icerik=msg.get("content", ""))
-        for msg in parsed_history
-    ]
+    gecmis_mesajlar = [Mesaj(rol=msg.get("role", "user"), icerik=msg.get("content", "")) for msg in parsed_history]
 
-    # 2. Niyet Tespiti (Intent Engine)
     niyet: Niyet = niyet_bul(prompt, gecmis_mesajlar)
     logger.info(f"🎯 Tespit Edilen Niyet: {niyet.tur} | Banka: {niyet.banka_kodu} | Alan: {niyet.alan}")
 
-    # Statik Yanıtlar ve Tavsiye Reddi (LLM & RAG Baypas Edilir)
     if niyet.tur in ("statik", "tavsiye") and niyet.statik_cevap:
         yield f"[STATUS]Yanıt iletiliyor...[/STATUS]\n\n"
         yield niyet.statik_cevap
         return
 
-    # Arka Plan İşlem Kuyruğu Oluşturma
     q = asyncio.Queue()
 
     async def progress_cb(msg: str):
@@ -139,84 +132,100 @@ async def generate_response_stream(
 
     async def background_process():
         try:
-            # 3. Yüklenen Dosyaların İşlenmesi (OCR)
             file_context = ""
             if files:
                 file_names = []
                 dosya_icerikleri = []
-
                 for file in files:
                     if file.filename:
                         await q.put({"type": "status", "content": f"{file.filename} işleme alındı..."})
                         file_path = os.path.join(TEMP_DIR, file.filename)
                         try:
-                            # Dosyayı diske yaz
                             with open(file_path, "wb") as buffer:
                                 shutil.copyfileobj(file.file, buffer)
 
-                            # OCR ile metni çıkar
                             from document_processor.parser import parse_document
                             extracted_text = await parse_document(file_path, progress_callback=progress_cb)
 
                             file_names.append(file.filename)
-                            dosya_icerikleri.append(
-                                f"--- {file.filename} İÇERİĞİ ---\n{extracted_text}\n-------------------"
-                            )
-
+                            dosya_icerikleri.append(f"--- {file.filename} İÇERİĞİ ---\n{extracted_text}\n-------------------")
                         except Exception as e:
                             logger.error(f"Dosya işlenirken hata ({file.filename}): {e}")
                             await q.put({"type": "error", "content": f"{file.filename} okunamadı."})
-
                         finally:
-                            # Temizlik: Geçici dosyayı sil
                             if os.path.exists(file_path):
                                 os.remove(file_path)
-                                logger.info(f"🗑️ Geçici dosya silindi: {file_path}")
 
                 if file_names:
-                    isimler_str = ", ".join(file_names)
-                    tum_icerik = "\n\n".join(dosya_icerikleri)
-                    file_context = (
-                        f"\n\n[KULLANICI SİSTEME {len(file_names)} ADET DOSYA YÜKLEDİ. "
-                        f"Dosya adları: {isimler_str}]\n\n"
-                        f"AŞAĞIDA BU DOSYALARIN İÇERİĞİ BULUNMAKTADIR:\n{tum_icerik}"
-                    )
+                    file_context = (f"\n\n[KULLANICI SİSTEME DOSYA YÜKLEDİ]\n\n"
+                                    f"AŞAĞIDA BU DOSYALARIN İÇERİĞİ BULUNMAKTADIR:\n{chr(10).join(dosya_icerikleri)}")
 
-            # 4. RAG Arama (Qdrant + Reranker)
-            await q.put({"type": "status", "content": "Veritabanı taranıyor ve sonuçlar optimize ediliyor..."})
-            context_text = ""
+            # 4. BÜYÜK BİRLEŞME: MONGODB AJANI DEVREYE GİRİYOR
+            db_context = ""
+            analiz_kelimeleri = ["grafik", "tablo", "oran", "kıyas", "analiz", "pazar", "listele", "kar payı", "faiz", "kampanya", "taksit", "vade", "ay", "ödül", "para", "tl", "bonus"]
             
-            # Aranacak metin: Devam sorusu ise geçmiş bağlamıyla zenginleştirilmiş metin kullanılır
+            is_analyst = niyet.tur in ("karsilastirma", "banka_listesi") or any(k in prompt.lower() for k in analiz_kelimeleri)
+
+            if is_analyst:
+                await q.put({"type": "status", "content": "Otonom Ajan MongoDB'yi Sorguluyor..."})
+                try:
+                    # Bizim MongoDB LLM Karar Mekanizması
+                    raw_db_params = await sql_agent_chain.ainvoke({"question": prompt})
+                    db_params = safe_json_parse(raw_db_params)
+                    
+                    # Grafiği ve MongoDB Yanıtını Çiz
+                    grafik_kodu, db_context = grafigi_hazirla_mongo_dinamik(prompt, db_params)
+                    
+                    if grafik_kodu:
+                        logger.info("📊 MongoDB Grafiği Frontend'e İletiliyor!")
+                        await q.put({"type": "token", "content": grafik_kodu})
+                except Exception as e:
+                    logger.error(f"MongoDB Grafik Hatası: {e}")
+
+            # 5. QDRANT RAG Arama
+            await q.put({"type": "status", "content": "Vektör Veritabanı Taranıyor..."})
+            context_text = ""
+            kaynaklar_listesi = []
+            
             sorgu_metni = niyet.baglam_soru if niyet.baglam_soru else prompt
 
             if sorgu_metni.strip():
                 try:
                     vs = get_vector_store()
-                    initial_docs = vs.similarity_search(sorgu_metni, k=10)
+                    initial_docs = await asyncio.to_thread(vs.similarity_search, sorgu_metni, k=10)
 
                     if initial_docs:
+                        await q.put({"type": "status", "content": "Reranker ile belgeler optimize ediliyor..."})
+                        
+                        for i, doc in enumerate(initial_docs):
+                            kampanya_id = doc.metadata.get('kampanya_id', f'Bilinmiyor_{i}')
+                            kaynaklar_listesi.append({"index": i + 1, "kampanya_id": kampanya_id, "icerik": doc.page_content})
+
                         docs = await rerank_documents(sorgu_metni, initial_docs)
                         for i, doc in enumerate(docs):
-                            context_text += f"\n--- Kampanya {i+1} ---\n{doc.page_content}\n"
+                            orij_idx = next((k["index"] for k in kaynaklar_listesi if k["icerik"] == doc.page_content), i+1)
+                            context_text += f"\n--- Kaynak [{orij_idx}] ---\n{doc.page_content}\n"
                 except Exception as e:
                     logger.error(f"Qdrant/Reranker Arama Hatası: {e}")
 
-            # Context Yoksa Bilgilendirme
-            if not context_text:
-                context_text = "Veritabanında sorguyla eşleşen aktif kampanya bilgisi bulunamadı."
-
-            # 5. LLM Prompt'unun Hazırlanması
+            # 6. LLM Prompt'unun Hazırlanması (MongoDB ve Qdrant verilerini harmanla)
             await q.put({"type": "status", "content": "Yapay zeka yanıtı hazırlıyor..."})
             
-            # Geçmiş formatı oluşturma
             gecmis_str = ""
             if parsed_history:
                 gecmis_str = "ÖNCEKİ KONUŞMALAR:\n" + "\n".join(
                     [f"{m.get('role').upper()}: {m.get('content')}" for m in parsed_history[-4:]]
                 ) + "\n\n"
 
-            # RAG Prompt Şablonunu Uygulama
-            tam_baglam = context_text + (f"\n\n{file_context}" if file_context else "")
+            tam_baglam = ""
+            if db_context: tam_baglam += f"[MONGODB KESİN SONUÇLARI]\n{db_context}\n\n"
+            if context_text: tam_baglam += f"[VEKTÖR VERİTABANI KAMPANYA DETAYLARI]\n{context_text}"
+            
+            if not tam_baglam.strip():
+                tam_baglam = "Veritabanında sorguyla eşleşen aktif kampanya bilgisi bulunamadı."
+
+            tam_baglam += (f"\n\n{file_context}" if file_context else "")
+            
             formatted_prompt = RAG_CEVAP_PROMPTU.format(
                 baglam=tam_baglam,
                 gecmis=gecmis_str,
@@ -227,18 +236,11 @@ async def generate_response_stream(
                 formatted_prompt += "\n(Lütfen mantıksal çıkarım yaparak detaylı cevap ver.)"
 
             ollama_messages = [{"role": "user", "content": formatted_prompt}]
+            payload = {"model": model, "messages": ollama_messages, "stream": True, "options": {"num_ctx": 32768}}
 
-            payload = {
-                "model": model,
-                "messages": ollama_messages,
-                "stream": True,
-                "options": {"num_ctx": 32768},
-            }
-
-            # 6. Ollama Streaming İsteği
-            # httpx isteğinde timeout süresini None veya yüksek bir değer yapın:
             timeout = httpx.Timeout(300.0, connect=10.0)
 
+            # 7. Ollama Streaming İsteği
             async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream("POST", OLLAMA_URL, json=payload) as response:
                     response.raise_for_status()
@@ -249,16 +251,18 @@ async def generate_response_stream(
                             if token:
                                 await q.put({"type": "token", "content": token})
 
+            # 8. BÜYÜK BİRLEŞME: VUE KAYNAK (SOURCES) JSON'ı
+            if kaynaklar_listesi:
+                await q.put({"type": "token", "content": f"\n\n[SOURCES]{json.dumps(kaynaklar_listesi)}[/SOURCES]\n\n"})
+
         except Exception as e:
             logger.error(f"Arka plan işlemi hatası: {str(e)}")
             await q.put({"type": "error", "content": str(e)})
         finally:
             await q.put({"type": "done"})
 
-    # Arka plan görevini başlat
     asyncio.create_task(background_process())
 
-    # İstemciye Token/Status Stream Etme
     while True:
         item = await q.get()
         if item["type"] == "done":
