@@ -1,21 +1,24 @@
-# =============================================================================
-# main.py — FastAPI Web Servisi ve API Endpoint'leri
-# =============================================================================
-
 import os
-import psycopg2
+import json
+import shutil
 import httpx
+import requests
+import psycopg2
 from typing import List
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 from loguru import logger
 from pydantic import BaseModel
 
-# Yanıt Üretim Motorunu İçeri Aktar
-from chatbot.generate_response import generate_response_stream
+from langchain_core.embeddings import Embeddings
+from langchain_qdrant import QdrantVectorStore
+from qdrant_client import QdrantClient
 
-app = FastAPI(title="Katılım Bankacılığı Kampanya Asistanı API")
+# Rotalar
+from api.campaing import router as campaign_router
+from chatbot.generate_response import get_chatbot_response
+
+app = FastAPI(title="SmartData API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,92 +28,179 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# -----------------------------------------------------------------------------
-# VERİTABANI BAĞLANTISI VE SCHEMAS
-# -----------------------------------------------------------------------------
+app.include_router(campaign_router)
 
 def get_db_connection():
     return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        database=os.getenv("POSTGRES_DB", "smartdata"),
-        user=os.getenv("POSTGRES_USER", "user"),
-        password=os.getenv("POSTGRES_PASSWORD", "password"),
+        host="postgres",
+        database="smartdata",
+        user="user",
+        password="degistir_guclu_bir_sifre" 
     )
-
 
 class ScrapePayload(BaseModel):
     url: str
 
-
 class YeniKampanya(BaseModel):
     baslik: str
-    kaynak: str
-
-
-# -----------------------------------------------------------------------------
-# KAZIYICI VE KAMPANYA API ENDPOINTLERİ
-# -----------------------------------------------------------------------------
+    kaynak: str    
 
 @app.post("/api/kaziyiciyi-baslat")
 async def kaziyici_tetikle(payload: ScrapePayload):
     scraper_url = "http://scraper:8002/scrape"
     logger.info(f"Kazıyıcıya istek gönderiliyor: {payload.url}")
-
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(scraper_url, json={"url": payload.url}, timeout=120.0)
-            logger.info(f"Kazıyıcıdan yanıt alındı: {response.status_code}")
             return response.json()
         except Exception as e:
             logger.error(f"Kazıyıcı bağlantı hatası: {str(e)}")
             return {"error": "Scraper servisinden yanıt alınamadı"}
-
-
-@app.get("/api/kampanyalar")
-def get_kampanyalar():
-    conn = None
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT id, baslik, kaynak FROM kampanyalar ORDER BY id DESC")
-        rows = cur.fetchall()
-        kampanyalar = [{"id": r[0], "baslik": r[1], "kaynak": r[2]} for r in rows]
-        return {"kampanyalar": kampanyalar}
-    except Exception as e:
-        logger.error(f"Veritabanı hatası: {str(e)}")
-        return {"error": str(e)}
-    finally:
-        if conn:
-            cur.close()
-            conn.close()
-
 
 @app.post("/api/kampanya-kaydet")
 def kampanya_kaydet(kampanya: YeniKampanya):
     return {"status": "ok"}
 
 
-# -----------------------------------------------------------------------------
-# CHATBOT ENDPOINT
-# -----------------------------------------------------------------------------
+class OzelQwenEmbedder(Embeddings):
+    def __init__(self, api_url: str):
+        self.api_url = api_url
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        try:
+            response = requests.post(self.api_url, json={"input": texts})
+            response.raise_for_status()
+            return response.json().get("embeddings", [])
+        except Exception as e:
+            logger.error(f"Embedding API Hatası: {e}")
+            return []
+
+    def embed_query(self, text: str) -> List[float]:
+        return self.embed_documents([text])[0]
+
+EMBEDDING_API_URL = "http://embedding:8001/api/embed"
+embeddings = OzelQwenEmbedder(api_url=EMBEDDING_API_URL)
+
+_vector_store = None
+
+def get_vector_store():
+    global _vector_store
+    if _vector_store is None:
+        logger.info("Qdrant ve Embedding servisine ilk bağlantı kuruluyor...")
+        qdrant_client = QdrantClient(url="http://qdrant:6333")
+        _vector_store = QdrantVectorStore(
+            client=qdrant_client,
+            collection_name="banka_kampanyalari",
+            embedding=embeddings,
+            content_payload_key="belge"
+        )
+    return _vector_store
+
+async def rerank_documents(query: str, docs: List) -> List:
+    if not docs:
+        return []
+    
+    rerank_url = "http://reranker:8002/api/rerank"
+    texts = [doc.page_content for doc in docs]
+    payload = {"query": query, "texts": texts}
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(rerank_url, json=payload, timeout=30.0)
+            response.raise_for_status()
+            result = response.json()
+            
+            if isinstance(result, list):
+                ranked_indices = [item["index"] for item in result if "index" in item]
+            elif isinstance(result, dict) and "indices" in result:
+                ranked_indices = result["indices"]
+            else:
+                ranked_indices = list(range(len(docs)))
+                
+            reranked_docs = [docs[i] for i in ranked_indices if i < len(docs)]
+            return reranked_docs[:4]
+            
+        except Exception as e:
+            logger.error(f"Reranker Servis Hatası: {e}. Qdrant sıralaması kullanılıyor.")
+            return docs[:4]
+
+TEMP_DIR = "./temp"
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 @app.post("/api/chat")
 async def chat_endpoint(
     prompt: str = Form(""),
-    model: str = Form("qwen3.5:4b"),
+    model: str = Form("qwen3.5:4b"), 
     thinking: str = Form("false"),
     history: str = Form("[]"),
-    files: List[UploadFile] = File(default=None),
+    files: List[UploadFile] = File(default=None)
 ):
-    logger.info(f"🚀 Chat İsteği Alındı! Soru: '{prompt}'")
+    logger.info(f"🚀 Sinyal alındı! Mesaj: '{prompt}'")
+    
+    try:
+        parsed_history = json.loads(history)
+    except Exception:
+        parsed_history = []
+        
+    file_context = ""
+    
+    if files:
+        file_names = []
+        dosya_icerikleri = []
+        
+        for file in files:
+            if file.filename: 
+                file_path = os.path.join(TEMP_DIR, file.filename)
+                try:
+                    with open(file_path, "wb") as buffer:
+                        shutil.copyfileobj(file.file, buffer)
 
-    stream_generator = generate_response_stream(
-        prompt=prompt,
-        model=model,
-        thinking=thinking,
-        history_json=history,
-        files=files,
-    )
+                    from document_processor.parser import parse_document
+                    
+                    try:
+                        extracted_text = await parse_document(file_path)
+                    except TypeError:
+                        async def dummy_cb(msg): pass
+                        extracted_text = await parse_document(file_path, progress_callback=dummy_cb)
 
-    return StreamingResponse(stream_generator, media_type="text/plain")
+                    file_names.append(file.filename)
+                    dosya_icerikleri.append(f"--- {file.filename} İÇERİĞİ ---\n{extracted_text}\n-------------------")
+
+                except Exception as e:
+                    logger.error(f"Dosya işlenirken hata oluştu ({file.filename}): {e}")
+
+                finally:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        logger.info(f"🗑️ Geçici dosya silindi: {file_path}")
+                
+        if file_names:
+            isimler_str = ", ".join(file_names)
+            tum_icerik = "\n\n".join(dosya_icerikleri)
+            file_context = (
+                f"\n\n[KULLANICI SİSTEME {len(file_names)} ADET DOSYA YÜKLEDİ. "
+                f"Dosya adları: {isimler_str}]\n\n"
+                f"AŞAĞIDA BU DOSYALARIN İÇERİĞİ BULUNMAKTADIR:\n{tum_icerik}"
+            )
+
+    try:
+        response = await get_chatbot_response(
+            user_message=prompt,
+            model=model,
+            thinking=thinking,
+            history=parsed_history,
+            file_context=file_context
+        )
+        
+        if isinstance(response, str):
+            return {"response": response}
+            
+        return response
+        
+    except Exception as e:
+        logger.error(f"Chatbot işlem hatası: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Chatbot işlem hatası: {str(e)}")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
