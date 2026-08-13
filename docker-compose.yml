@@ -20,7 +20,6 @@ services:
       - RERANKER_API_URL=http://reranker:8002
       - LLM_API_URL=http://llm:8000
       # PostgreSQL bağlantısı
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,23 +84,6 @@ services:
       - smartdata-net
 
   # ---- Veritabanları ----
-  postgres:
-    image: postgres:15-alpine
-    container_name: smartdata-postgres
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - smartdata-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
       
   mongodb:
     image: mongo:latest
@@ -137,5 +119,4 @@ networks:
 
 volumes:
   mongo_data:
-  postgres_data:
   qdrant_data:
