@@ -27,15 +27,15 @@ def tkbb_verilerini_cek_ve_siniflandir():
     # TKBB Veri Peteği istemci tarafında JS (Turboard) ile yüklendiği durumlarda 
     # fallback olarak güncel resmi finansal tablo verileri kullanılır.
     aktif_veri_map = {
-        "kuveytturk": 1352.1,
-        "vakif_katilim": 784.2,
-        "ziraat_katilim": 768.8,
-        "albaraka": 466.4,
-        "emlak_katilim": 410.0,
-        "turkiye_finans": 390.4,
-        "dunya_katilim": 99.7,
-        "hayat_finans": 25.2,
-        "tom_katilim": 23.3,
+        "kuveytturk": 1477.0,
+        "vakif_katilim": 888.92,
+        "ziraat_katilim": 808.88,
+        "albaraka": 499.98,
+        "turkiye_finans": 439.11,
+        "emlak_katilim": 430.91,
+        "dunya_katilim": 123.01,
+        "hayat_finans": 33.60,
+        "tom_katilim": 28.44,
         "adil_katilim": 0.0,
     }
 
@@ -69,11 +69,11 @@ def tkbb_verilerini_cek_ve_siniflandir():
         aktif_val = aktif_veri_map.get(b_id, 0.0)
 
         if aktif_val >= BUYUK_ESIK:
-            kategori = "büyük"
+            kategori = "Tier 1"
         elif aktif_val >= ORTA_ESIK:
-            kategori = "orta"
+            kategori = "Tier 2"
         else:
-            kategori = "küçük"
+            kategori = "Tier 3"
 
         banka["buyukluk_kategorisi"] = kategori
         banka["aktif_buyukluk_milyar_tl"] = aktif_val
