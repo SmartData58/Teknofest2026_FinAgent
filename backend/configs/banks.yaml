@@ -1,6 +1,3 @@
-#Projenin ilk çalışması için lazımdı şuan seed_banks.py ile mongodb ye bankalar kadediliyor 
-#ve scraper işlemleri ordan devam ediyor banks.yaml çalıştırmıyor
-
 meta:
   kaynak: https://www.bddk.org.tr/Kurulus/Liste/77
   dogrulama_tarihi: '2026-07-14'
@@ -9,9 +6,10 @@ bankalar:
 - id: albaraka
   ad: Albaraka Türk Katılım Bankası A.Ş.
   kisa_ad: Albaraka Türk
+  logo_url: /albaraka_logo.svg
   mulkiyet_turu: özel
-  buyukluk_kategorisi: orta
-  aktif_buyukluk_milyar_tl: 466.4
+  buyukluk_kategorisi: Tier 2
+  aktif_buyukluk_milyar_tl: 499.98
   web_sitesi: https://www.albaraka.com.tr
   kampanya_url:
   - https://www.albaraka.com.tr/tr/kampanyalar
@@ -21,9 +19,10 @@ bankalar:
 - id: kuveytturk
   ad: Kuveyt Türk Katılım Bankası A.Ş.
   kisa_ad: Kuveyt Türk
+  logo_url: /kuveytturk_logo.svg
   mulkiyet_turu: özel
-  buyukluk_kategorisi: büyük
-  aktif_buyukluk_milyar_tl: 1352.1
+  buyukluk_kategorisi: Tier 1
+  aktif_buyukluk_milyar_tl: 1477.0
   web_sitesi: https://www.kuveytturk.com.tr
   kampanya_url:
   - https://www.kuveytturk.com.tr/kampanyalar/kendim-icin
@@ -34,9 +33,10 @@ bankalar:
 - id: turkiye_finans
   ad: Türkiye Finans Katılım Bankası A.Ş.
   kisa_ad: Türkiye Finans
+  logo_url: /turkiyefinans_logo.svg
   mulkiyet_turu: özel
-  buyukluk_kategorisi: orta
-  aktif_buyukluk_milyar_tl: 390.4
+  buyukluk_kategorisi: Tier 2
+  aktif_buyukluk_milyar_tl: 439.11
   web_sitesi: https://www.turkiyefinans.com.tr
   kampanya_url:
   - https://www.turkiyefinans.com.tr/tr-tr/kampanyalar/Sayfalar/default.aspx
@@ -46,9 +46,10 @@ bankalar:
 - id: vakif_katilim
   ad: Vakıf Katılım Bankası A.Ş.
   kisa_ad: Vakıf Katılım
+  logo_url: /vakifkatilim_logo.svg
   mulkiyet_turu: kamu
-  buyukluk_kategorisi: büyük
-  aktif_buyukluk_milyar_tl: 784.2
+  buyukluk_kategorisi: Tier 1
+  aktif_buyukluk_milyar_tl: 888.92
   web_sitesi: https://www.vakifkatilim.com.tr
   kampanya_url:
   - https://www.vakifkatilim.com.tr/tr/kendim-icin/kampanyalar/mevcut-kampanyalar
@@ -58,9 +59,10 @@ bankalar:
 - id: ziraat_katilim
   ad: Ziraat Katılım Bankası A.Ş.
   kisa_ad: Ziraat Katılım
+  logo_url: /ziraatkatilim_logo.svg
   mulkiyet_turu: kamu
-  buyukluk_kategorisi: büyük
-  aktif_buyukluk_milyar_tl: 768.8
+  buyukluk_kategorisi: Tier 1
+  aktif_buyukluk_milyar_tl: 808.88
   web_sitesi: https://www.ziraatkatilim.com.tr
   kampanya_url:
   - https://www.ziraatkatilim.com.tr/kampanyalar
@@ -70,9 +72,10 @@ bankalar:
 - id: emlak_katilim
   ad: Türkiye Emlak Katılım Bankası A.Ş.
   kisa_ad: Emlak Katılım
+  logo_url: /emlakkatilim_logo.svg
   mulkiyet_turu: kamu
-  buyukluk_kategorisi: orta
-  aktif_buyukluk_milyar_tl: 410.0
+  buyukluk_kategorisi: Tier 2
+  aktif_buyukluk_milyar_tl: 430.91
   web_sitesi: https://www.emlakkatilim.com.tr
   kampanya_url:
   - https://www.emlakkatilim.com.tr/tr/bireysel/kampanyalar
@@ -83,9 +86,10 @@ bankalar:
 - id: hayat_finans
   ad: Hayat Finans Katılım Bankası A.Ş.
   kisa_ad: Hayat Finans
+  logo_url: /hayatfinans_logo.svg
   mulkiyet_turu: özel
-  buyukluk_kategorisi: küçük
-  aktif_buyukluk_milyar_tl: 25.2
+  buyukluk_kategorisi: Tier 3
+  aktif_buyukluk_milyar_tl: 33.6
   web_sitesi: https://hayatfinans.com.tr
   kampanya_url:
   - https://hayatfinans.com.tr/kampanyalar
@@ -95,9 +99,10 @@ bankalar:
 - id: dunya_katilim
   ad: Dünya Katılım Bankası A.Ş.
   kisa_ad: Dünya Katılım
+  logo_url: /dunyakatilim_logo.svg
   mulkiyet_turu: özel
-  buyukluk_kategorisi: küçük
-  aktif_buyukluk_milyar_tl: 99.7
+  buyukluk_kategorisi: Tier 2
+  aktif_buyukluk_milyar_tl: 123.01
   web_sitesi: https://www.dunyakatilim.com.tr
   kampanya_url:
   - https://dunyakatilim.com.tr/kampanyalar
@@ -107,9 +112,10 @@ bankalar:
 - id: tom_katilim
   ad: T.O.M. Katılım Bankası A.Ş.
   kisa_ad: TOM Katılım
+  logo_url: /tomkatilim_logo.svg
   mulkiyet_turu: özel
-  buyukluk_kategorisi: küçük
-  aktif_buyukluk_milyar_tl: 23.3
+  buyukluk_kategorisi: Tier 3
+  aktif_buyukluk_milyar_tl: 28.44
   web_sitesi: https://www.tombank.com.tr
   kampanya_url:
   - https://hadiyanindakibanka.com/hadi-kazan/kampanyalar
@@ -119,8 +125,9 @@ bankalar:
 - id: adil_katilim
   ad: Adil Katılım Bankası A.Ş.
   kisa_ad: Adil Katılım
+  logo_url: /adilkatilim_logo.svg
   mulkiyet_turu: özel
-  buyukluk_kategorisi: küçük
+  buyukluk_kategorisi: Tier 3
   aktif_buyukluk_milyar_tl: 0.0
   web_sitesi: https://www.adilkatilim.com.tr
   kampanya_url:
