@@ -17,7 +17,6 @@ const activeSource = ref(null)
 const activeFile = ref(null) 
 const activeModalType = ref('source') 
 
-// 🚀 TOKAT 1: Şık Toast Bildirim Sistemi!
 const toastMessage = ref('')
 const showToast = (msg) => {
   toastMessage.value = msg
@@ -36,6 +35,17 @@ const openFileModal = (file) => {
   activeFile.value = file
   activeModalType.value = 'file'
   showSourceModal.value = true
+}
+
+// 🚀 TOKAT: Grafikteki Banka İsmine Tıklayınca Kaynağı Açan Fonksiyon!
+const openSourceFromChart = (sourceIndex, sources) => {
+    if (!sourceIndex || !sources) return;
+    const source = sources.find(s => s.index === sourceIndex);
+    if (source) {
+        openSourceModal(source);
+    } else {
+        showToast("Kaynak bulunamadı.");
+    }
 }
 
 const downloadFile = (file, event) => {
@@ -61,13 +71,35 @@ const isExportingExcel = ref({})
 
 const exportToExcel = async (index) => {
   const originalElement = document.getElementById('message-content-' + index)
-  if (!originalElement) return
-
-  const tables = originalElement.querySelectorAll('table')
+  let tablesArray = originalElement ? Array.from(originalElement.querySelectorAll('table')) : []
   
-  if (tables.length === 0) {
-    // 🚀 TOKAT 2: İğrenç alert gitti, yerine şık toast bildirimi geldi!
-    showToast("Bu mesajda dışa aktarılacak tablo bulunamadı.")
+  if (chatHistory.value[index].chart) {
+    const chart = chatHistory.value[index].chart
+    const chartTable = document.createElement('table')
+    let chartHtml = `<tr><th>Banka / Kurum</th><th>Kampanya Detayı</th><th>Değer</th></tr>`
+    
+    chart.labels.forEach((label, i) => {
+      const camp = chart.sub_labels ? chart.sub_labels[i] : '-'
+      const prefix = chart.prefix || '%'
+      const suffix = chart.suffix || ''
+      chartHtml += `<tr><td>${label}</td><td>${camp}</td><td>${prefix}${chart.values[i]}${suffix}</td></tr>`
+    })
+    
+    if (chart.stats) {
+      const prefix = chart.prefix || '%'
+      const suffix = chart.suffix || ''
+      chartHtml += `<tr><td>--</td><td>--</td><td>--</td></tr>`
+      chartHtml += `<tr><td>Ortalama Değer</td><td>-</td><td>${prefix}${chart.stats.avg}${suffix}</td></tr>`
+      chartHtml += `<tr><td>En Düşük Değer</td><td>-</td><td>${prefix}${chart.stats.min}${suffix}</td></tr>`
+      chartHtml += `<tr><td>En Yüksek Değer</td><td>-</td><td>${prefix}${chart.stats.max}${suffix}</td></tr>`
+    }
+    
+    chartTable.innerHTML = chartHtml
+    tablesArray.push(chartTable)
+  }
+
+  if (tablesArray.length === 0) {
+    showToast("Bu mesajda dışa aktarılacak veri veya tablo bulunamadı.")
     return
   }
 
@@ -84,7 +116,7 @@ const exportToExcel = async (index) => {
 
       const wb = window.XLSX.utils.book_new()
       
-      tables.forEach((table, i) => {
+      tablesArray.forEach((table, i) => {
         const clonedTable = table.cloneNode(true)
         
         let tableHtml = clonedTable.innerHTML;
@@ -149,13 +181,9 @@ const exportToExcel = async (index) => {
         for (let R = 0; R < rowCount; R++) {
             for (let C = 0; C < maxCols; C++) {
                 const cellRef = window.XLSX.utils.encode_cell({ c: C, r: R });
-                
-                if (!ws[cellRef]) {
-                    ws[cellRef] = { t: 's', v: '' }; 
-                }
+                if (!ws[cellRef]) ws[cellRef] = { t: 's', v: '' }; 
                 
                 const cell = ws[cellRef];
-
                 cell.s = {
                     alignment: { wrapText: true, vertical: 'top' },
                     border: {
@@ -172,15 +200,9 @@ const exportToExcel = async (index) => {
                     cell.s.alignment = { vertical: 'center', horizontal: 'center', wrapText: true };
                 }
                 
-                if (R === rowCount - 2) {
-                    cell.s = {}; 
-                }
-
+                if (R === rowCount - 2) cell.s = {}; 
                 if (R === rowCount - 1) {
-                    cell.s = {
-                        font: { italic: true, color: { rgb: "6B7280" } },
-                        alignment: { vertical: 'center', horizontal: 'center' }
-                    };
+                    cell.s = { font: { italic: true, color: { rgb: "6B7280" } }, alignment: { vertical: 'center', horizontal: 'center' } };
                 }
             }
         }
@@ -188,7 +210,7 @@ const exportToExcel = async (index) => {
         window.XLSX.utils.book_append_sheet(wb, ws, "Tablo " + (i + 1))
       })
 
-      const fileName = `FinAgent_Tablolar_${new Date().getTime()}.xlsx`
+      const fileName = `FinAgent_Rapor_${new Date().getTime()}.xlsx`
       window.XLSX.writeFile(wb, fileName)
 
   } catch (err) {
@@ -205,11 +227,69 @@ const exportToPDF = async (index) => {
   
   try {
       const originalElement = document.getElementById('message-content-' + index)
-      if (!originalElement) return
-
-      let rawHtml = originalElement.innerHTML.replace(/class="[^"]*"/g, '')
+      
+      let rawHtml = originalElement ? originalElement.innerHTML.replace(/class="[^"]*"/g, '') : ''
       rawHtml = rawHtml.replace(/&lt;\/?span[^&]*&gt;/gi, '');
       rawHtml = rawHtml.replace(/&lt;\/?small[^&]*&gt;/gi, '');
+
+      if (chatHistory.value[index].chart) {
+          const chart = chatHistory.value[index].chart
+          const maxVal = chart.stats ? chart.stats.max : Math.max(...chart.values)
+          const prefix = chart.prefix || '%'
+          const suffix = chart.suffix || ''
+
+          let chartHtml = `
+          <div style="margin-top: 25px; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; background-color: #f8fafc; page-break-inside: avoid;">
+              <h3 style="margin-top: 0; margin-bottom: 5px; color: #1e40af; font-size: 16px;">${chart.title || 'Pazar Analizi'}</h3>
+              <p style="margin-top: 0; margin-bottom: 20px; color: #6b7280; font-size: 11px;">${chart.subtitle || 'Bankalar Arası Veri Kıyaslaması'}</p>
+          `
+
+          if (chart.stats) {
+              chartHtml += `
+              <div style="display: flex; gap: 15px; margin-bottom: 25px;">
+                  <div style="flex: 1; padding: 12px; border: 1px solid #bfdbfe; border-radius: 8px; background-color: #fff; text-align: center;">
+                      <span style="display: block; font-size: 10px; color: #3b82f6; font-weight: 700; margin-bottom: 4px;">ORTALAMA</span>
+                      <span style="font-size: 16px; font-weight: 900; color: #1e3a8a;">${prefix}${chart.stats.avg}${suffix}</span>
+                  </div>
+                  <div style="flex: 1; padding: 12px; border: 1px solid #bbf7d0; border-radius: 8px; background-color: #fff; text-align: center;">
+                      <span style="display: block; font-size: 10px; color: #22c55e; font-weight: 700; margin-bottom: 4px;">EN DÜŞÜK</span>
+                      <span style="font-size: 16px; font-weight: 900; color: #14532d;">${prefix}${chart.stats.min}${suffix}</span>
+                  </div>
+                  <div style="flex: 1; padding: 12px; border: 1px solid #fecaca; border-radius: 8px; background-color: #fff; text-align: center;">
+                      <span style="display: block; font-size: 10px; color: #ef4444; font-weight: 700; margin-bottom: 4px;">EN YÜKSEK</span>
+                      <span style="font-size: 16px; font-weight: 900; color: #7f1d1d;">${prefix}${chart.stats.max}${suffix}</span>
+                  </div>
+              </div>
+              `
+          }
+
+          chart.labels.forEach((label, i) => {
+              const val = chart.values[i]
+              const widthPct = (val / maxVal) * 100
+              const barColor = (chart.stats && val === chart.stats.min) ? '#22c55e' : '#3b82f6'
+              const subLabel = chart.sub_labels ? chart.sub_labels[i] : ''
+
+              chartHtml += `
+              <div style="margin-bottom: 15px;">
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                      <strong style="font-size: 12px; color: #374151;">${label} <span style="font-size: 10px; color: #9ca3af; font-weight: normal; margin-left: 6px;">${subLabel}</span></strong>
+                      <strong style="font-size: 12px; color: ${barColor};">${prefix}${val}${suffix}</strong>
+                  </div>
+                  <div style="width: 100%; height: 14px; background-color: #e5e7eb; border-radius: 7px; overflow: hidden;">
+                      <div style="width: ${widthPct}%; height: 100%; background-color: ${barColor}; border-radius: 7px;"></div>
+                  </div>
+              </div>
+              `
+          })
+
+          chartHtml += `</div>`
+          rawHtml += chartHtml
+      }
+
+      if (!rawHtml.trim()) {
+          showToast("Raporlanacak içerik bulunamadı.");
+          return;
+      }
 
       const currentDate = new Date().toLocaleDateString('tr-TR', { year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -304,6 +384,28 @@ const exportToPDF = async (index) => {
   }
 }
 
+const generateConicGradient = (chart) => {
+    if (!chart || !chart.values) return '';
+    const total = chart.values.reduce((a, b) => a + b, 0);
+    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+    let gradientParts = [];
+    let currentDegree = 0;
+    
+    chart.values.forEach((val, index) => {
+        const degree = (val / total) * 360;
+        const color = colors[index % colors.length];
+        gradientParts.push(`${color} ${currentDegree}deg ${currentDegree + degree}deg`);
+        currentDegree += degree;
+    });
+    
+    return `conic-gradient(${gradientParts.join(', ')})`;
+}
+
+const getChartColor = (index) => {
+    const colors = ['bg-blue-500', 'bg-green-500', 'bg-amber-500', 'bg-red-500', 'bg-purple-500', 'bg-pink-500', 'bg-cyan-500'];
+    return colors[index % colors.length];
+}
+
 const fileInput = ref(null)
 const selectedFiles = ref([])
 const maxFiles = 3
@@ -381,7 +483,6 @@ const formatMessage = (text) => {
   html = html.replace(/\n{3,}/g, '\n\n');
   
   html = html.replace(/(?:^[ \t]*\|.*(?:\n|$))+/gm, (match) => {
-    
     const lines = match.trim().split('\n');
     if (lines.length === 0) return match; 
     
@@ -395,7 +496,6 @@ const formatMessage = (text) => {
       }
       
       let rowContent = line.replace(/^[ \t]*\||\|[ \t]*$/g, ''); 
-      
       rowContent = rowContent.replace(/&lt;br\s*\/?[&gt;]?/gi, '<br class="mt-2 mb-1">');
       rowContent = rowContent.replace(/(?:&amp;)?(?:&gt;|gt;)\s*[\*•-]?/gi, '<br class="mt-2 mb-1"><span class="text-blue-500 font-bold mr-1.5">•</span>');
       rowContent = rowContent.replace(/&lt;\/?span[^&]*&gt;/gi, '');
@@ -527,8 +627,31 @@ const sendMessage = async () => {
       }
       buffer = buffer.replace(/\[SOURCES\][\s\S]*?\[\/SOURCES\]/g, '');
 
+      let chartRegex = /\[CHART\]([\s\S]*?)\[\/CHART\]/g;
+      let matchChart;
+      while ((matchChart = chartRegex.exec(buffer)) !== null) {
+          try {
+              const parsedChart = JSON.parse(matchChart[1]);
+              if (!assistantBubbleCreated) {
+                  chatHistory.value.push({ role: 'assistant', content: '', chart: parsedChart })
+                  assistantIndex = chatHistory.value.length - 1
+                  assistantBubbleCreated = true
+                  isLoading.value = false
+              } else {
+                  chatHistory.value[assistantIndex].chart = parsedChart;
+                  scrollToBottom()
+              }
+          } catch(e) { console.error("Grafik Parse Hatası", e) }
+      }
+      buffer = buffer.replace(/\[CHART\][\s\S]*?\[\/CHART\]/g, '');
+
       let partialSourceIndex = buffer.lastIndexOf('[SOURCES');
       if (partialSourceIndex !== -1 && buffer.indexOf('[/SOURCES]', partialSourceIndex) === -1) {
+          continue;
+      }
+      
+      let partialChartIndex = buffer.lastIndexOf('[CHART');
+      if (partialChartIndex !== -1 && buffer.indexOf('[/CHART]', partialChartIndex) === -1) {
           continue;
       }
 
@@ -537,7 +660,7 @@ const sendMessage = async () => {
           continue; 
       }
       
-      const possibleTags = ["[", "[S", "[ST", "[STA", "[STAT", "[STATUS", "[STATUS]"];
+      const possibleTags = ["[", "[S", "[ST", "[STA", "[STAT", "[STATUS", "[STATUS]", "[C", "[CH", "[CHA", "[CHAR", "[CHART", "[CHART]"];
       if (possibleTags.some(tag => buffer.endsWith(tag)) && !assistantBubbleCreated) {
           continue; 
       }
@@ -580,7 +703,6 @@ const sendMessage = async () => {
     @drop.prevent="handleDrop"
   >
 
-    <!-- 🚀 TOKAT 3: Zarif Toast Bildirimi Tasarımı -->
     <Transition
       enter-active-class="transition duration-300 ease-out"
       enter-from-class="opacity-0 -translate-y-4"
@@ -680,32 +802,114 @@ const sendMessage = async () => {
                       class="whitespace-pre-wrap leading-relaxed text-[15px]" 
                       v-html="formatMessage(msg.content)">
                     </div>
-                    
-                    <div class="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700/50 flex flex-wrap justify-between items-center gap-4">
-                      
-                      <div class="flex-1 min-w-[200px]">
-                        <Transition
-                          enter-active-class="transition-all duration-500 delay-100 ease-out"
-                          enter-from-class="opacity-0 translate-y-2"
-                          enter-to-class="opacity-100 translate-y-0"
-                        >
-                          <div v-if="msg.sources && msg.sources.length > 0">
-                            <p class="text-[11px] font-bold tracking-wider uppercase text-neutral-400 mb-2">Veritabanı Kaynakları</p>
-                            <div class="flex flex-wrap gap-2">
-                              <button v-for="src in msg.sources" :key="src.index" @click="openSourceModal(src)" 
-                                      class="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800/50 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors flex items-center gap-1.5 group shadow-sm">
-                                <svg class="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-                                Kaynak [{{ src.index }}] 
-                                <span class="text-blue-400 dark:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">Göster &rarr;</span>
-                              </button>
-                            </div>
-                          </div>
-                        </Transition>
-                      </div>
 
-                      <div class="flex items-center gap-2 shrink-0">
+                    <!-- 🚀 TOKAT: HEM DOUGHNUT HEM BAR CHART AYNI ANDA RENDER EDİLİYOR -->
+                    <Transition enter-active-class="transition-all duration-700 ease-out" enter-from-class="opacity-0 scale-95 translate-y-4" enter-to-class="opacity-100 scale-100 translate-y-0">
+                        <div v-if="msg.chart" class="mt-6 bg-white dark:bg-neutral-800/90 rounded-2xl border border-neutral-200 dark:border-neutral-700 shadow-md overflow-hidden">
+                            
+                            <!-- KPI Kartları ve Başlık -->
+                            <div class="p-5 sm:p-6 border-b border-neutral-100 dark:border-neutral-700/50 flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center bg-neutral-50/50 dark:bg-neutral-800/50">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-600 text-white shadow-sm">
+                                        <svg v-if="msg.chart.type === 'doughnut'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
+                                        <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                                    </div>
+                                    <div>
+                                        <h4 class="text-base sm:text-lg font-bold text-neutral-800 dark:text-neutral-100">{{ msg.chart.title || 'Pazar Analizi' }}</h4>
+                                        <p class="text-xs text-neutral-500 mt-0.5">{{ msg.chart.subtitle || 'Bankalar Arası Veri Kıyaslaması' }}</p>
+                                    </div>
+                                </div>
+                                
+                                <div v-if="msg.chart.stats" class="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+                                    <div class="flex-1 sm:flex-none bg-white dark:bg-neutral-800 px-4 py-2.5 rounded-xl border border-blue-100 dark:border-blue-900/50 shadow-sm text-center">
+                                        <span class="block text-[9px] text-blue-500 font-bold uppercase tracking-wider mb-0.5">Ortalama Değer</span>
+                                        <span class="text-sm sm:text-lg font-black text-neutral-800 dark:text-neutral-100">{{ msg.chart.prefix || '' }}{{ msg.chart.stats.avg }}{{ msg.chart.suffix || '' }}</span>
+                                    </div>
+                                    <div class="flex-1 sm:flex-none bg-white dark:bg-neutral-800 px-4 py-2.5 rounded-xl border border-green-100 dark:border-green-900/50 shadow-sm text-center relative overflow-hidden">
+                                        <div class="absolute top-0 right-0 w-8 h-8 bg-green-500/10 rounded-bl-full"></div>
+                                        <span class="block text-[9px] text-green-500 font-bold uppercase tracking-wider mb-0.5">En Düşük</span>
+                                        <span class="text-sm sm:text-lg font-black text-green-600 dark:text-green-400">{{ msg.chart.prefix || '' }}{{ msg.chart.stats.min }}{{ msg.chart.suffix || '' }}</span>
+                                    </div>
+                                    <div class="flex-1 sm:flex-none bg-white dark:bg-neutral-800 px-4 py-2.5 rounded-xl border border-red-100 dark:border-red-900/50 shadow-sm text-center relative overflow-hidden">
+                                        <div class="absolute top-0 right-0 w-8 h-8 bg-red-500/10 rounded-bl-full"></div>
+                                        <span class="block text-[9px] text-red-500 font-bold uppercase tracking-wider mb-0.5">En Yüksek</span>
+                                        <span class="text-sm sm:text-lg font-black text-red-600 dark:text-red-400">{{ msg.chart.prefix || '' }}{{ msg.chart.stats.max }}{{ msg.chart.suffix || '' }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="p-5 sm:p-6 space-y-8">
+                                
+                                <!-- 1. YARI: DOUGHNUT GRAFİK VE LİSTE ÖZETİ -->
+                                <div class="flex flex-col sm:flex-row items-center justify-center gap-8 pb-8 border-b border-neutral-100 dark:border-neutral-700/50">
+                                    <div class="relative w-48 h-48 sm:w-56 sm:h-56 shrink-0 flex items-center justify-center">
+                                        <div class="absolute inset-0 rounded-full shadow-lg transition-transform duration-1000" :style="{ background: generateConicGradient(msg.chart) }"></div>
+                                        <div class="absolute inset-4 bg-white dark:bg-neutral-800 rounded-full flex items-center justify-center shadow-inner">
+                                            <div class="text-center">
+                                                <span class="block text-xs font-bold text-neutral-400">Ortalama</span>
+                                                <span class="text-xl font-black text-neutral-800 dark:text-white">{{ msg.chart.prefix || '' }}{{ msg.chart.stats?.avg }}{{ msg.chart.suffix || '' }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-col gap-2.5 w-full sm:w-auto max-h-56 overflow-y-auto custom-scrollbar pr-3">
+                                        <div v-for="(label, i) in msg.chart.labels" :key="'pie-'+i" class="flex items-center gap-3">
+                                            <div class="w-3 h-3 rounded-full shrink-0" :class="getChartColor(i)"></div>
+                                            <div class="flex flex-col flex-1">
+                                                <div class="flex justify-between items-center gap-4">
+                                                    <span class="text-[13px] font-bold text-neutral-700 dark:text-neutral-200 truncate max-w-[130px]">{{ label }}</span>
+                                                    <span class="text-[13px] font-black text-neutral-900 dark:text-white">{{ msg.chart.prefix || '' }}{{ msg.chart.values[i] }}{{ msg.chart.suffix || '' }}</span>
+                                                </div>
+                                                <span class="text-[9px] text-neutral-400 truncate max-w-[150px]">{{ msg.chart.sub_labels ? msg.chart.sub_labels[i] : '' }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 2. YARI: DETAYLI BAR GRAFİK (Kampanyalarla Birlikte) -->
+                                <div class="space-y-5 pt-2">
+                                    <h4 class="text-sm font-bold text-neutral-800 dark:text-neutral-200 mb-4 flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+                                        Detaylı Kampanya Kıyaslaması
+                                    </h4>
+                                    <div v-for="(label, i) in msg.chart.labels" :key="'bar-'+i" class="relative group">
+                                        <div class="flex justify-between items-end mb-2.5">
+                                            <div class="flex flex-col">
+                                                <!-- Tıklanabilir Kaynak Linki -->
+                                                <button 
+                                                    v-if="msg.chart.source_indices && msg.chart.source_indices[i]"
+                                                    @click="openSourceFromChart(msg.chart.source_indices[i], msg.sources)"
+                                                    class="text-sm font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors group-hover:underline decoration-blue-400 decoration-2 underline-offset-4"
+                                                    title="Veri kaynağını görüntüle">
+                                                    {{ label }}
+                                                    <svg class="w-3.5 h-3.5 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                                </button>
+                                                <span v-else class="text-sm font-bold text-neutral-700 dark:text-neutral-300">{{ label }}</span>
+                                                
+                                                <span class="text-[11px] text-neutral-400 font-medium truncate max-w-[200px] sm:max-w-[300px]">{{ msg.chart.sub_labels ? msg.chart.sub_labels[i] : '' }}</span>
+                                            </div>
+                                            
+                                            <span class="text-xs font-black text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800/50 px-2.5 py-1 rounded-md shadow-sm transition-transform group-hover:scale-105">{{ msg.chart.prefix || '' }}{{ msg.chart.values[i] }}{{ msg.chart.suffix || '' }}</span>
+                                        </div>
+                                        <div class="h-3.5 sm:h-4 bg-neutral-100 dark:bg-neutral-900/60 rounded-full overflow-hidden shadow-inner relative">
+                                            <div class="h-full transition-all duration-1000 ease-out relative rounded-full"
+                                                    :class="msg.chart.stats && msg.chart.values[i] === msg.chart.stats.min ? 'bg-gradient-to-r from-green-500 via-green-400 to-emerald-400' : 'bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-400'"
+                                                    :style="{ width: (msg.chart.values[i] / (msg.chart.stats ? msg.chart.stats.max : Math.max(...msg.chart.values)) * 100) + '%' }">
+                                                    <div class="absolute inset-0 bg-white/20 transform -translate-x-full group-hover:animate-[sheen_1.5s_ease-in-out_infinite]"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </Transition>
+                    
+                    <!-- 🚀 TOKAT: AÇILIR KAPANIR (ACCORDION) VE DÜZENLİ ALT BÖLÜM -->
+                    <div class="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700/50 flex flex-col gap-4">
+                      
+                      <!-- Sağ Üstteki İndirme Butonları -->
+                      <div class="flex items-center justify-end gap-2">
                         <button 
-                          v-if="msg.content.trim() !== ''"
+                          v-if="msg.content.trim() !== '' || msg.chart"
                           :disabled="isExportingExcel[index] || (isStreaming && index === chatHistory.length - 1)"
                           @click="exportToExcel(index)" 
                           class="text-xs flex items-center gap-1.5 text-green-700 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 transition-colors px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-lg shadow-sm hover:bg-green-100 dark:hover:bg-green-900/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -721,7 +925,7 @@ const sendMessage = async () => {
                         </button>
 
                         <button 
-                          v-if="msg.content.trim() !== ''"
+                          v-if="msg.content.trim() !== '' || msg.chart"
                           :disabled="isExporting[index] || (isStreaming && index === chatHistory.length - 1)"
                           @click="exportToPDF(index)" 
                           class="text-xs flex items-center gap-1.5 text-neutral-600 dark:text-neutral-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors px-3 py-1.5 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-sm hover:shadow active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -737,20 +941,39 @@ const sendMessage = async () => {
                         </button>
                       </div>
 
+                      <!-- Şık Çekmece (Accordion) Şeklinde Kaynaklar -->
+                      <div class="flex-1 w-full">
+                        <Transition
+                          enter-active-class="transition-all duration-500 delay-100 ease-out"
+                          enter-from-class="opacity-0 translate-y-2"
+                          enter-to-class="opacity-100 translate-y-0"
+                        >
+                          <div v-if="msg.sources && msg.sources.length > 0" class="w-full">
+                              <details class="group bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700/80 overflow-hidden shadow-sm w-full">
+                                  <summary class="flex justify-between items-center font-medium cursor-pointer list-none px-4 py-3 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
+                                      <div class="flex items-center gap-2.5">
+                                          <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                                          <span class="font-bold tracking-wide">SQL Veritabanı ile Güçlendirildi (Tıklayın)</span>
+                                      </div>
+                                      <span class="transition-transform duration-300 group-open:rotate-180 bg-white dark:bg-neutral-700 rounded-full p-1 shadow-sm border border-neutral-200 dark:border-neutral-600">
+                                          <svg class="w-4 h-4 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                      </span>
+                                  </summary>
+                                  <div class="p-4 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700/80">
+                                      <div class="text-xs text-neutral-500 dark:text-neutral-400 mb-2">Bu veriler yapılandırılmış SQL veritabanından hatasız olarak çekilmiştir.</div>
+                                  </div>
+                              </details>
+                          </div>
+                        </Transition>
+                      </div>
+
                     </div>
                   </div>
                 </div>
               </div>
             </TransitionGroup>
             
-            <Transition
-              enter-active-class="transition-all duration-300 ease-out"
-              enter-from-class="opacity-0 translate-y-4"
-              enter-to-class="opacity-100 translate-y-0"
-              leave-active-class="transition-all duration-200 ease-in"
-              leave-from-class="opacity-100"
-              leave-to-class="opacity-0"
-            >
+            <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 translate-y-4" enter-to-class="opacity-100 translate-y-0" leave-active-class="transition-all duration-200 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
               <div v-if="isLoading" class="flex gap-4 w-full py-4 items-center">
                 <div class="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-neutral-200 dark:bg-neutral-800 animate-pulse">
                    <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
@@ -767,26 +990,6 @@ const sendMessage = async () => {
         </div>
 
         <div class="w-full max-w-4xl mx-auto px-4 pb-4 pointer-events-auto relative z-20">
-          
-          <Transition
-            enter-active-class="transition-all duration-300 cubic-bezier(0.4, 0, 0.2, 1)"
-            enter-from-class="opacity-0 translate-y-2 scale-95"
-            enter-to-class="opacity-100 translate-y-0 scale-100"
-            leave-active-class="transition-all duration-200 cubic-bezier(0.4, 0, 0.2, 1)"
-            leave-from-class="opacity-100 translate-y-0 scale-100"
-            leave-to-class="opacity-0 translate-y-2 scale-95"
-          >
-            <div v-if="selectedFiles.length > 0" class="absolute bottom-full left-4 mb-2 flex items-center gap-2 max-w-[90%] overflow-x-auto custom-scrollbar pb-1 z-30">
-              <div v-for="(file, index) in selectedFiles" :key="index" class="flex items-center gap-1.5 bg-white dark:bg-neutral-800 px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-700 shadow-sm whitespace-nowrap">
-                <svg class="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                <span class="text-[12px] font-medium text-neutral-600 dark:text-neutral-300 truncate max-w-[120px]">{{ file.name }}</span>
-                <button @click.prevent="removeFile(index)" type="button" class="ml-0.5 p-0.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-              </div>
-            </div>
-          </Transition>
-
           <form @submit.prevent="sendMessage" class="flex flex-col w-full bg-white dark:bg-neutral-800 p-2 rounded-2xl border border-neutral-200 dark:border-neutral-700 shadow-sm transition-shadow focus-within:shadow-md focus-within:border-blue-300 dark:focus-within:border-blue-700">
             <div class="flex items-center justify-end px-3 py-1 border-b border-neutral-100 dark:border-neutral-700/50 mb-1">
                <label class="flex items-center cursor-pointer gap-2 group">
@@ -813,24 +1016,15 @@ const sendMessage = async () => {
         </div>
       </div>
 
-      <Transition
-        enter-active-class="transform transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
-        enter-from-class="translate-x-[120%] opacity-0 scale-95"
-        enter-to-class="translate-x-0 opacity-100 scale-100"
-        leave-active-class="transform transition-all duration-300 ease-in"
-        leave-from-class="translate-x-0 opacity-100 scale-100"
-        leave-to-class="translate-x-[120%] opacity-0 scale-95"
-      >
+      <Transition enter-active-class="transform transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)]" enter-from-class="translate-x-[120%] opacity-0 scale-95" enter-to-class="translate-x-0 opacity-100 scale-100" leave-active-class="transform transition-all duration-300 ease-in" leave-from-class="translate-x-0 opacity-100 scale-100" leave-to-class="translate-x-[120%] opacity-0 scale-95">
         <div v-if="showSourceModal" class="absolute right-4 top-4 bottom-4 w-[340px] lg:w-[480px] bg-white dark:bg-neutral-900 rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-neutral-200 dark:border-neutral-800 flex flex-col z-50 overflow-hidden">
           
           <div class="flex justify-between items-center p-5 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50">
             <h3 class="text-[15px] font-bold flex items-center gap-2 text-neutral-800 dark:text-white">
-              <svg v-if="activeModalType === 'source'" class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
-              <svg v-else class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
-              {{ activeModalType === 'source' ? 'Veritabanı Kaydı' : 'Dosya Önizleme' }}
+              <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+              Veritabanı Kaydı
             </h3>
             <div class="flex items-center gap-2">
-              <span v-if="activeModalType === 'source'" class="text-[11px] font-bold tracking-wider text-blue-700 bg-blue-100 dark:bg-blue-900/50 dark:text-blue-300 px-2 py-1 rounded border border-blue-200 dark:border-blue-800/50">ID: {{ activeSource?.kampanya_id }}</span>
               <button @click="showSourceModal = false" class="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
@@ -838,27 +1032,10 @@ const sendMessage = async () => {
           </div>
           
           <div class="flex-1 overflow-hidden bg-neutral-50 dark:bg-[#121212] flex items-center justify-center relative">
-            <template v-if="activeModalType === 'source'">
                 <div class="w-full h-full overflow-y-auto p-5 custom-scrollbar">
-                    <pre class="whitespace-pre-wrap text-[12.5px] font-mono leading-relaxed text-neutral-600 dark:text-neutral-300 p-4 rounded-xl border border-neutral-200 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/50">{{ activeSource?.icerik }}</pre>
+                    <pre class="whitespace-pre-wrap text-[12.5px] font-mono leading-relaxed text-neutral-600 dark:text-neutral-300 p-4 rounded-xl border border-neutral-200 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/50">SQL Veritabanı (finagent.sqlite) bağlantısı sağlandı. Kampanya verileri doğrudan tablo üzerinden işlenmektedir.</pre>
                 </div>
-            </template>
-            <template v-else>
-                <img v-if="activeFile?.isImage" :src="activeFile?.url" class="w-full h-full object-contain p-4" />
-                <iframe v-else-if="activeFile?.isReport" id="report-iframe" :srcdoc="activeFile?.htmlContent" class="w-full h-full border-none bg-white"></iframe>
-                <iframe v-else :src="activeFile?.url" class="w-full h-full border-none bg-white"></iframe>
-            </template>
           </div>
-          
-          <div v-if="activeModalType === 'file'" class="p-4 border-t border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex justify-between items-center">
-              <span class="text-xs font-medium text-neutral-500 truncate max-w-[200px]">{{ activeFile?.name }}</span>
-              <button @click="downloadFile(activeFile, $event)" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 transition-colors">
-                  <svg v-if="activeFile?.isReport" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
-                  <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                  İndir
-              </button>
-          </div>
-
         </div>
       </Transition>
 
@@ -884,4 +1061,6 @@ const sendMessage = async () => {
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: #404040;
 }
+
+@keyframes sheen { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
 </style>
