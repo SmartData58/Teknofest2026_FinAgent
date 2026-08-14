@@ -90,8 +90,6 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
         "finished_at": None,
         "status": "failed",  # ['completed', 'failed', 'partial']
         "total_campaigns_found": 0,
-        "new_campaigns": 0,
-        "updated_campaigns": 0,
         "errors": []
     }
 
