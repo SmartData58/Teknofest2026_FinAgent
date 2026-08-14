@@ -19,10 +19,7 @@ services:
       - EMBEDDING_API_URL=http://embedding:8001
       - RERANKER_API_URL=http://reranker:8002
       - LLM_API_URL=http://llm:8000
-      # PostgreSQL bağlantısı
     depends_on:
-      postgres:
-        condition: service_healthy
       embedding:
         condition: service_started
       reranker:
