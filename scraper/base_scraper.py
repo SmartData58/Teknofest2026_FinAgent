@@ -124,7 +124,7 @@ class TabanScraper:
         dosya = klasor / f"{zaman.strftime('%Y%m%d_%H%M%S')}.json"
 
         icerik = {
-            "banka": self.banka_kodu,
+            "banka_id": self.banka_kodu,
             "cekilme_zamani": zaman.isoformat(),  # ISO 8601: 2026-07-14T20:00:00+00:00
             "kampanya_sayisi": len(kayitlar),
             "kampanyalar": kayitlar,
