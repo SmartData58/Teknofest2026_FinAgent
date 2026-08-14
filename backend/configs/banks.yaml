@@ -2,136 +2,166 @@ meta:
   kaynak: https://www.bddk.org.tr/Kurulus/Liste/77
   dogrulama_tarihi: '2026-07-14'
   toplam_banka: 10
+
 bankalar:
-- id: albaraka
-  ad: Albaraka Türk Katılım Bankası A.Ş.
-  kisa_ad: Albaraka Türk
-  logo_url: /albaraka_logo.svg
-  mulkiyet_turu: özel
-  buyukluk_kategorisi: Tier 2
-  aktif_buyukluk_milyar_tl: 459.98
-  web_sitesi: https://www.albaraka.com.tr
-  kampanya_url:
-  - https://www.albaraka.com.tr/tr/kampanyalar
-  spider: albaraka
-  dinamik: false
-  aktif: true
-- id: kuveytturk
-  ad: Kuveyt Türk Katılım Bankası A.Ş.
-  kisa_ad: Kuveyt Türk
-  logo_url: /kuveytturk_logo.svg
-  mulkiyet_turu: özel
-  buyukluk_kategorisi: Tier 1
-  aktif_buyukluk_milyar_tl: 1477.0
-  web_sitesi: https://www.kuveytturk.com.tr
-  kampanya_url:
-  - https://www.kuveytturk.com.tr/kampanyalar/kendim-icin
-  - https://www.kuveytturk.com.tr/kampanyalar/isim-icin
-  spider: kuveytturk
-  dinamik: false
-  aktif: true
-- id: turkiye_finans
-  ad: Türkiye Finans Katılım Bankası A.Ş.
-  kisa_ad: Türkiye Finans
-  logo_url: /turkiyefinans_logo.svg
-  mulkiyet_turu: özel
-  buyukluk_kategorisi: Tier 2
-  aktif_buyukluk_milyar_tl: 439.11
-  web_sitesi: https://www.turkiyefinans.com.tr
-  kampanya_url:
-  - https://www.turkiyefinans.com.tr/tr-tr/kampanyalar/Sayfalar/default.aspx
-  spider: turkiye_finans
-  dinamik: false
-  aktif: true
-- id: vakif_katilim
-  ad: Vakıf Katılım Bankası A.Ş.
-  kisa_ad: Vakıf Katılım
-  logo_url: /vakifkatilim_logo.svg
-  mulkiyet_turu: kamu
-  buyukluk_kategorisi: Tier 1
-  aktif_buyukluk_milyar_tl: 888.92
-  web_sitesi: https://www.vakifkatilim.com.tr
-  kampanya_url:
-  - https://www.vakifkatilim.com.tr/tr/kendim-icin/kampanyalar/mevcut-kampanyalar
-  spider: vakif_katilim
-  dinamik: true
-  aktif: true
-- id: ziraat_katilim
-  ad: Ziraat Katılım Bankası A.Ş.
-  kisa_ad: Ziraat Katılım
-  logo_url: /ziraatkatilim_logo.svg
-  mulkiyet_turu: kamu
-  buyukluk_kategorisi: Tier 1
-  aktif_buyukluk_milyar_tl: 808.88
-  web_sitesi: https://www.ziraatkatilim.com.tr
-  kampanya_url:
-  - https://www.ziraatkatilim.com.tr/kampanyalar
-  spider: ziraat_katilim
-  dinamik: true
-  aktif: false
-- id: emlak_katilim
-  ad: Türkiye Emlak Katılım Bankası A.Ş.
-  kisa_ad: Emlak Katılım
-  logo_url: /emlakkatilim_logo.svg
-  mulkiyet_turu: kamu
-  buyukluk_kategorisi: Tier 2
-  aktif_buyukluk_milyar_tl: 430.91
-  web_sitesi: https://www.emlakkatilim.com.tr
-  kampanya_url:
-  - https://www.emlakkatilim.com.tr/tr/bireysel/kampanyalar
-  - https://www.emlakkatilim.com.tr/tr/kurumsal/kampanyalar
-  spider: emlak_katilim
-  dinamik: true
-  aktif: true
-- id: hayat_finans
-  ad: Hayat Finans Katılım Bankası A.Ş.
-  kisa_ad: Hayat Finans
-  logo_url: /hayatfinans_logo.svg
-  mulkiyet_turu: özel
-  buyukluk_kategorisi: Tier 3
-  aktif_buyukluk_milyar_tl: 33.6
-  web_sitesi: https://hayatfinans.com.tr
-  kampanya_url:
-  - https://hayatfinans.com.tr/kampanyalar
-  spider: hayat_finans
-  dinamik: false
-  aktif: true
-- id: dunya_katilim
-  ad: Dünya Katılım Bankası A.Ş.
-  kisa_ad: Dünya Katılım
-  logo_url: /dunyakatilim_logo.svg
-  mulkiyet_turu: özel
-  buyukluk_kategorisi: Tier 2
-  aktif_buyukluk_milyar_tl: 123.01
-  web_sitesi: https://www.dunyakatilim.com.tr
-  kampanya_url:
-  - https://dunyakatilim.com.tr/kampanyalar
-  spider: dunya_katilim
-  dinamik: false
-  aktif: true
-- id: tom_katilim
-  ad: T.O.M. Katılım Bankası A.Ş.
-  kisa_ad: TOM Katılım
-  logo_url: /tomkatilim_logo.svg
-  mulkiyet_turu: özel
-  buyukluk_kategorisi: Tier 3
-  aktif_buyukluk_milyar_tl: 28.44
-  web_sitesi: https://www.tombank.com.tr
-  kampanya_url:
-  - https://hadiyanindakibanka.com/hadi-kazan/kampanyalar
-  spider: tom_katilim
-  dinamik: false
-  aktif: true
-- id: adil_katilim
-  ad: Adil Katılım Bankası A.Ş.
-  kisa_ad: Adil Katılım
-  logo_url: /adilkatilim_logo.svg
-  mulkiyet_turu: özel
-  buyukluk_kategorisi: Tier 3
-  aktif_buyukluk_milyar_tl: 0.0
-  web_sitesi: https://www.adilkatilim.com.tr
-  kampanya_url:
-  - https://www.adilkatilim.com.tr/kampanyalar
-  spider: adil_katilim
-  dinamik: false
-  aktif: false
+  - id: albaraka
+    resmi_ad: Albaraka Türk Katılım Bankası A.Ş.
+    kisa_ad: Albaraka Türk
+    logo_url: /albaraka_logo.svg
+    mulkiyet_turu: Özel
+    tier: Tier 2
+    aktif_buyukluk_milyar_tl: 459.98
+    web_sitesi: https://www.albaraka.com.tr
+    kampanya_url:
+      - https://www.albaraka.com.tr/tr/kampanyalar
+    spider: albaraka
+    dinamik: false
+    aktif: true
+    is_monitored: true
+    baskin_kategori: null
+
+  - id: kuveytturk
+    resmi_ad: Kuveyt Türk Katılım Bankası A.Ş.
+    kisa_ad: Kuveyt Türk
+    logo_url: /kuveytturk_logo.svg
+    mulkiyet_turu: Özel
+    tier: Tier 1
+    aktif_buyukluk_milyar_tl: 1477.0
+    web_sitesi: https://www.kuveytturk.com.tr
+    kampanya_url:
+      - https://www.kuveytturk.com.tr/kampanyalar/kendim-icin
+      - https://www.kuveytturk.com.tr/kampanyalar/isim-icin
+    spider: kuveytturk
+    dinamik: false
+    aktif: true
+    is_monitored: true
+    baskin_kategori: null
+
+  - id: turkiye_finans
+    resmi_ad: Türkiye Finans Katılım Bankası A.Ş.
+    kisa_ad: Türkiye Finans
+    logo_url: /turkiyefinans_logo.svg
+    mulkiyet_turu: Özel
+    tier: Tier 2
+    aktif_buyukluk_milyar_tl: 439.11
+    web_sitesi: https://www.turkiyefinans.com.tr
+    kampanya_url:
+      - https://www.turkiyefinans.com.tr/tr-tr/kampanyalar/Sayfalar/default.aspx
+    spider: turkiye_finans
+    dinamik: false
+    aktif: true
+    is_monitored: true
+    baskin_kategori: null
+
+  - id: vakif_katilim
+    resmi_ad: Vakıf Katılım Bankası A.Ş.
+    kisa_ad: Vakıf Katılım
+    logo_url: /vakifkatilim_logo.svg
+    mulkiyet_turu: Kamu
+    tier: Tier 1
+    aktif_buyukluk_milyar_tl: 888.92
+    web_sitesi: https://www.vakifkatilim.com.tr
+    kampanya_url:
+      - https://www.vakifkatilim.com.tr/tr/kendim-icin/kampanyalar/mevcut-kampanyalar
+    spider: vakif_katilim
+    dinamik: true
+    aktif: true
+    is_monitored: true
+    baskin_kategori: null
+
+  - id: ziraat_katilim
+    resmi_ad: Ziraat Katılım Bankası A.Ş.
+    kisa_ad: Ziraat Katılım
+    logo_url: /ziraatkatilim_logo.svg
+    mulkiyet_turu: Kamu
+    tier: Tier 1
+    aktif_buyukluk_milyar_tl: 808.88
+    web_sitesi: https://www.ziraatkatilim.com.tr
+    kampanya_url:
+      - https://www.ziraatkatilim.com.tr/kampanyalar
+    spider: ziraat_katilim
+    dinamik: true
+    aktif: false
+    is_monitored: false
+    baskin_kategori: null
+
+  - id: emlak_katilim
+    resmi_ad: Türkiye Emlak Katılım Bankası A.Ş.
+    kisa_ad: Emlak Katılım
+    logo_url: /emlakkatilim_logo.svg
+    mulkiyet_turu: Kamu
+    tier: Tier 2
+    aktif_buyukluk_milyar_tl: 430.91
+    web_sitesi: https://www.emlakkatilim.com.tr
+    kampanya_url:
+      - https://www.emlakkatilim.com.tr/tr/bireysel/kampanyalar
+      - https://www.emlakkatilim.com.tr/tr/kurumsal/kampanyalar
+    spider: emlak_katilim
+    dinamik: true
+    aktif: true
+    is_monitored: true
+    baskin_kategori: null
+
+  - id: hayat_finans
+    resmi_ad: Hayat Finans Katılım Bankası A.Ş.
+    kisa_ad: Hayat Finans
+    logo_url: /hayatfinans_logo.svg
+    mulkiyet_turu: Özel
+    tier: Tier 3
+    aktif_buyukluk_milyar_tl: 33.6
+    web_sitesi: https://hayatfinans.com.tr
+    kampanya_url:
+      - https://hayatfinans.com.tr/kampanyalar
+    spider: hayat_finans
+    dinamik: false
+    aktif: true
+    is_monitored: true
+    baskin_kategori: null
+
+  - id: dunya_katilim
+    resmi_ad: Dünya Katılım Bankası A.Ş.
+    kisa_ad: Dünya Katılım
+    logo_url: /dunyakatilim_logo.svg
+    mulkiyet_turu: Özel
+    tier: Tier 2
+    aktif_buyukluk_milyar_tl: 123.01
+    web_sitesi: https://www.dunyakatilim.com.tr
+    kampanya_url:
+      - https://dunyakatilim.com.tr/kampanyalar
+    spider: dunya_katilim
+    dinamik: false
+    aktif: true
+    is_monitored: true
+    baskin_kategori: null
+
+  - id: tom_katilim
+    resmi_ad: T.O.M. Katılım Bankası A.Ş.
+    kisa_ad: TOM Katılım
+    logo_url: /tomkatilim_logo.svg
+    mulkiyet_turu: Özel
+    tier: Tier 3
+    aktif_buyukluk_milyar_tl: 28.44
+    web_sitesi: https://www.tombank.com.tr
+    kampanya_url:
+      - https://hadiyanindakibanka.com/hadi-kazan/kampanyalar
+    spider: tom_katilim
+    dinamik: false
+    aktif: true
+    is_monitored: true
+    baskin_kategori: null
+
+  - id: adil_katilim
+    resmi_ad: Adil Katılım Bankası A.Ş.
+    kisa_ad: Adil Katılım
+    logo_url: /adilkatilim_logo.svg
+    mulkiyet_turu: Özel
+    tier: Tier 3
+    aktif_buyukluk_milyar_tl: 0.0
+    web_sitesi: https://www.adilkatilim.com.tr
+    kampanya_url:
+      - https://www.adilkatilim.com.tr/kampanyalar
+    spider: adil_katilim
+    dinamik: false
+    aktif: false
+    is_monitored: false
+    baskin_kategori: null
