@@ -1,14 +1,19 @@
+import os
 import yaml
 from pymongo import MongoClient
 
 def seed_bankalar():
-    # MongoDB Bağlantısı
-    client = MongoClient("mongodb://admin:admin123@localhost:27017/?authSource=admin")
+    # MongoDB Bağlantısı (Not: Docker içinde hata alırsan 'localhost' kısmını mongo container adıyla değiştir kanka)
+    client = MongoClient("mongodb://admin:admin123@smartdata-mongodb:27017/?authSource=admin")
     db = client["smartdata"]
     bankalar_col = db["bankalar"]
 
+    # 🚀 TOKAT: Dinamik dosya yolu! Kod nerede çalışırsa çalışsın config dosyasını şak diye bulur.
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    yaml_path = os.path.join(BASE_DIR, "configs", "banks.yaml")
+
     # YAML dosyasını okuma
-    with open("backend/configs/banks.yaml", "r", encoding="utf-8") as f:
+    with open(yaml_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
     banka_listesi = config.get("bankalar", [])

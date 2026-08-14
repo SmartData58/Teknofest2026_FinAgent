@@ -23,8 +23,6 @@ services:
   scraper:
     restart: on-failure
 
-  postgres:
-    restart: always
 
   mongodb:
     restart: always

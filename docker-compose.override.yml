@@ -38,10 +38,6 @@ services:
     volumes:
       - .:/app
 
-  postgres:
-    ports:
-      - "5432:5432"
-
   mongodb:
     ports:
       - "27017:27017"
