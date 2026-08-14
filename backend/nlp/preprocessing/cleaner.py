@@ -101,29 +101,31 @@ ATLATICAK_ANAHTARLAR = {
 def ham_verileri_temizle() -> None:
     """
     MongoDB 'kampanyalar' koleksiyonundaki işlenmemiş ham verileri okur,
-    temizler ve 'processed_campaigns' koleksiyonuna kaydeder.
+    temizler ve 'temiz_kampanyalar' koleksiyonuna kaydeder.
     """
     client = None
     try:
         client = MongoClient(MONGO_URI)
         db = client[MONGO_DB_NAME]
 
-        raw_col = db["kampanyalar"]
-        clean_col = db["processed_campaigns"]
+        raw_col = db["ham_kampanyalar"]
+        clean_col = db["temiz_kampanyalar"]
 
         # Yalnızca is_processed: False veya is_processed alanı olmayan kayıtları getir
         sorgu = {"$or": [{"is_processed": False}, {"is_processed": {"$exists": False}}]}
         ham_kampanyalar = list(raw_col.find(sorgu))
 
         if not ham_kampanyalar:
-            print("ℹ️ Temizlenecek yeni ham kampanya bulunamadı.")
+            print(" Temizlenecek yeni ham kampanya bulunamadı.")
             return
 
-        print(f"🧹 Toplam {len(ham_kampanyalar)} adet işlenmemiş ham kampanya temizleniyor...")
+        print(f" Toplam {len(ham_kampanyalar)} adet işlenmemiş ham kampanya temizleniyor...")
 
         islenen_sayisi = 0
         for doc in ham_kampanyalar:
+            
             clean_doc = doc.copy()
+            clean_doc.pop("is_processed", None)
 
             # Doküman içindeki tüm metin alanlarını (baslik, detay, icerik vs.) otomatik temizle
             for anahtar, deger in clean_doc.items():
@@ -134,7 +136,7 @@ def ham_verileri_temizle() -> None:
             clean_doc["temizlenme_tarihi"] = datetime.now(timezone.utc)
             clean_doc["is_extracted"] = False  # 3. Aşama (LLM) için hazır işareti
 
-            # Temizlenmiş veriyi 'processed_campaigns' koleksiyonuna yaz/güncelle
+            # Temizlenmiş veriyi 'temiz_kampanyalar' koleksiyonuna yaz/güncelle
             kampanya_url = clean_doc.get("url")
             if kampanya_url:
                 clean_col.update_one(
@@ -157,7 +159,7 @@ def ham_verileri_temizle() -> None:
 
             islenen_sayisi += 1
 
-        print(f"✅ {islenen_sayisi} kampanya başarıyla temizlendi ve 'processed_campaigns' koleksiyonuna kaydedildi.")
+        print(f"✅ {islenen_sayisi} kampanya başarıyla temizlendi ve 'temiz_kampanyalar' koleksiyonuna kaydedildi.")
 
     except PyMongoError as err:
         print(f"❌ MongoDB İşlem Hatası: {err}")
