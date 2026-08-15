@@ -9,6 +9,18 @@ LANGCHAIN_OLLAMA_BASE_URL = os.getenv("LANGCHAIN_OLLAMA_BASE_URL", "http://smart
 llm_json = ChatOllama(model="qwen3.5:4b", temperature=0, base_url=LANGCHAIN_OLLAMA_BASE_URL)
 llm_text = ChatOllama(model="qwen3.5:4b", temperature=0.1, base_url=LANGCHAIN_OLLAMA_BASE_URL)
 
+# 🚀 YENİ TOKAT: OTONOM DÜŞÜNME KARAR MOTORU
+thinking_decider_prompt = PromptTemplate(
+    template="""Sen zeki bir analiz motorusun. Kullanıcının sorusunu analiz et. Soru finansal hesaplama, banka karşılaştırması, detaylı veri analizi veya karmaşık bir mantıksal yorum gerektiriyorsa true dön. Basit bir selamlaşma, kısa bilgi veya direkt bir soru ise false dön.
+    
+    Soru: {question}
+    
+    SADECE JSON FORMATINDA DÖN: {{"thinking": true}} VEYA {{"thinking": false}}
+    """,
+    input_variables=["question"]
+)
+thinking_decider_chain = thinking_decider_prompt | llm_json | StrOutputParser()
+
 router_prompt = PromptTemplate(
     template="""Soruyu analiz et ve JSON dön: {{"intent": "CUSTOMER veya ANALYST veya OUT_OF_BOUNDS", "reason": "neden"}}
     1. OUT_OF_BOUNDS: Bankacılık dışı konular.
