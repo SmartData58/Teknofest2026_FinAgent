@@ -1,22 +1,24 @@
+import os
+import sys
+
+# 1. ÖNCE Proje Kök Dizinini (Teknofest2026_FinAgent) yola ekliyoruz
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", "..", ".."))
+
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+# 2. IMPORT İŞLEMİNİ YOL EKLENDİKTEN SONRA YAPIYORUZ
 from backend.nlp.extraction.hybrid import hibrit_cikar
 
-ornek_metin = """
-Sayın Müşterimiz, 
-Girişimcilere özel lansman kampanyamız kapsamında 100000 TL limitli finansman 
-kullanım imkanı sunulmaktadır. Geri ödemelerinizi 24 ay taksitle gerçekleştirebilirsiniz. 
-Ayrıca bu aya özel kâr oranımız % 1,49 olarak uygulanacaktır.
-"""
-
-def test_calistir():
-    print("\n--- HİBRİT NLP ÇIKARIM TESTİ ---")
-    sonuclar = hibrit_cikar("isbankasi", ornek_metin)
-
-    print("\n--- ÇIKARILAN SONUÇLAR ---")
-    if not sonuclar:
-        print("Hiçbir alan çıkarılamadı.")
-    else:
-        for alan, bulgu in sonuclar.items():
-            print(f"📌 {alan}: {bulgu.deger} (Yöntem: {bulgu.yontem}, Güven: {bulgu.guven})")
+test_metin = "100.000 TL kredide 12 ay vade ve %0.99 faiz imkanı."
+test_baslik = "Kredi Kampanyası"
 
 if __name__ == "__main__":
-    test_calistir()
+    try:
+        print("LLM / Hibrit çıkarım testi başlatılıyor...")
+        sonuc = hibrit_cikar(test_baslik, test_metin)
+        print("\n--- ÇIKARIM SONUCU ---")
+        print(sonuc)
+    except Exception as e:
+        print(f"\n❌ Hata Oluştu: {e}")

@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pymongo import MongoClient, UpdateOne
 from pymongo.errors import PyMongoError
 
@@ -20,11 +20,43 @@ MONGO_URI = os.getenv("MONGO_URI", DEFAULT_URI)
 GEÇERLİ_YÖNTEMLER = {"regex", "ner", "berturk_classifier", "llm"}
 
 
+def prepare_for_mongo(data):
+    """
+    Sözlük, liste veya nesne içindeki tüm `datetime.date` değerlerini
+    PyMongo'nun BSON olarak kabul edeceği ISO metnine ('YYYY-MM-DD') dönüştürür.
+    """
+    if isinstance(data, dict):
+        return {k: prepare_for_mongo(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [prepare_for_mongo(i) for i in data]
+    elif isinstance(data, date) and not isinstance(data, datetime):
+        return data.isoformat()
+    return data
+
+
+def _safe_float(val, default=None):
+    """Metin veya Sayısal veriyi güvenli bir şekilde float'a dönüştürür."""
+    if val is None:
+        return default
+    try:
+        if isinstance(val, str):
+            val = val.replace("%", "").replace("TL", "").replace(".", "").replace(",", ".").strip()
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_int(val, default=None):
+    """Metin veya Sayısal veriyi güvenli bir şekilde int'e dönüştürür."""
+    f_val = _safe_float(val)
+    return int(f_val) if f_val is not None else default
+
+
 def _get_val(bulgular: dict, key: str, default=None):
     """
     AlanBulgusu nesnesinden veya dict yapısından ham değeri (deger) güvenli şekilde çeker.
     """
-    if key not in bulgular or bulgular[key] is None:
+    if not isinstance(bulgular, dict) or key not in bulgular or bulgular[key] is None:
         return default
     
     obj = bulgular[key]
@@ -39,218 +71,133 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
     """
     Kural + LLM hibrit çıkarım sonuçlarını hedef Türkçe Altın Kampanya Şeması'na dönüştürür.
     """
-    simdi = datetime.now(timezone.utc).isoformat()
-    
-    # --- 1. ÇIKARILAN HAM DEĞERLERİ AL ---
-    kar_orani = _get_val(bulgular, "kar_orani") or _get_val(bulgular, "faiz_orani")
-    taksit = _get_val(bulgular, "taksit_sayisi") or _get_val(bulgular, "vade")
-    finansman_tutari = _get_val(bulgular, "finansman_tutari") or _get_val(bulgular, "maks_tutar")
-    
-    odul_tutari = _get_val(bulgular, "odul_tutari") or _get_val(bulgular, "nakit_iade")
-    indirim_orani = _get_val(bulgular, "indirim_orani")
-    puan_tutari = _get_val(bulgular, "puan_tutari")
-    min_harcama = _get_val(bulgular, "minimum_harcama")
+    k_kar_paylasim_orani = _get_val(bulgular, "k_kar_paylasim_orani")
+    finansman_tutari = _get_val(bulgular, "finansman_tutari")
+    taksit = _get_val(bulgular, "taksit")
+    odul_tutari_tl = _get_val(bulgular, "odul_tutari_tl")
+    indirim_orani_yuzde = _get_val(bulgular, "indirim_orani_yuzde")
+    puan_kazanc = _get_val(bulgular, "puan_kazan") or _get_val(bulgular, "paun_kazanc")
+    min_harcama_tl = _get_val(bulgular, "min_harcama_tl")
 
-    baslik = doc.get("baslik", "")
-    metin = doc.get("detay") or doc.get("icerik") or doc.get("metin") or ""
+    banka_kodu = doc.get("banka_kodu", "genel")
+    raw_id = str(doc["_id"])
 
-    # --- 2. HEDEF TÜRKÇE DOKÜMAN YAPISI ---
     structured_doc = {
-        # Unique Kampanya Kimliği (Örn: camp_albaraka_60c72b2f9b1e)
-        "_id": f"camp_{doc.get('banka_kodu', 'genel')}_{doc['_id']}",
-        
-        # Temizlenmiş verinin MongoDB ID'si
-        "temizlenmis_kampanya_id": str(doc["_id"]),
-        
-        # Bankanın Sistem Kodu (Örn: 'albaraka', 'garanti')
-        "banka_kodu": doc.get("banka_kodu"),
-        
-        # Bankanın Resmi/Görünür Adı (Örn: 'Albaraka Türk', 'Garanti BBVA')
-        "banka_adi": doc.get("banka_adi", doc.get("banka_kodu", "").upper()),
-        
-        # Kampanyanın Başlığı
-        "baslik": baslik,
-        
-        # Kampanyanın Orijinal Web Adresi (URL)
-        "kaynak_url": doc.get("url"),
-        
-        # Kampanyanın Metin İçeriği / Detayı
-        "temiz_metin": metin,
-        
-        # 🏷️ KATEGORİZASYON VE DURUM
-        # Kampanyanın Ana Kategorisi (Örn: 'Finansman', 'Kredi Kartı', 'Mevduat/Katılma')
-        "ana_kategori": _get_val(bulgular, "ana_kategori", "genel"),
-        
-        # Kampanyanın Alt Kategorisi (Örn: 'Otomotiv', 'Gıda/Restoran', 'Eğitim')
-        "alt_kategori": _get_val(bulgular, "alt_kategori", "diğer"),
-        
-        # Kampanyanın Sunduğu Ana Özellik Türü (Örn: 'Taksit', 'Puan/Ödül', 'İndirim')
-        "ozellik_turu": _get_val(bulgular, "ozellik_turu"),
-        
-        # Kampanyanın Yayında Olma Durumu ('aktif', 'pasif', 'suresi_doldu')
-        "kampanya_durumu": "aktif",
-        
-        # 📅 TARİH VE SÜRE BİLGİLERİ
-        # Kampanya Başlangıç Tarihi (ISO Formatında String / Date)
-        "baslangic_tarihi": doc.get("baslangic_tarihi"),
-        
-        # Kampanya Bitiş Tarihi (ISO Formatında String / Date)
-        "bitis_tarihi": doc.get("bitis_tarihi"),
-        
-        # Kampanyanın Toplam Süresi (Gün cinsinden Sayı)
-        "sure_gun_sayisi": doc.get("sure_gun"),
-        
-        # Kampanyadan Yararlanabilecek Kitle (Örn: ['yeni_musteriler', 'emekliler'])
-        "hedef_kitle": _get_val(bulgular, "hedef_kitle", ["tum_musteriler"]),
-        
-        # 🟢 FİNANSMAN / KREDİ BİLGİLERİ
-        "finansman_detayi": {
-            # Kar / Faiz Oranı (Yüzde cinsinden float, Örn: 1.99)
-            "kar_orani_yuzde": float(kar_orani) if kar_orani is not None else None,
-            
-            # Hesaplanan veya Belirtilen Kar / Faiz Tutarı (TL)
-            "kar_tutari_tl": _get_val(bulgular, "kar_tutari_tl"),
-            
-            # Sunulan Maksimum Vade / Taksit Sayısı (Ay cinsinden tamsayı)
-            "maks_vade_ay": int(taksit) if taksit is not None else None,
-            
-            # Çekilebilecek Maksimum Finansman / Kredi Tutarı (TL)
-            "maks_finansman_tutari_tl": float(finansman_tutari) if finansman_tutari is not None else None,
-            
-            # Dosya / Tahsis Ücreti Tutarı (TL)
-            "tahsis_ucreti_tl": _get_val(bulgular, "tahsis_ucreti"),
-            
-            # Masraflar ve Ücretler Hakkında Ek Açıklama Metni
-            "masraf_aciklamasi": _get_val(bulgular, "masraf_bilgisi", "Tahsis ücreti belirtilmemiştir."),
-            
-            # Vade Farksız / Kar Oransız Finansman mı? (True/False)
-            "sifir_kar_orani_mi": kar_orani == 0 or _get_val(bulgular, "vade_farksiz", False)
+        "_id": f"kamp_{banka_kodu}_{raw_id}",
+        "genel_bilgi": {
+            "banka_id": banka_kodu,
+            "temiz_kampanya_id": raw_id,
+            "kampanya_adi": doc.get("kampanya_adi"),
+            "kaynak_url": doc.get("url"),
+            "baslangic_tarihi": _get_val(bulgular, "baslangic_tarihi"),
+            "bitis_tarihi": _get_val(bulgular, "bitis_tarihi"),
+            "sure_gun": doc.get("sure_gun"),
+            "is_active": "aktif",
+            "hedef_kitle": _get_val(bulgular, "hedef_kitle", ["tum_musteriler"]),
+            "kampanya_turu": _get_val(bulgular, "kampanya_turu"),
+            "alt_kategori": _get_val(bulgular, "alt_kategori")
         },
-        
-        # 🎁 ÖDÜL, PROMOSYON VE KAZANÇ BİLGİLERİ
-        "promosyon_detayi": {
-            # Kazanılacak Nakit / Ödül Tutarı (TL)
-            "odul_tutari_tl": float(odul_tutari) if odul_tutari is not None else None,
-            
-            # Ödül Tutarı Aralığı (Örn: '100 TL - 500 TL arası')
-            "odul_araligi_metni": _get_val(bulgular, "odul_araligi"),
-            
-            # Cash-Back / Nakit İade Yüzdesi (Float)
-            "nakit_iade_orani_yuzde": float(_get_val(bulgular, "cashback_orani")) if _get_val(bulgular, "cashback_orani") else None,
-            
-            # Uygulanan İndirim Yüzdesi (Float, Örn: 20.0)
-            "indirim_orani_yuzde": float(indirim_orani) if indirim_orani is not None else None,
-            
-            # Kazanılacak Puan / Chip-Para / Worldpuan Miktarı (Float)
-            "puan_kazanci": float(puan_tutari) if puan_tutari is not None else None,
-            
-            # Ödüle Hak Kazanmak İçin Gereken Minimum Harcama Tutarı (TL)
-            "minimum_harcama_tutari_tl": float(min_harcama) if min_harcama is not None else None,
-            
-            # Müşteri Başına Kazanılabilecek Azami Ödül Tutarı (TL)
-            "musteri_basi_maks_odul_tl": _get_val(bulgular, "musteri_basi_odul"),
-            
-            # Kampanya Kapsamında Dağıtılacak Toplam Ödül Bütçesi (TL)
-            "toplam_kampanya_odul_butcesi_tl": _get_val(bulgular, "maks_toplam_odul")
+        "finansman_detay": {
+            "k_kar_paylasım_orani": _safe_float(k_kar_paylasim_orani),
+            "k_vade_ay": _safe_int(taksit),
+            "k_finansman_tutari": _safe_float(finansman_tutari),
+            "taksit": taksit,
+            "hesaplanan_kar_tl": doc.get("hesaplanan_kar_tl"),
+            "k_tahsis_ucreti": _get_val(bulgular, "tahsis_ucreti"),
+            "k_masraf_bilgi": _get_val(bulgular, "masraf_bilgi", "Tahsis ücreti belirtilmemiştir.")
         },
-        
-        # 🚩 HIZLI ARAMA VE FİLTRELEME İŞARETLERİ (Boolean Flags)
-        "isaretler": {
-            # Arkadaşını Getir (Member Get Member) Kampanyası mı?
-            "mgm_kampanyasi_mi": _get_val(bulgular, "is_mgm", False),
-            
-            # Puan / Worldpuan / Chip-Para Kazandırıyor mu?
-            "puan_kazandiriyor_mu": puan_tutari is not None,
-            
-            # Doğrudan Fiyat/Sipariş İndirimi Var mı?
-            "indirim_var_mi": indirim_orani is not None,
-            
-            # Taksit İmkanı Var mı?
-            "taksit_var_mi": taksit is not None and taksit > 1,
-            
-            # Taksit Erteleme Fırsatı Var mı?
-            "taksit_erteleme_var_mi": _get_val(bulgular, "taksit_erteleme", False),
-            
-            # Kar/Faiz Oranı İçeriyor mu?
-            "kar_orani_iceriyor_mu": kar_orani is not None,
-            
-            # Herhangi Bir Ödül/Kazanım İçeriyor mu?
-            "odul_iceriyor_mu": odul_tutari is not None or puan_tutari is not None
+        "promosyon_detay": {
+            "odul_tutari_tl": _safe_float(odul_tutari_tl),
+            "odul_metni": _get_val(bulgular, "odul_metni"),
+            "nakit_iade_yuzde": _safe_float(_get_val(bulgular, "cashback_orani")),
+            "indirim_orani_yuzde": _safe_float(indirim_orani_yuzde),
+            "puan_kazanc": _safe_float(puan_kazanc),
+            "min_harcama_tl": _safe_float(min_harcama_tl),
+            "kazanc_metin": _get_val(bulgular, "kazanc_metin")
         },
-        
-        # 🤖 YAPAY ZEKA VE SİSTEM MİMARİSİ METAVERİLERİ
-        "nlp_metaverileri": {
-            # Kullanılan Algoritma/Model Sürümü
-            "islem_hattı_surumu": "v1.0",
-            
-            # Bilgi Çıkarım Metodu ('hybrid_rule_llm', 'rule_based', 'llm_only')
-            "siniflandirma_metodu": "hybrid_rule_llm",
-            
-            # Çıkarımın Tahmini Doğruluk/Güven Skoru (0.00 - 1.00 arası)
-            "guven_skoru": 0.90 if kar_orani or odul_tutari else 0.70
-        },
-        
-        # Kaydın Veritabanına İlk Eklendiği Tarih
-        "olusturulma_tarihi": simdi,
-        
-        # Kaydın Veritabanında Son Güncellendiği Tarih
-        "guncellenme_tarihi": simdi
+        "mgm_detay": {
+            "kisi_basi_kazanc": _get_val(bulgular, "kisi_basi_kazanc"),
+            "mgm_limit_tl": _get_val(bulgular, "mgm_limit_tl")
+        }
     }
-    
     return structured_doc
+
+
+def finansman_semasina_donustur(doc: dict, bulgular: dict) -> dict:
+    """
+    Finansman koleksiyonu için istenen verileri hazırlar.
+    """
+    simdi = datetime.now(timezone.utc).isoformat()
+    banka_kodu = doc.get("banka_kodu", "genel")
+    raw_id = str(doc["_id"])
+
+    return {
+        "_id": f"fin_{banka_kodu}_{raw_id}",
+        "banka_id": banka_kodu,
+        "alt_kategori": _get_val(bulgular, "alt_kategori"),
+        "hedef_kitle": _get_val(bulgular, "hedef_kitle", ["tum_musteriler"]),
+        "sfinansman_kar_orani": _safe_float(_get_val(bulgular, "finansman_kar_orani")),
+        "maks_vade_ay": _safe_int(_get_val(bulgular, "max_vade_ay")),
+        "min_finansman_tutari": _safe_float(_get_val(bulgular, "min_fin_tutar")),
+        "maks_finansman_tutari": _safe_float(_get_val(bulgular, "max_fin_tutar")),
+        "standart_masraf_tutari": _safe_float(_get_val(bulgular, "masraf_tl")),
+        "standart_masraf_bilgisi": _get_val(bulgular, "masraf_bilgisi"),
+        "durum": "aktif",
+        "olusturma_tarihi": simdi
+    }
 
 
 def _kanit_dokumani_hazirla(doc: dict, alan_adi: str, bulgu_obj) -> dict | None:
     """
-    AlanBulgusu nesnesinden 'extracted_fields' koleksiyonu için kanıt kaydı oluşturur.
+    AlanBulgusu nesnesinden 'cıkarılan_alanlar' koleksiyonu için kanıt kaydı oluşturur.
     """
     if bulgu_obj is None:
         return None
 
     if hasattr(bulgu_obj, "deger"):
-        norm_val = bulgu_obj.deger
-        raw_val = getattr(bulgu_obj, "ham_metin", None) or str(norm_val)
+        norm_deger = bulgu_obj.deger
+        ham_değer = getattr(bulgu_obj, "ham_metin", None) or str(norm_deger)
         unit_val = getattr(bulgu_obj, "birim", "metin")
-        method_val = getattr(bulgu_obj, "yontem", "regex")
-        conf_val = getattr(bulgu_obj, "guven", 1.0)
-        evidence_val = getattr(bulgu_obj, "kanit_metni", "") or doc.get("baslik", "")
+        metot = getattr(bulgu_obj, "yontem", "regex")
+        guven_score = getattr(bulgu_obj, "guven", 1.0)
+        kanıt_metin = getattr(bulgu_obj, "kanit_metni", "") or doc.get("kampanya_adi", "")
         start_pos = getattr(bulgu_obj, "baslangic_konum", None)
         end_pos = getattr(bulgu_obj, "bitis_konum", None)
     elif isinstance(bulgu_obj, dict):
-        norm_val = bulgu_obj.get("deger")
-        raw_val = bulgu_obj.get("ham_metin", str(norm_val))
+        norm_deger = bulgu_obj.get("deger")
+        ham_değer = bulgu_obj.get("ham_metin", str(norm_deger))
         unit_val = bulgu_obj.get("birim", "metin")
-        method_val = bulgu_obj.get("yontem", "llm")
-        conf_val = bulgu_obj.get("guven", 0.85)
-        evidence_val = bulgu_obj.get("kanit_metni", "")
+        metot = bulgu_obj.get("yontem", "llm")
+        guven_score = bulgu_obj.get("guven", 0.85)
+        kanıt_metin = bulgu_obj.get("kanit_metni", "") or doc.get("kampanya_adi", "")
         start_pos = bulgu_obj.get("baslangic_konum")
         end_pos = bulgu_obj.get("bitis_konum")
     else:
         return None
 
-    if norm_val is None:
+    if norm_deger is None:
         return None
 
-    if method_val not in GEÇERLİ_YÖNTEMLER:
-        method_val = "regex"
+    if metot not in GEÇERLİ_YÖNTEMLER:
+        metot = "regex"
 
     simdi = datetime.now(timezone.utc).isoformat()
-    bank_id = doc.get("banka_kodu", "genel")
-    campaign_id = f"camp_{bank_id}_{doc['_id']}"
+    banka_id = doc.get("banka_kodu", "genel")
     raw_campaign_id = str(doc["_id"])
+    kampanya_id = f"kamp_{banka_id}_{raw_campaign_id}"
 
     return {
-        "_id": f"field_{doc['_id']}_{alan_adi}",
-        "campaign_id": campaign_id,
+        "_id": f"field_{raw_campaign_id}_{alan_adi}",
+        "kampanya_id": kampanya_id,
         "raw_campaign_id": raw_campaign_id,
-        "bank_id": bank_id,
-        "field_name": alan_adi,
-        "raw_value": raw_val,
-        "normalized_value": norm_val,
+        "banka_id": banka_id,
+        "alan_adi": alan_adi,
+        "ham_değer": ham_değer,
+        "norm_deger": norm_deger,
         "unit": unit_val,
-        "method": method_val,
-        "confidence_score": float(conf_val),
-        "evidence_text": evidence_val,
+        "metod": metot,
+        "guven_score": float(guven_score) if guven_score is not None else 0.0,
+        "kanıt_metin": kanıt_metin,
         "start_char": start_pos,
         "end_char": end_pos,
         "created_at": simdi
@@ -259,54 +206,69 @@ def _kanit_dokumani_hazirla(doc: dict, alan_adi: str, bulgu_obj) -> dict | None:
 
 def temiz_verilerden_bilgi_cikar() -> None:
     """
-    MongoDB üzerindeki işlenmemiş kampanyaları okur; Altın Şemaya (structured_campaigns)
-    ve Jüri Kanıt Şemasına (extracted_fields) dönüştürerek kaydeder.
+    MongoDB üzerindeki işlenmemiş kampanyaları okur;
+    1) islenmis_kampanyalar
+    2) finansman
+    3) cıkarılan_alanlar
+    koleksiyonlarına dönüştürerek kaydeder.
     """
     client = None
     try:
         client = MongoClient(MONGO_URI)
         db = client[MONGO_DB_NAME]
 
-        clean_col = db["processed_campaigns"]
-        structured_col = db["structured_campaigns"]
-        fields_col = db["extracted_fields"]
+        clean_col = db["temiz_kampanyalar"]
+        structured_col = db["islenmis_kampanyalar"]
+        finansman_col = db["finansman"]
+        fields_col = db["cıkarılan_alanlar"]
 
         sorgu = {"$or": [{"is_extracted": False}, {"is_extracted": {"$exists": False}}]}
         temiz_kampanyalar = list(clean_col.find(sorgu))
 
         if not temiz_kampanyalar:
-            print("ℹ️ Bilgi çıkarımı yapılacak yeni temiz kampanya bulunamadı.")
+            print(" Bilgi çıkarımı yapılacak yeni temiz kampanya bulunamadı.")
             return
 
-        print(f"🤖 Toplam {len(temiz_kampanyalar)} kampanya Hedef Şemaya Dönüştürülüyor...")
+        print(f" Toplam {len(temiz_kampanyalar)} kampanya Hedef Şemalara Dönüştürülüyor...")
 
         islenen_sayisi = 0
         toplam_kanit_sayisi = 0
 
         for doc in temiz_kampanyalar:
-            baslik = doc.get("baslik", "")
-            metin = doc.get("detay") or doc.get("icerik") or doc.get("metin") or ""
+            baslik = doc.get("kampanya_adi", "")
+            metin = doc.get("ham_metin", "")
 
             # 1. Kural + LLM Hibrit Çıkarımı Yap
-            cikarim_sonucu = hibrit_cikar(baslik, metin)
+            cikarim_sonucu = hibrit_cikar(baslik, metin) or {}
 
-            # 2. Altın Şemaya Dönüştür
-            structured_doc = semaya_donustur(doc, cikarim_sonucu)
-
-            # 3. 'structured_campaigns' Koleksiyonuna Yaz
+            # 2. Altın Kampanya Şemasına Dönüştür ve Kaydet (1. Koleksiyon)
+            structured_doc = prepare_for_mongo(semaya_donustur(doc, cikarim_sonucu))
             structured_col.update_one(
                 {"_id": structured_doc["_id"]},
                 {"$set": structured_doc},
                 upsert=True
             )
 
-            # 4. Jüri Kanıt Şemasını (extracted_fields) Oluştur ve Kaydet
+            # 3. Finansman Şemasına Dönüştür ve Kaydet (2. Koleksiyon)
+            finansman_doc = prepare_for_mongo(finansman_semasina_donustur(doc, cikarim_sonucu))
+            finansman_col.update_one(
+                {"_id": finansman_doc["_id"]},
+                {"$set": finansman_doc},
+                upsert=True
+            )
+
+            # 4. Jüri Kanıt Şemasını (cıkarılan_alanlar) Oluştur ve Kaydet (3. Koleksiyon)
             kanit_islemleri = []
             for alan_adi, bulgu in cikarim_sonucu.items():
                 kanit_doc = _kanit_dokumani_hazirla(doc, alan_adi, bulgu)
                 if kanit_doc:
+                    kanit_doc = prepare_for_mongo(kanit_doc)
                     kanit_islemleri.append(
-                        UpdateOne({"_id": kanit_doc["_id"]}, {"$set": kanit_doc}, upsert=True)
+                        UpdateOne(
+                            {"_id": kanit_doc["_id"]},
+                            {"$set": kanit_doc},
+                            upsert=True
+                        )
                     )
 
             if kanit_islemleri:
@@ -324,8 +286,9 @@ def temiz_verilerden_bilgi_cikar() -> None:
             print(f"   ✅ [{doc.get('banka_kodu', '').upper()}] Dönüştürüldü: {baslik[:40]}...")
 
         print(f"\n🎉 İşlem Tamamlandı!")
-        print(f"   • {islenen_sayisi} kampanya 'structured_campaigns' koleksiyonuna kaydedildi.")
-        print(f"   • {toplam_kanit_sayisi} alan kanıtı 'extracted_fields' koleksiyonuna kaydedildi.")
+        print(f"   • {islenen_sayisi} kampanya 'islenmis_kampanyalar' koleksiyonuna kaydedildi.")
+        print(f"   • {islenen_sayisi} finansman kaydı 'finansman' koleksiyonuna kaydedildi.")
+        print(f"   • {toplam_kanit_sayisi} alan kanıtı 'cıkarılan_alanlar' koleksiyonuna kaydedildi.")
 
     except PyMongoError as err:
         print(f"❌ MongoDB Hata: {err}")

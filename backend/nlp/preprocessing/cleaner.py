@@ -152,10 +152,10 @@ def ham_verileri_temizle() -> None:
                 )
 
             # Ham verideki 'is_processed' durumunu True yap (Tekrar temizlenmesin)
-            raw_col.update_one(
-                {"_id": doc["_id"]},
-                {"$set": {"is_processed": True}}
-            )
+            #raw_col.update_one(
+                #{"_id": doc["_id"]},
+                #{"$set": {"is_processed": True}}
+            #)
 
             islenen_sayisi += 1
 
