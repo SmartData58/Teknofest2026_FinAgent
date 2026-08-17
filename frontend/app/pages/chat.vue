@@ -37,7 +37,6 @@ const openFileModal = (file) => {
   showSourceModal.value = true
 }
 
-// 🚀 TOKAT: Grafikteki Banka İsmine Tıklayınca Kaynağı Açan Fonksiyon!
 const openSourceFromChart = (sourceIndex, sources) => {
     if (!sourceIndex || !sources) return;
     const source = sources.find(s => s.index === sourceIndex);
@@ -410,7 +409,6 @@ const fileInput = ref(null)
 const selectedFiles = ref([])
 const maxFiles = 3
 const isDragging = ref(false)
-const loadingText = ref('İşlem başlatılıyor...')
 const useThinking = ref(false)
 
 const chatContainer = ref(null)
@@ -475,6 +473,18 @@ const scrollToBottom = () => {
       scrollAnchor.value.scrollIntoView({ behavior: 'auto', block: 'end' })
     }
   })
+}
+
+// 🚀 TOKAT: Gelen kelimeye göre animasyonu/ikonu otomatik seçen asistan
+const determineIcon = (text) => {
+    if (!text) return 'robot';
+    const lower = text.toLowerCase();
+    if (lower.includes('mongo') || lower.includes('veritabanı') || lower.includes('redis') || lower.includes('cache')) return 'database';
+    if (lower.includes('qdrant') || lower.includes('vektör') || lower.includes('taranıyor')) return 'search';
+    if (lower.includes('rerank') || lower.includes('optimize')) return 'sort';
+    if (lower.includes('dosya') || lower.includes('belge') || lower.includes('işlem')) return 'file';
+    if (lower.includes('düşünme')) return 'brain';
+    return 'robot';
 }
 
 const formatMessage = (text) => {
@@ -564,26 +574,84 @@ const sendMessage = async () => {
   formData.append('history', JSON.stringify(historyToSend))
   selectedFiles.value.forEach(file => formData.append('files', file))
 
+  // 🚀 TOKAT: Asistan balonunu SIFIRDAN ve anında oluşturup State objelerini atıyoruz
+  chatHistory.value.push({
+    role: 'assistant',
+    content: '',
+    sources: null,
+    chart: null,
+    statuses: [], 
+    currentStatus: null,
+    activeTimer: '0.0',
+    isStatusExpanded: false,
+    isFinished: false
+  });
+  const aIdx = chatHistory.value.length - 1;
+
   let activeTasks = [];
   if (selectedFiles.value.length > 0) activeTasks.push("Belgeler analiz ediliyor");
   if (historyToSend.length > 0) activeTasks.push("Sohbet geçmişi taranıyor");
   if (useThinking.value) activeTasks.push("Derin düşünme uygulanıyor");
-  
-  loadingText.value = activeTasks.length > 0 
-    ? activeTasks.join(" ➔ ") + "..." 
-    : "Yapay zeka yanıtı hazırlıyor...";
 
   userMessage.value = ''
-  
   isLoading.value = true 
   isStreaming.value = true
-
   clearFiles()
   scrollToBottom()
 
+  // Saniye Sayacı (Real-time timer)
+  let statusInterval = null;
+  const startTimer = () => {
+      clearInterval(statusInterval);
+      chatHistory.value[aIdx].activeTimer = '0.0';
+      statusInterval = setInterval(() => {
+          const cur = chatHistory.value[aIdx].currentStatus;
+          if (cur) {
+              chatHistory.value[aIdx].activeTimer = ((performance.now() - cur.startTime) / 1000).toFixed(1);
+          }
+      }, 100);
+  };
+
+  const updateStatus = (statusText) => {
+      const now = performance.now();
+      const cur = chatHistory.value[aIdx].currentStatus;
+      if (cur) { // Önceki durumu kapat ve listeye ekle
+          cur.endTime = now;
+          cur.duration = ((now - cur.startTime) / 1000).toFixed(1);
+          chatHistory.value[aIdx].statuses.push({...cur});
+      }
+      // Yeni durumu başlat
+      chatHistory.value[aIdx].currentStatus = {
+          text: statusText,
+          startTime: now,
+          endTime: null,
+          duration: '0.0',
+          icon: determineIcon(statusText)
+      };
+      startTimer();
+  };
+
+  const finishStatus = () => {
+      const now = performance.now();
+      const cur = chatHistory.value[aIdx].currentStatus;
+      if (cur) {
+          cur.endTime = now;
+          cur.duration = ((now - cur.startTime) / 1000).toFixed(1);
+          chatHistory.value[aIdx].statuses.push({...cur});
+          chatHistory.value[aIdx].currentStatus = null;
+      }
+      chatHistory.value[aIdx].isFinished = true;
+      clearInterval(statusInterval);
+  };
+
+  // İlk tetiklemeyi yapıyoruz
+  if (activeTasks.length > 0) {
+      updateStatus(activeTasks.join(" ➔ ") + " başlatılıyor...");
+  } else {
+      updateStatus("İşlem başlatılıyor...");
+  }
+
   let buffer = '';
-  let assistantBubbleCreated = false;
-  let assistantIndex = -1;
 
   try {
     const response = await fetch('http://localhost:8003/api/chat', {
@@ -605,7 +673,7 @@ const sendMessage = async () => {
       let statusRegex = /\[STATUS\]([\s\S]*?)\[\/STATUS\]/g;
       let match;
       while ((match = statusRegex.exec(buffer)) !== null) {
-          loadingText.value = match[1]; 
+          updateStatus(match[1]); // Her yeni status için güncelle
       }
       buffer = buffer.replace(/\[STATUS\][\s\S]*?\[\/STATUS\]/g, '');
 
@@ -613,16 +681,8 @@ const sendMessage = async () => {
       let matchSource;
       while ((matchSource = sourceRegex.exec(buffer)) !== null) {
           try {
-              const parsedSources = JSON.parse(matchSource[1]);
-              if (!assistantBubbleCreated) {
-                  chatHistory.value.push({ role: 'assistant', content: '', sources: parsedSources })
-                  assistantIndex = chatHistory.value.length - 1
-                  assistantBubbleCreated = true
-                  isLoading.value = false
-              } else {
-                  chatHistory.value[assistantIndex].sources = parsedSources;
-                  scrollToBottom()
-              }
+              chatHistory.value[aIdx].sources = JSON.parse(matchSource[1]);
+              scrollToBottom()
           } catch(e) { console.error("Kaynak parse hatası", e) }
       }
       buffer = buffer.replace(/\[SOURCES\][\s\S]*?\[\/SOURCES\]/g, '');
@@ -631,16 +691,8 @@ const sendMessage = async () => {
       let matchChart;
       while ((matchChart = chartRegex.exec(buffer)) !== null) {
           try {
-              const parsedChart = JSON.parse(matchChart[1]);
-              if (!assistantBubbleCreated) {
-                  chatHistory.value.push({ role: 'assistant', content: '', chart: parsedChart })
-                  assistantIndex = chatHistory.value.length - 1
-                  assistantBubbleCreated = true
-                  isLoading.value = false
-              } else {
-                  chatHistory.value[assistantIndex].chart = parsedChart;
-                  scrollToBottom()
-              }
+              chatHistory.value[aIdx].chart = JSON.parse(matchChart[1]);
+              scrollToBottom()
           } catch(e) { console.error("Grafik Parse Hatası", e) }
       }
       buffer = buffer.replace(/\[CHART\][\s\S]*?\[\/CHART\]/g, '');
@@ -661,19 +713,16 @@ const sendMessage = async () => {
       }
       
       const possibleTags = ["[", "[S", "[ST", "[STA", "[STAT", "[STATUS", "[STATUS]", "[C", "[CH", "[CHA", "[CHAR", "[CHART", "[CHART]"];
-      if (possibleTags.some(tag => buffer.endsWith(tag)) && !assistantBubbleCreated) {
+      if (possibleTags.some(tag => buffer.endsWith(tag))) {
           continue; 
       }
 
-      if (buffer.trim().length > 0 && !assistantBubbleCreated) {
-        chatHistory.value.push({ role: 'assistant', content: '' })
-        assistantIndex = chatHistory.value.length - 1
-        isLoading.value = false 
-        assistantBubbleCreated = true
-      }
-
-      if (assistantBubbleCreated && buffer.length > 0) {
-        chatHistory.value[assistantIndex].content += buffer
+      if (buffer.length > 0) {
+        // İçerik akmaya başladığı an, loading akordeonunu yeşil tike geçirip sayacı bitir
+        if (!chatHistory.value[aIdx].isFinished) {
+            finishStatus();
+        }
+        chatHistory.value[aIdx].content += buffer
         buffer = ''
         scrollToBottom()
       }
@@ -681,13 +730,9 @@ const sendMessage = async () => {
 
   } catch (error) {
     console.error('Akış sırasında hata:', error)
-    if (!assistantBubbleCreated) {
-       chatHistory.value.push({ role: 'assistant', content: '' })
-       assistantIndex = chatHistory.value.length - 1
-       isLoading.value = false
-    }
-    chatHistory.value[assistantIndex].content = 'Üzgünüm, sunucuyla iletişim kurulamadı.'
+    chatHistory.value[aIdx].content = 'Üzgünüm, sunucuyla iletişim kurulamadı.'
   } finally {
+    finishStatus(); // Hata olsa bile kapat
     isLoading.value = false
     isStreaming.value = false 
     scrollToBottom()
@@ -796,6 +841,56 @@ const sendMessage = async () => {
                   </div>
                   
                   <div class="flex-1 overflow-x-auto max-w-full">
+
+                    <!-- 🚀 YENİ SİSTEM: DİNAMİK MİNİ ANİMASYONLU AŞAMA (HISTORY) AKORDEONU -->
+                    <div v-if="msg.statuses?.length > 0 || msg.currentStatus" class="mb-4 max-w-lg">
+                        <div class="bg-white dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700/60 rounded-2xl shadow-sm w-full overflow-hidden transition-all duration-300">
+                            
+                            <!-- Geçmiş Aşamalar -->
+                            <div v-show="msg.isStatusExpanded && msg.statuses?.length > 0" class="flex flex-col border-b border-neutral-100 dark:border-neutral-700/50 bg-neutral-50/50 dark:bg-neutral-900/30 max-h-48 overflow-y-auto custom-scrollbar">
+                                <div v-for="(stat, idx) in msg.statuses" :key="idx" class="flex items-center justify-between px-4 py-2 border-b border-neutral-100 dark:border-neutral-700/50 last:border-0">
+                                    <div class="flex items-center gap-3 text-neutral-500 dark:text-neutral-400">
+                                        <svg class="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                        <span class="text-[13px]">{{ stat.text }}</span>
+                                    </div>
+                                    <span class="text-[11px] font-mono text-neutral-400">{{ stat.duration }}s</span>
+                                </div>
+                            </div>
+
+                            <!-- Başlık / Şu Anki Durum -->
+                            <div class="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700/40 transition-colors" @click="msg.isStatusExpanded = !msg.isStatusExpanded">
+                                
+                                <!-- Eğer işlem devam ediyorsa, tipine göre küçük animasyon göster -->
+                                <div class="flex items-center gap-3 flex-1" v-if="msg.currentStatus">
+                                    <div class="w-5 h-5 flex items-center justify-center shrink-0">
+                                        <svg v-if="msg.currentStatus.icon === 'database'" class="w-4 h-4 text-blue-500 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+                                        <svg v-else-if="msg.currentStatus.icon === 'search'" class="w-4 h-4 text-purple-500 animate-[spin_3s_linear_infinite]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="11" cy="11" r="8" stroke-width="2"></circle><line x1="21" y1="21" x2="16.65" y2="16.65" stroke-width="2"></line></svg>
+                                        <svg v-else-if="msg.currentStatus.icon === 'sort'" class="w-4 h-4 text-amber-500 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path></svg>
+                                        <svg v-else-if="msg.currentStatus.icon === 'file'" class="w-4 h-4 text-emerald-500 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                        <svg v-else-if="msg.currentStatus.icon === 'brain'" class="w-4 h-4 text-pink-500 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                                        <DotMatrix v-else :size="2" :dot-size="4" :gap="2" color="#3b82f6" :speed="1.2" />
+                                    </div>
+                                    <span class="text-[13px] font-medium text-neutral-800 dark:text-neutral-200 truncate">{{ msg.currentStatus.text }}</span>
+                                </div>
+                                
+                                <!-- Eğer işlem tamamen bittiyse (Yazı gelmeye başladıysa) -->
+                                <div class="flex items-center gap-3 flex-1" v-else-if="msg.isFinished && msg.statuses?.length > 0">
+                                    <svg class="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    <span class="text-[13px] font-medium text-neutral-800 dark:text-neutral-200">İşlem tamamlandı ({{ (msg.statuses.reduce((acc, s) => acc + parseFloat(s.duration), 0)).toFixed(1) }}s)</span>
+                                </div>
+
+                                <!-- Sağ taraf (Süre ve Akordeon Açma Tuşu) -->
+                                <div class="flex items-center gap-2 pl-3">
+                                    <span v-if="msg.currentStatus" class="text-[11px] font-mono text-neutral-400 w-6 text-right">{{ msg.activeTimer }}s</span>
+                                    
+                                    <!-- İstediğin özel dizayn: Koyu/Açık Tema hap tuş ve içindeki 'ok' tasarımı -->
+                                    <div class="bg-neutral-200 dark:bg-[#1e1e1e] border border-neutral-300 dark:border-[#2a2a2a] w-8 h-5 rounded-[10px] flex items-center justify-center transition-transform duration-300" :class="{'rotate-180': msg.isStatusExpanded}">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="text-neutral-500 dark:text-[#a3a3a3]" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     
                     <div 
                       :id="'message-content-' + index"
@@ -803,11 +898,8 @@ const sendMessage = async () => {
                       v-html="formatMessage(msg.content)">
                     </div>
 
-                    <!-- 🚀 TOKAT: HEM DOUGHNUT HEM BAR CHART AYNI ANDA RENDER EDİLİYOR -->
                     <Transition enter-active-class="transition-all duration-700 ease-out" enter-from-class="opacity-0 scale-95 translate-y-4" enter-to-class="opacity-100 scale-100 translate-y-0">
                         <div v-if="msg.chart" class="mt-6 bg-white dark:bg-neutral-800/90 rounded-2xl border border-neutral-200 dark:border-neutral-700 shadow-md overflow-hidden">
-                            
-                            <!-- KPI Kartları ve Başlık -->
                             <div class="p-5 sm:p-6 border-b border-neutral-100 dark:border-neutral-700/50 flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center bg-neutral-50/50 dark:bg-neutral-800/50">
                                 <div class="flex items-center gap-3">
                                     <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-600 text-white shadow-sm">
@@ -839,8 +931,6 @@ const sendMessage = async () => {
                             </div>
                             
                             <div class="p-5 sm:p-6 space-y-8">
-                                
-                                <!-- 1. YARI: DOUGHNUT GRAFİK VE LİSTE ÖZETİ -->
                                 <div class="flex flex-col sm:flex-row items-center justify-center gap-8 pb-8 border-b border-neutral-100 dark:border-neutral-700/50">
                                     <div class="relative w-48 h-48 sm:w-56 sm:h-56 shrink-0 flex items-center justify-center">
                                         <div class="absolute inset-0 rounded-full shadow-lg transition-transform duration-1000" :style="{ background: generateConicGradient(msg.chart) }"></div>
@@ -865,7 +955,6 @@ const sendMessage = async () => {
                                     </div>
                                 </div>
 
-                                <!-- 2. YARI: DETAYLI BAR GRAFİK (Kampanyalarla Birlikte) -->
                                 <div class="space-y-5 pt-2">
                                     <h4 class="text-sm font-bold text-neutral-800 dark:text-neutral-200 mb-4 flex items-center gap-2">
                                         <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
@@ -874,7 +963,6 @@ const sendMessage = async () => {
                                     <div v-for="(label, i) in msg.chart.labels" :key="'bar-'+i" class="relative group">
                                         <div class="flex justify-between items-end mb-2.5">
                                             <div class="flex flex-col">
-                                                <!-- Tıklanabilir Kaynak Linki -->
                                                 <button 
                                                     v-if="msg.chart.source_indices && msg.chart.source_indices[i]"
                                                     @click="openSourceFromChart(msg.chart.source_indices[i], msg.sources)"
@@ -903,10 +991,7 @@ const sendMessage = async () => {
                         </div>
                     </Transition>
                     
-                    <!-- 🚀 TOKAT: AÇILIR KAPANIR (ACCORDION) VE DÜZENLİ ALT BÖLÜM -->
                     <div class="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700/50 flex flex-col gap-4">
-                      
-                      <!-- Sağ Üstteki İndirme Butonları -->
                       <div class="flex items-center justify-end gap-2">
                         <button 
                           v-if="msg.content.trim() !== '' || msg.chart"
@@ -941,7 +1026,6 @@ const sendMessage = async () => {
                         </button>
                       </div>
 
-                      <!-- Şık Çekmece (Accordion) Şeklinde Kaynaklar -->
                       <div class="flex-1 w-full">
                         <Transition
                           enter-active-class="transition-all duration-500 delay-100 ease-out"
@@ -972,18 +1056,6 @@ const sendMessage = async () => {
                 </div>
               </div>
             </TransitionGroup>
-            
-            <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 translate-y-4" enter-to-class="opacity-100 translate-y-0" leave-active-class="transition-all duration-200 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
-              <div v-if="isLoading" class="flex gap-4 w-full py-4 items-center">
-                <div class="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-neutral-200 dark:bg-neutral-800 animate-pulse">
-                   <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                </div>
-                <div class="flex items-center gap-3 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-5 py-3 rounded-2xl shadow-sm">
-                  <DotMatrix :size="3" :dot-size="8" :gap="2" color="#00eaff" :speed="1.2" />
-                  <span class="text-sm text-neutral-500 font-medium animate-pulse">{{ loadingText }}</span>
-                </div>
-              </div>
-            </Transition>
             
             <div ref="scrollAnchor" class="h-4 w-full"></div>
           </div>

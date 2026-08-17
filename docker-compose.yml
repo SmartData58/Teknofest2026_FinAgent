@@ -100,7 +100,12 @@ services:
       timeout: 5s
       retries: 5
 
-
+  redis:
+    image: redis:alpine
+    container_name: smartdata-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
 
   qdrant:
     image: qdrant/qdrant:latest

@@ -13,7 +13,7 @@ accelerate
 PyMuPDF
 python-docx
 psutil
-torch==2.10.0
+torch>=2.5.0 --extra-index-url https://download.pytorch.org/whl/cu121
 torchvision==0.25.0
 transformers==4.57.1
 safetensors>=0.4.3
@@ -30,3 +30,4 @@ langchain-qdrant
 qdrant-client
 pydantic
 pymongo
+redis>=5.0.0
