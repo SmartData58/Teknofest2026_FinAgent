@@ -5,10 +5,15 @@ from datetime import datetime, timezone
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
+from backend.nlp.extraction.rule_based import tarihleri_cikar
+
+# Tarih ayrıştırma fonksiyonunuzu içe aktarın (extractor modülünüz neredeyse oradan çekin)
+# from extractor import tarihleri_cikar, AlanBulgusu
+
 # --- MONGODB BAĞLANTI AYARLARI ---
 MONGO_USER = os.getenv("MONGO_USER", "admin")
 MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "admin123")
-MONGO_HOST = os.getenv("MONGO_HOST", "mongodb")  # Docker içi varsayılan servis adı
+MONGO_HOST = os.getenv("MONGO_HOST", "mongodb")
 MONGO_PORT = os.getenv("MONGO_PORT", "27017")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "smartdata")
 
@@ -16,31 +21,11 @@ DEFAULT_URI = f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT
 MONGO_URI = os.getenv("MONGO_URI", DEFAULT_URI)
 
 
-# --- SİZİN TEMİZLİK KURALLARINIZ ---
+# --- TEMİZLİK KURALLARI VE DİĞER FONKSİYONLARINIZ (AYNEN KORUNUYOR) ---
 unicode_esleme = {
-    # Boşluklar
-    "\xa0": " ",       # Bölünmez boşluk
-    "\u200b": "",      # Genişliksiz/Gizli boşluk
-    "\u200c": "",      # Zero-width non-joiner
-    "\ufeff": "",      # BOM (Byte Order Mark)
-    
-    # Kesme ve Tırnak İşaretleri
-    "’": "'",          # Süslü kesme
-    "‘": "'",          # Süslü sol tek tırnak
-    "“": '"',          # Süslü sol çift tırnak
-    "”": '"',          # Süslü sağ çift tırnak
-    "„": '"',          # Alt çift tırnak
-    
-    # Tire ve Maddeler
-    "–": "-",          # En dash
-    "—": "-",          # Em dash
-    "•": "",           # Madde işareti silinir
-    "·": "",           # Orta nokta madde işareti silinir
-    ">": "",
-    "!": "",
-    
-    # Finansal / Genel Semboller
-    "₺": "TL",         # Tek formata getirme
+    "\xa0": " ", "\u200b": "", "\u200c": "", "\ufeff": "",
+    "’": "'", "‘": "'", "“": '"', "”": '"', "„": '"',
+    "–": "-", "—": "-", "•": "", "·": "", ">": "", "!": "", "₺": "TL",
 }
 
 _GURULTU = [
@@ -50,123 +35,84 @@ _GURULTU = [
     re.compile(r"Ana\s+Sayfa\s*/\s*Kampanyalar\s*/?", re.IGNORECASE),
 ]
 
+def emojileri_temizle(metin: str) -> str:
+    temiz_karakterler = [char if unicodedata.category(char) not in ("So", "Sk") else "" for char in metin]
+    return "".join(temiz_karakterler)
 
 def unicode_normalize(metin: str) -> str:
-    # Bozuk karakter birleşimlerini düzeltir
     metin = unicodedata.normalize("NFKC", metin)
     for kaynak, hedef in unicode_esleme.items():
         metin = metin.replace(kaynak, hedef)
     return metin      
 
-
 def bosluk_duzelt(metin: str) -> str:
-    # Ardışık birden fazla boşluğu teke indirir
     return " ".join(metin.split())
-
 
 def gurultu_temizle(metin: str) -> str:
     for desen in _GURULTU:
         metin = desen.sub(" ", metin)
     return metin
 
-
 def temizle(metin: str) -> str:
     if not metin or not isinstance(metin, str):
         return "" 
-        
-    # Bankanın standart çöplerini kesip atma giyotini
-    cop_belirtecleri = [
-        "Yukarıdaki QR kodunu", 
-        "Merhaba, ben Alba", 
-        "ÇEREZ AYDINLATMA METNİ"
-    ]
+    cop_belirtecleri = ["Yukarıdaki QR kodunu", "Merhaba, ben Alba", "ÇEREZ AYDINLATMA METNİ"]
     for belirtec in cop_belirtecleri:
         if belirtec in metin:
             metin = metin.split(belirtec)[0]
 
     metin = unicode_normalize(metin)
+    metin = emojileri_temizle(metin)
     metin = gurultu_temizle(metin)
     metin = bosluk_duzelt(metin)
-    
     return metin
 
 
-# Metadata, URL veya sistem alanı olduğu için temizlikten muaf tutulacak anahtarlar
+# =============================================================================
+# YENİ EKLENEN PIPELINE (TEMİZLİK + EXTRACTION + SÜRE HESABI) ADIMI
+# =============================================================================
 ATLATICAK_ANAHTARLAR = {
     "_id", "url", "link", "banka_kodu", "mulkiyet_turu", 
-    "buyukluk_kategorisi", "cekilis_tarihi", "is_processed"
+    "buyukluk_kategorisi", "cekilis_tarihi", "is_processed", "kampanya_turu", "kategori"
 }
 
-
-def ham_verileri_temizle() -> None:
+def kampanya_objesini_temizle(ham_veri: dict) -> dict:
     """
-    MongoDB 'kampanyalar' koleksiyonundaki işlenmemiş ham verileri okur,
-    temizler ve 'temiz_kampanyalar' koleksiyonuna kaydeder.
+    MongoDB'ye kaydedilmeden önceki ham veriyi alır:
+    1. Tüm metinsel alanları temizler (temizle fonksiyonu ile).
+    2. Siteden hazır kazınan 'tarih_metni' alanını öncelikli olarak tarar.
+    3. Eğer oradan tarih bulunamazsa temizlenmiş 'ham_metin' detayını tarar.
+    4. baslangic_tarihi, bitis_tarihi ve sure_gun alanlarını objeye ekler.
     """
-    client = None
-    try:
-        client = MongoClient(MONGO_URI)
-        db = client[MONGO_DB_NAME]
+    islenmis = ham_veri.copy()
 
-        raw_col = db["ham_kampanyalar"]
-        clean_col = db["temiz_kampanyalar"]
+    # 1. Metinsel Alanları Temizle
+    for anahtar, deger in islenmis.items():
+        if anahtar not in ATLATICAK_ANAHTARLAR and isinstance(deger, str):
+            islenmis[anahtar] = temizle(deger)
 
-        # Yalnızca is_processed: False veya is_processed alanı olmayan kayıtları getir
-        sorgu = {"$or": [{"is_processed": False}, {"is_processed": {"$exists": False}}]}
-        ham_kampanyalar = list(raw_col.find(sorgu))
+    # 2. Tarih ve Süre Tespiti (Yedekli Mantık)
+    tarih_metni = islenmis.get("tarih_metni", "")
+    ham_metin = islenmis.get("ham_metin", "")
 
-        if not ham_kampanyalar:
-            print(" Temizlenecek yeni ham kampanya bulunamadı.")
-            return
+    tarih_bulgulari = {}
 
-        print(f" Toplam {len(ham_kampanyalar)} adet işlenmemiş ham kampanya temizleniyor...")
+    # A Önceliği: Liste sayfasından kazınan kısa 'tarih_metni'
+    if tarih_metni and str(tarih_metni).strip().lower() != "none":
+        tarih_bulgulari = tarihleri_cikar(tarih_metni)
 
-        islenen_sayisi = 0
-        for doc in ham_kampanyalar:
-            
-            clean_doc = doc.copy()
-            clean_doc.pop("is_processed", None)
+    # B Önceliği: Kısa metinden sonuç alınamadıysa detay metnini tara
+    if not tarih_bulgulari.get("baslangic_tarihi") and not tarih_bulgulari.get("bitis_tarihi"):
+        tarih_bulgulari = tarihleri_cikar(ham_metin)
 
-            # Doküman içindeki tüm metin alanlarını (baslik, detay, icerik vs.) otomatik temizle
-            for anahtar, deger in clean_doc.items():
-                if anahtar not in ATLATICAK_ANAHTARLAR and isinstance(deger, str):
-                    clean_doc[anahtar] = temizle(deger)
+    # 3. Sonuçları Obfeye Yaz (MongoDB'ye Hazırlık)
+    if "baslangic_tarihi" in tarih_bulgulari:
+        islenmis["baslangic_tarihi"] = tarih_bulgulari["baslangic_tarihi"].deger
 
-            # İşleme zamanı ve bir sonraki aşama (LLM) için bayrak ekleme
-            clean_doc["temizlenme_tarihi"] = datetime.now(timezone.utc)
-            clean_doc["is_extracted"] = False  # 3. Aşama (LLM) için hazır işareti
+    if "bitis_tarihi" in tarih_bulgulari:
+        islenmis["bitis_tarihi"] = tarih_bulgulari["bitis_tarihi"].deger
 
-            # Temizlenmiş veriyi 'temiz_kampanyalar' koleksiyonuna yaz/güncelle
-            kampanya_url = clean_doc.get("url")
-            if kampanya_url:
-                clean_col.update_one(
-                    {"url": kampanya_url},
-                    {"$set": clean_doc},
-                    upsert=True
-                )
-            else:
-                clean_col.update_one(
-                    {"_id": clean_doc["_id"]},
-                    {"$set": clean_doc},
-                    upsert=True
-                )
+    if "sure_gun" in tarih_bulgulari:
+        islenmis["sure_gun"] = tarih_bulgulari["sure_gun"].deger
 
-            # Ham verideki 'is_processed' durumunu True yap (Tekrar temizlenmesin)
-            #raw_col.update_one(
-                #{"_id": doc["_id"]},
-                #{"$set": {"is_processed": True}}
-            #)
-
-            islenen_sayisi += 1
-
-        print(f"✅ {islenen_sayisi} kampanya başarıyla temizlendi ve 'temiz_kampanyalar' koleksiyonuna kaydedildi.")
-
-    except PyMongoError as err:
-        print(f"❌ MongoDB İşlem Hatası: {err}")
-    finally:
-        if client:
-            client.close()
-
-
-if __name__ == "__main__":
-    ham_verileri_temizle()
+    return islenmis

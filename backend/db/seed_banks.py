@@ -24,7 +24,7 @@ def seed_bankalar():
         
         # Upsert: Varsa güncelle, yoksa yeni ekle
         bankalar_col.update_one(
-            {"_id": banka["_id"]},
+            {"_id": banka["id"]},
             {"$set": banka},
             upsert=True
         )

@@ -45,8 +45,8 @@ def ham_kampanyalari_kaydet(
     MongoDB 'kampanyalar' ve 'scrape_logs' koleksiyonlarına kaydeder.
     """
     # MongoDB bankalar dokümanındaki alan eşleşmeleri
-    kod = banka_conf.get("_id")
-    kisa_ad = banka_conf.get("kisa_ad", kod)
+    banka_id = banka_conf.get("_id")
+    kisa_ad = banka_conf.get("kisa_ad")
 
     raw_collection = db["ham_kampanyalar"]
     log_collection = db["scrape_logs"]
@@ -55,8 +55,8 @@ def ham_kampanyalari_kaydet(
 
     # String temelli güvenli Log ID 
     log_kaydi = {
-        "_id": f"scrape_{kod}_{tarih_str}",
-        "banka_id": kod,
+        "_id": f"scrape_{banka_id}_{tarih_str}",
+        "banka_id": banka_id,
         "banka_adi": kisa_ad,
         "baslama_zamani": baslangic_zamani.isoformat(),
         "durum": "failed",
