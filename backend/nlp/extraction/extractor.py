@@ -94,6 +94,7 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
     raw_id = str(doc["_id"])
     kampanya_adi = doc.get("baslik") or doc.get("kampanya_adi", "")
 
+
     baslangic_tarihi = _get_val(bulgular, "baslangic_tarihi")
     bitis_tarihi = _get_val(bulgular, "bitis_tarihi")
     sure_gun = _get_val(bulgular, "sure_gun") or doc.get("sure_gun")
@@ -112,7 +113,8 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
             "hedef_kitle": _get_val(bulgular, "hedef_kitle", ["tum_musteriler"]),
             "kampanya_turu": kampanya_turu,
             "alt_kategori": alt_kategori,
-            "metin": doc.get("ham_metin")
+            "metin": doc.get("ham_metin"),
+            "cekilis_tarihi": doc.get("cekilis_tarihi")
         },
         "finansman_detay": {
             "kar_paylasım_orani": _safe_float(kar_payı),
