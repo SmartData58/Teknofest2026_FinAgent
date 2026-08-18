@@ -5,7 +5,8 @@ from pymongo import MongoClient, UpdateOne
 from pymongo.errors import PyMongoError
 
 # Göreceli Import
-from .hybrid import hibrit_cikar
+from .hybrid import hibrit_cikar, _llm_var_mi
+
 
 # --- MONGODB BAĞLANTI AYARLARI ---
 MONGO_USER = os.getenv("MONGO_USER", "admin")
@@ -168,6 +169,9 @@ def urun_semasina_donustur(doc: dict, bulgular: dict) -> dict:
 
 
 def _kanit_dokumani_hazirla(doc: dict, alan_adi: str, bulgu_obj) -> dict | None:
+    """
+    Tek bir AlanBulgusu nesnesini Jüri Kanıt Şemasına (extracted_fields) dönüştürür.
+    """
     if bulgu_obj is None:
         return None
 
@@ -177,6 +181,7 @@ def _kanit_dokumani_hazirla(doc: dict, alan_adi: str, bulgu_obj) -> dict | None:
         unit_val = getattr(bulgu_obj, "birim", "metin")
         metot = getattr(bulgu_obj, "yontem", "regex")
         guven_score = getattr(bulgu_obj, "guven", 1.0)
+        evidence_val = getattr(bulgu_obj, "kanit_metni", "") or doc.get("baslik", "")
         start_pos = getattr(bulgu_obj, "baslangic_konum", None)
         end_pos = getattr(bulgu_obj, "bitis_konum", None)
     elif isinstance(bulgu_obj, dict):
@@ -185,6 +190,7 @@ def _kanit_dokumani_hazirla(doc: dict, alan_adi: str, bulgu_obj) -> dict | None:
         unit_val = bulgu_obj.get("birim", "metin")
         metot = bulgu_obj.get("yontem", "llm")
         guven_score = bulgu_obj.get("guven", 0.85)
+        evidence_val = bulgu_obj.get("kanit_metni", "")
         start_pos = bulgu_obj.get("baslangic_konum")
         end_pos = bulgu_obj.get("bitis_konum")
     else:
@@ -211,6 +217,7 @@ def _kanit_dokumani_hazirla(doc: dict, alan_adi: str, bulgu_obj) -> dict | None:
         "norm_deger": norm_deger,
         "unit": unit_val,
         "metod": metot,
+        "evidence_text": evidence_val,
         "guven_score": float(guven_score) if guven_score is not None else 0.0,
         "start_char": start_pos,
         "end_char": end_pos,
@@ -219,6 +226,15 @@ def _kanit_dokumani_hazirla(doc: dict, alan_adi: str, bulgu_obj) -> dict | None:
 
 
 def temiz_verilerden_bilgi_cikar() -> None:
+    
+    print(" 🔍 LLM servisi ve model erişilebilirliği kontrol ediliyor...")
+    if not _llm_var_mi():
+        print(" ❌ HATA: LLM (Ollama/Model) hazır veya erişilebilir değil!")
+        print(" ⛔ İşlem iptal edildi. Lütfen LLM servisini başlatıp tekrar deneyin.")
+        return
+
+    print(" ✅ LLM hazır! Veritabanı işlemleri başlatılıyor...\n")
+    
     client = None
     try:
         client = MongoClient(MONGO_URI)
@@ -246,6 +262,7 @@ def temiz_verilerden_bilgi_cikar() -> None:
             metin = doc.get("ham_metin", "")
 
             # 1. Kural + LLM Hibrit Çıkarımı Yap
+            
             cikarim_sonucu = hibrit_cikar(baslik, metin) or {}
 
             # 2. Altın Kampanya Şemasına Dönüştür ve Kaydet
