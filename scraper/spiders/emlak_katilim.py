@@ -25,6 +25,19 @@ PROJE_KOK = Path(__file__).resolve().parent.parent.parent
 if str(PROJE_KOK) not in sys.path:
     sys.path.insert(0, str(PROJE_KOK))
 
+# --- ÜRÜN (Bireysel Finansmanlar) sabitleri ---
+URUN_LISTE_URL = f"{TABAN_URL}/tr/bireysel/finansmanlar"
+# Derinlik tutarsız: bazı ürünler /finansmanlar/{slug}, bazıları
+# /finansmanlar/{kategori}/{slug} (örn. konut-finansmani/cevreci-konut-finansmani).
+# Bu yüzden regex sadece 1-2 segmente izin verir, geçerli ürün olup olmadığı
+# başlık/içerik doğrulamasıyla ayrıca kontrol edilir.
+URUN_DETAY_DESENI = re.compile(
+    r"^/tr/bireysel/finansmanlar/[a-z0-9-]+(?:/[a-z0-9-]+)?/?$", re.IGNORECASE
+)
+GECERSIZ_URUN_BASLIKLARI = {
+    "finansmanlar", "bireysel finansmanlar", "bireysel", "krediler", "finansman",
+}
+
 
 # Farklı tarih formatlarını sırayla dener (Vakıf Katılım / Türkiye Finans'ta
 # doğrulanan aile):
@@ -77,6 +90,9 @@ class EmlakKatilimSpider(PlaywrightTabanScraper):
     challenge_bekleme_ms = 5000           # TSPD challenge + içerik render payı
     kimlik_maskesi = False                # TSPD varsayılan Chromium'u geçiriyor
 
+    # ------------------------------------------------------------------ #
+    # KAMPANYALAR (Değiştirilmedi)
+    # ------------------------------------------------------------------ #
     def kampanyalari_topla(self) -> list[dict]:
         kayitlar: list[dict] = []
 
@@ -125,11 +141,81 @@ class EmlakKatilimSpider(PlaywrightTabanScraper):
 
         return kayitlar
 
+    # ------------------------------------------------------------------ #
+    # ÜRÜNLER (Bireysel Finansmanlar) — YENİ EKLENDİ
+    # ------------------------------------------------------------------ #
+    def urunleri_topla(self) -> list[dict]:
+        kayitlar: list[dict] = []
+
+        with self.oturum():
+            print(f"  Liste sayfası (render): {URUN_LISTE_URL}")
+            soup = self.getir(URUN_LISTE_URL)
+            if soup is None:
+                print("  Ürün liste sayfası açılamadı.")
+                return kayitlar
+
+            urun_linkleri: set[str] = set()
+            for a in soup.select("a[href]"):
+                href = a["href"].strip().split("?")[0].split("#")[0].rstrip("/")
+                yol = href.replace(TABAN_URL, "")
+                if not yol.startswith("/"):
+                    continue
+                if URUN_DETAY_DESENI.match(yol) and yol != "/tr/bireysel/finansmanlar":
+                    urun_linkleri.add(TABAN_URL + yol)
+
+            urun_linkleri_sirali = sorted(urun_linkleri)
+            print(f"  {len(urun_linkleri_sirali)} tekil aday ürün linki bulundu")
+
+            for url in urun_linkleri_sirali:
+                soup = self.getir(url)
+                if soup is None:
+                    continue
+
+                h1 = soup.select_one("h1")
+                icerik = soup.select_one("article.o-page__content") \
+                    or soup.select_one(".o-page__content")
+
+                if h1 is None or icerik is None:
+                    print(f"    YAPI UYUŞMADI, atlandı: {url}")
+                    continue
+
+                baslik = self.metin_temizle(h1)
+                if not baslik or baslik.lower() in GECERSIZ_URUN_BASLIKLARI:
+                    print(f"    Ürün detayı değil (kategori/liste sayfası olabilir), atlandı: {url}")
+                    continue
+
+                ham_metin = self.metin_temizle(icerik)
+                if len(ham_metin) < 30:
+                    print(f"    İçerik çok kısa, muhtemelen liste sayfası, atlandı: {url}")
+                    continue
+
+                # Kategori bilgisini URL yapısından çıkarmayı dener:
+                # /finansmanlar/{kategori}/{slug} varsa kategori dolar,
+                # /finansmanlar/{slug} (tek segment) varsa None kalır.
+                yol_parcalari = url.replace(f"{TABAN_URL}/tr/bireysel/finansmanlar/", "").split("/")
+                kategori = yol_parcalari[0] if len(yol_parcalari) > 1 else None
+
+                kayitlar.append(
+                    {
+                        "banka": self.banka_kodu,
+                        "url": url,
+                        "baslik": baslik,
+                        "ham_metin": ham_metin,
+                        "kategori": kategori,
+                        "tarih_metni": None,  # ürün sayfaları genelde tarihsiz
+                    }
+                )
+                print(f"    OK: {baslik[:55]}")
+
+        return kayitlar
+
 
 if __name__ == "__main__":
     from collections import Counter
 
     spider = EmlakKatilimSpider()
+
+    print("Emlak Katılım Spider (Kampanyalar) çalıştırılıyor...")
     kayitlar = spider.kampanyalari_topla()
     spider.kaydet_mongoDB(kayitlar, koleksiyon_adi="emlak_katilim")
 
@@ -143,10 +229,6 @@ if __name__ == "__main__":
     for k in tarihi_olmayanlar:
         print(f"  - {k['url']}")
 
-
-  
-    
-
     # Tam metinleri ayrı bir dosyaya yaz (terminale sığmayabilir) —
     # gerçek tarih formatını görüp regex'i kesinleştirmek için.
     with open("emlak_tarih_bulunamayanlar.txt", "w", encoding="utf-8") as f:
@@ -156,3 +238,7 @@ if __name__ == "__main__":
             f.write(f"HAM METİN:\n{k['ham_metin']}\n")
             f.write("\n" + "=" * 80 + "\n\n")
     print(f"Detaylar 'emlak_tarih_bulunamayanlar.txt' dosyasına yazıldı.")
+
+    print("\nEmlak Katılım Spider (Bireysel Finansmanlar / Ürünler) çalıştırılıyor...")
+    urun_verileri = spider.urunleri_topla()
+    spider.kaydet_mongoDB(urun_verileri, koleksiyon_adi="emlak_katilim_ürün")
