@@ -60,6 +60,7 @@ services:
     
     volumes:
       - ~/.cache/huggingface:/root/.cache/huggingface
+      - ollama_data:/root/.ollama
     environment:
       - HF_TOKEN=${HF_TOKEN}
     networks:

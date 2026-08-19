@@ -4,13 +4,13 @@
 import os
 from typing import Any
 
-from .llm_extractor import TUM_ALAN_SEMALARI, llm_hazir, llm_ile_cikar
+from .llm_extractor import ALAN_SEMASI,llm_hazir, llm_ile_cikar
 from .rule_based import AlanBulgusu, kurallarla_cikar
 
 LLM_AKTIF = os.environ.get("FINAGENT_LLM", "1") != "0"
 
 # LLM'e sorulabilir hedef alanların listesi
-SORULABILIR_ALANLAR = list(TUM_ALAN_SEMALARI.keys())
+SORULABILIR_ALANLAR = list(ALAN_SEMASI.keys())
 
 _llm_kullanilabilir: bool | None = None
 
