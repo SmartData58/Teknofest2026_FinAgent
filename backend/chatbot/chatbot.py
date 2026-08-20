@@ -1,7 +1,12 @@
+import os
+import json
+import asyncio
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-import httpx
-import os
+from typing import List
+from loguru import logger
+
+from chatbot.generate_response import get_chatbot_response
 
 app = FastAPI(title="SmartData Chat API")
 
@@ -13,46 +18,102 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-#OLLAMA_URL = "http://llm-1:11434/api/generate"
-OLLAMA_URL = "http://localhost:11434/api/generate"
+# 🚀 NÜKLEER TOKAT: QDRANT OTO-KURULUM! (Acımasız Yıkım ve Yeniden İnşa)
+async def auto_init_qdrant():
+    from pymongo import MongoClient
+    from langchain_core.documents import Document
+    from langchain_qdrant import QdrantVectorStore
+    from chatbot.generate_response import embeddings, QDRANT_URL
+    from qdrant_client import QdrantClient
+    
+    try:
+        logger.info("⏳ Qdrant Vektör Veritabanı OTOMATİK olarak inşa ediliyor...")
+        
+        # 🔥 ÖNCE QDRANT'I TEMİZLE (Hayalet Klasörleri Yok Et)
+        try:
+            q_client = QdrantClient(url=QDRANT_URL)
+            q_client.delete_collection(collection_name="banka_kampanyalari")
+            logger.warning("🧹 Eski/Bozuk Qdrant koleksiyonu silindi!")
+        except Exception as e:
+            pass # Koleksiyon zaten yoksa hata vermesin
+            
+        mongo_uri = os.getenv("MONGO_URI", "mongodb://admin:admin123@mongodb:27017/?authSource=admin")
+        client = MongoClient(mongo_uri)
+        
+        # Önce ana veritabanı (smartdata), yoksa test veritabanı (finagent)
+        db = client["smartdata"]
+        kampanyalar = list(db["processed_campaigns"].find({}))
+        if not kampanyalar:
+            db = client["finagent"]
+            kampanyalar = list(db["kampanyalar"].find({}))
+            
+        if not kampanyalar:
+            logger.warning("❌ Qdrant için MongoDB'de veri bulunamadı!")
+            return
+            
+        docs = []
+        for k in kampanyalar:
+            banka = k.get("banka_adi", k.get("banka", "Bilinmeyen Banka"))
+            if isinstance(banka, dict): banka = banka.get("kisa_ad", "Bilinmeyen Banka")
+            kampanya_adi = k.get("kampanya_adi", k.get("baslik", "Kampanya"))
+            kar_payi = k.get("kar_payi", k.get("kar_payi_orani", 0))
+            vade = k.get("vade", k.get("vade_ay", 0))
+            odul = k.get("odul_tl", k.get("odul_miktari", 0))
+            
+            icerik = f"Banka: {banka}\nKampanya: {kampanya_adi}\nKâr Payı/Faiz Oranı: %{kar_payi}\nMaksimum Vade: {vade} Ay\nÖdül Miktarı: {odul} TL"
+            
+            if k.get("kosullar"): icerik += f"\nKoşullar: {k.get('kosullar')}"
+            if k.get("ham_metin"): icerik += f"\nDetay: {k.get('ham_metin')}"
+            
+            docs.append(Document(page_content=icerik, metadata={"kampanya_id": str(k["_id"])}))
+
+        logger.info(f"⏳ {len(docs)} kampanya vektörlenip Qdrant'a yükleniyor, lütfen bekleyin...")
+        
+        # 🚀 SIFIRDAN YARAT (force_recreate=True)
+        QdrantVectorStore.from_documents(
+            docs,
+            embeddings,
+            url=QDRANT_URL,
+            collection_name="banka_kampanyalari",
+            content_payload_key="belge",
+            force_recreate=True 
+        )
+        logger.info(f"✅ BİNGO! Qdrant Vektör Veritabanı {len(docs)} kampanya ile OTOMATİK oluşturuldu!")
+    except Exception as e:
+        logger.error(f"Qdrant Otomatik Kurulum Hatası: {e}")
+
+# Sunucu ayağa kalktığı an kurulumu tetikliyoruz
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🚀 Sistem Başlıyor: Otomatik Qdrant kurulumu tetiklendi...")
+    asyncio.create_task(auto_init_qdrant())
 
 @app.post("/api/chat")
 async def chat_endpoint(
-    # FormData ile gelen alanları Form ve File ile yakalıyoruz
     prompt: str = Form(""),
-    model: str = Form("qwen2.5:7b"),
-    # model: str = Form("qwen"),
-    file: UploadFile = File(None)
+    model: str = Form("qwen3.5:4b"),
+    thinking: str = Form("auto"),
+    history: str = Form("[]"),
+    view_mode: str = Form("musteri"),
+    language: str = Form("tr"),
+    files: List[UploadFile] = File(default=[]) 
 ):
-    file_context = ""
-    
-    if file:
-        file_ext = os.path.splitext(file.filename)[1].lower()
-        print(f"Alınan dosya: {file.filename}, Uzantı: {file_ext}")
+    try:
+        parsed_history = json.loads(history)
+    except Exception:
+        parsed_history = []
         
-        # İleride 'document_processor' dizinindeki (pdf.py, image.py, excel.py vb.) 
-        # modüller bu aşamada çağırılacak ve dosyanın içeriği metne dökülecek.
-        
-        file_context = f"\n\n[Kullanıcı sisteme bir dosya yükledi. Dosya adı: {file.filename}. Dosya türü desteklenmektedir.]"
-        
-    final_prompt = prompt + file_context
+    logger.info(f"Yeni İstek: Prompt='{prompt}', Mod={view_mode}, Dil={language}")
 
-    async with httpx.AsyncClient() as client:
-        try:
-            payload = {
-                "model": model,
-                "prompt": final_prompt,
-                "stream": False
-            }
-            # Ollama'ya isteği ilet
-            response = await client.post(OLLAMA_URL, json=payload, timeout=60.0)
-            response.raise_for_status()
-            
-            data = response.json()
-            return {"response": data.get("response", "")}
-            
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=500, detail=f"Ollama bağlantı hatası: {str(e)}")
+    return await get_chatbot_response(
+        user_message=prompt,
+        model=model,
+        thinking=thinking,
+        history=parsed_history,
+        files=files,
+        view_mode=view_mode, 
+        language=language    
+    )
 
 if __name__ == "__main__":
     import uvicorn
