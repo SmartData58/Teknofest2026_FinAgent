@@ -34,6 +34,20 @@ KATEGORI_SAYFALARI = {
 # (kategoriden bağımsız olarak — sitede DOĞRULANDI).
 DETAY_DESENI = re.compile(r"^/kart-kampanyalari/[a-z0-9-]+/?$", re.IGNORECASE)
 
+  
+# --- ÜRÜN (Bireysel Finansman Ürünleri) sabitleri ---
+URUN_LISTE_URL = f"{TABAN_URL}/bireysel/finansman-urunleri"
+
+# Menüde 4 alt kategori var (ekran görüntüsünden DOĞRULANDI):
+#   Konut-Gayrimenkul Finansmanı, Taşıt Finansmanı, İhtiyaç Finansmanı,
+#   Sürdürülebilirlik Temalı Bireysel Ürünler
+# Kategori slug'ları sitede tutarsız görülüyor (arama sonuçlarında hem
+# "konut-finansmani" hem "konut-gayrimenkul-finansmani" görüldü), bu
+# yüzden sabit bir slug seti tutmuyoruz — URL'den dinamik çıkarıyoruz.
+URUN_LINK_DESENI = re.compile(
+    r"^/bireysel/finansman-urunleri/[a-z0-9-]+(?:/[a-z0-9-]+)?/?$", re.IGNORECASE
+)
+GECERSIZ_URUN_BASLIKLARI = {"finansman ürünleri", "bireysel", "finansman"}
 
 class ZiraatKatilimSpider(TabanScraper):
     banka_kodu = "ziraat_katilim"
@@ -111,15 +125,112 @@ class ZiraatKatilimSpider(TabanScraper):
 
         return kayitlar
 
+    # FİNANSMAN URUNLERİ    
+
+        # ------------------------------------------------------------------ #
+    # ÜRÜNLER (Bireysel Finansman Ürünleri) — GÜNCELLENDİ (2 seviyeli tarama)
+    # ------------------------------------------------------------------ #
+    def urunleri_topla(self) -> list[dict]:
+        kayitlar: list[dict] = []
+        ziyaret_edilen: set[str] = set()
+        kuyruk: list[str] = [URUN_LISTE_URL]
+        urun_adaylari: set[str] = set()
+
+        # 1. AŞAMA: Ana "Finansman Ürünleri" sayfasından başlayıp, 4 alt
+        # kategori sayfasını (Konut-Gayrimenkul, Taşıt, İhtiyaç,
+        # Sürdürülebilirlik) da tarayarak altlarındaki ürün linklerini
+        # topluyoruz.
+        while kuyruk:
+            sayfa_url = kuyruk.pop(0)
+            if sayfa_url in ziyaret_edilen:
+                continue
+            ziyaret_edilen.add(sayfa_url)
+
+            print(f"  Taranıyor: {sayfa_url}")
+            soup = self.getir(sayfa_url)
+            if soup is None:
+                continue
+
+            for a in soup.select("a[href]"):
+                href = a["href"].split("?")[0].split("#")[0].replace(TABAN_URL, "")
+                if not URUN_LINK_DESENI.match(href):
+                    continue
+                if href.rstrip("/") == "/bireysel/finansman-urunleri":
+                    continue
+
+                tam_url = TABAN_URL + href
+                urun_adaylari.add(tam_url)
+
+                # Tek segmentli linkler (örn. .../finansman-urunleri/tasit-finansmani)
+                # kategori sayfası olabilir; altındaki ürünleri bulmak için
+                # kuyruğa ekleyip tekrar tarıyoruz.
+                parcalar = href.strip("/").split("/")
+                if len(parcalar) == 3 and tam_url not in ziyaret_edilen:
+                    kuyruk.append(tam_url)
+
+        print(f"\n  Toplam {len(urun_adaylari)} adet aday ürün/kategori linki bulundu.")
+
+        # 2. AŞAMA: Her aday sayfayı tek tek ziyaret edip doğrula.
+        for url in sorted(urun_adaylari):
+            soup = self.getir(url)
+            if soup is None:
+                continue
+
+            h1 = soup.select_one("h1")
+            icerik = (
+                soup.select_one(".field--name-body")
+                or soup.select_one("article")
+                or soup.select_one("main")
+            )
+
+            if h1 is None or icerik is None:
+                print(f"    YAPI UYUŞMADI, atlandı: {url}")
+                continue
+
+            baslik = self.metin_temizle(h1)
+            if not baslik or baslik.lower() in GECERSIZ_URUN_BASLIKLARI:
+                print(f"    Geçersiz başlık, atlandı: {url}")
+                continue
+
+            ham_metin = self.metin_temizle(icerik)
+            if len(ham_metin) < 30:
+                print(f"    İçerik çok kısa, muhtemelen kategori/liste sayfası, atlandı: {url}")
+                continue
+
+            # Kategori: URL'nin "finansman-urunleri" sonrası ilk segmenti
+            # (örn. ihtiyac-finansmani, konut-gayrimenkul-finansmani).
+            yol_parcalari = url.replace(f"{URUN_LISTE_URL}/", "").split("/")
+            kategori = yol_parcalari[0] if len(yol_parcalari) > 1 else None
+
+            kayitlar.append(
+                {
+                    "banka": self.banka_kodu,
+                    "url": url,
+                    "baslik": baslik,
+                    "ham_metin": ham_metin,
+                    "kategori": kategori,
+                    "tarih_metni": None,  # ürün sayfaları genelde tarihsiz
+                }
+            )
+            print(f"    OK [{kategori}]: {baslik[:55]}")
+
+        return kayitlar
+
 
 if __name__ == "__main__":
     from collections import Counter
 
     spider = ZiraatKatilimSpider()
+
+    print("Ziraat Katılım Spider (Kampanyalar) çalıştırılıyor...")
     kayitlar = spider.kampanyalari_topla()
     spider.kaydet(kayitlar)
-    spider.kaydet_mongoDB(kayitlar,"ziraat_katilim")
+    spider.kaydet_mongoDB(kayitlar, "ziraat_katilim")
     ozet = Counter(k["kategori"] for k in kayitlar)
     print("\nKategori bazında dağılım:")
     for kategori, sayi in sorted(ozet.items()):
         print(f"  {kategori}: {sayi}")
+
+    print("\nZiraat Katılım Spider (Ürünler / Finansmanlar) çalıştırılıyor...")
+    urun_verileri = spider.urunleri_topla()
+    spider.kaydet_mongoDB(urun_verileri, koleksiyon_adi="ziraat_katilim_ürün")
