@@ -43,7 +43,7 @@ import re
 
 import requests
 
-from nlp.extraction.rule_based import AlanBulgusu
+from backend.nlp.extraction.rule_based import AlanBulgusu
 
 OLLAMA_URL = os.environ.get("FINAGENT_OLLAMA_URL", "http://llm:11434")
 MODEL = os.environ.get("FINAGENT_LLM_MODEL", "qwen3.5:4b")

@@ -90,6 +90,7 @@ def ham_verileri_temizle_in_memory(raw_kayitlar: list[dict]) -> list[dict]:
         # 2. Öncelikli Tarih Çıkarma Mantığı (Fallback Mechanics)
         tarih_metni = clean_doc.get("tarih_metni", "")
         ham_metin = clean_doc.get("ham_metin", "")
+        baslik = clean_doc.get("baslik", "")
 
         tarih_bulgulari = {}
 
@@ -119,8 +120,11 @@ def ham_verileri_temizle_in_memory(raw_kayitlar: list[dict]) -> list[dict]:
             clean_doc["kampanya_turu"] = siteden_gelen_kategori
         else:
     # Siteden geçerli bir kategori gelmediyse başlık ve metinden tespit et
-            aranacak_metin = f"{clean_doc.get('baslik', '')} {ham_metin}"
-            tur_bulgusu = kategori_cikar(aranacak_metin)
+            #aranacak_metin = f"{clean_doc.get('baslik', '')} {ham_metin}"
+            tur_bulgusu = kategori_cikar(
+                        baslik or "",
+                        ham_metin or "",
+                    )
     
     # kategori_cikar'dan dönen veri yapısına uygun atama yapın:
             if isinstance(tur_bulgusu, dict):

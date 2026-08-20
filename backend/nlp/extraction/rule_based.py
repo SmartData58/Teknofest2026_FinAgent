@@ -1232,7 +1232,9 @@ def kurallarla_cikar(
     )
 
     for cikarici in cikaricilar:
-        bulgular.update(cikarici(tam_metin))
+        bulgular.update(cikarici(
+            tam_metin
+        ))
 
     bulgular.update(
         kategori_cikar(
