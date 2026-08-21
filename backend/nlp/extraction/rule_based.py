@@ -24,10 +24,10 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Optional, Any
 
-from ..normalizasyon.money import para_normalize
-from ..normalizasyon.date import tarih_normalize
-from ..normalizasyon.duration import vade_normalize
-from ..normalizasyon.percentage import yuzde_normalize
+from backend.nlp.normalizasyon.money import para_normalize
+from backend.nlp.normalizasyon.date import tarih_normalize
+from backend.nlp.normalizasyon.duration import vade_normalize
+from backend.nlp.normalizasyon.percentage import yuzde_normalize
 
 
 # =============================================================================
@@ -154,13 +154,20 @@ _GETIRI_IPUCLARI = (
     "paylasim orani",
 )
 
+_TAHSIS_IPUCLARI = (
+    "tahsis",
+    "tahsis ücreti",
+    "masraf oranı",
+    "komisyon oranı",
+    "binde",
+)
 
 def oranlari_cikar(metin: str) -> Dict[str, AlanBulgusu]:
     """
     Yüzde ifadelerini bağlamına göre:
         - indirim_orani_yuzde
         - nakit_iade_yuzde
-        - k_kar_paylasim_orani
+        - kar_payi_orani
     alanlarına dağıtır.
     """
     bulgular: Dict[str, AlanBulgusu] = {}
@@ -173,8 +180,21 @@ def oranlari_cikar(metin: str) -> Dict[str, AlanBulgusu]:
         pencere = _pencere(
             metin, eslesme.start(), eslesme.end(), genislik=70
         )
+        
+        if any(k in pencere for k in _TAHSIS_IPUCLARI):
+            aday = _bulgu(
+                metin,
+                eslesme,
+                float(deger),
+                "yuzde+tahsis_baglami",
+                guven=0.99,
+                birim="percent",
+            )
+            bulgular["tahsis_ucreti_orani"] = _ilk_yuksek_guvenli(
+                bulgular.get("tahsis_ucreti_orani"), aday
+            )
 
-        if any(k in pencere for k in _INDIRIM_IPUCLARI):
+        elif any(k in pencere for k in _INDIRIM_IPUCLARI):
             aday = _bulgu(
                 metin,
                 eslesme,
@@ -209,8 +229,8 @@ def oranlari_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                 guven=0.99,
                 birim="percent",
             )
-            bulgular["k_kar_paylasim_orani"] = _ilk_yuksek_guvenli(
-                bulgular.get("k_kar_paylasim_orani"), aday
+            bulgular["kar_payi_orani"] = _ilk_yuksek_guvenli(
+                bulgular.get("kar_payi_orani"), aday
             )
 
         elif any(k in pencere for k in _GETIRI_IPUCLARI):
@@ -224,8 +244,8 @@ def oranlari_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                     guven=0.88,
                     birim="percent",
                 )
-                bulgular["k_kar_paylasim_orani"] = _ilk_yuksek_guvenli(
-                    bulgular.get("k_kar_paylasim_orani"), aday
+                bulgular["tahsis_ucreti"] = _ilk_yuksek_guvenli(
+                    bulgular.get("tahsis_ucreti"), aday
                 )
 
     return bulgular
@@ -296,8 +316,8 @@ def vade_ve_taksit_cikar(metin: str) -> Dict[str, AlanBulgusu]:
             birim="ay",
         )
 
-        bulgular["k_vade_ay"] = _ilk_yuksek_guvenli(
-            bulgular.get("k_vade_ay"), aday
+        bulgular["vade_ay"] = _ilk_yuksek_guvenli(
+            bulgular.get("vade_ay"), aday
         )
 
     return bulgular
@@ -410,13 +430,13 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
 
     Ayrımlar:
         - min_harcama_tl
-        - maks_harcama_tl
-        - k_finansman_tutari
+        - max_harcama_tl
+        - finansman_tutari
         - min_finansman_tutari
-        - maks_finansman_tutari
+        - max_finansman_tutari
         - puan_kazanc
         - odul_tutari_tl
-        - k_tahsis_ucreti
+        - tahsis_ucreti_tl
         - mgm_limit_tl
         - kisi_basi_kazanc
     """
@@ -483,8 +503,8 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                     guven=0.94,
                     birim="TL",
                 )
-                bulgular["k_tahsis_ucreti"] = _ilk_yuksek_guvenli(
-                    bulgular.get("k_tahsis_ucreti"), aday
+                bulgular["tahsis_ucreti_tl"] = _ilk_yuksek_guvenli(
+                    bulgular.get("tahsis_ucreti_tl"), aday
                 )
                 continue
 
@@ -528,12 +548,12 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                     metin,
                     tutar_bul,
                     deger,
-                    "para+maks_harcama_baglami",
+                    "para+max_harcama_baglami",
                     guven=0.92,
                     birim="TL",
                 )
-                bulgular["maks_harcama_tl"] = _ilk_yuksek_guvenli(
-                    bulgular.get("maks_harcama_tl"), aday
+                bulgular["max_harcama_tl"] = _ilk_yuksek_guvenli(
+                    bulgular.get("max_harcama_tl"), aday
                 )
                 continue
 
@@ -570,12 +590,12 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                     metin,
                     tutar_bul,
                     deger,
-                    "para+maks_finansman_baglami",
+                    "para+max_finansman_baglami",
                     guven=0.95,
                     birim="TL",
                 )
-                bulgular["maks_finansman_tutari"] = _ilk_yuksek_guvenli(
-                    bulgular.get("maks_finansman_tutari"), aday
+                bulgular["max_finansman_tutari"] = _ilk_yuksek_guvenli(
+                    bulgular.get("max_finansman_tutari"), aday
                 )
                 continue
 
@@ -587,8 +607,8 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                 guven=0.93,
                 birim="TL",
             )
-            bulgular["k_finansman_tutari"] = _ilk_yuksek_guvenli(
-                bulgular.get("k_finansman_tutari"), aday
+            bulgular["finansman_tutari"] = _ilk_yuksek_guvenli(
+                bulgular.get("finansman_tutari"), aday
             )
             continue
 
@@ -648,7 +668,7 @@ def masraf_cikar(metin: str) -> Dict[str, AlanBulgusu]:
     if masraf_bul:
         cumle = masraf_bul.group().strip()
 
-        bulgular["k_tahsis_ucreti"] = AlanBulgusu(
+        bulgular["tahsis_ucreti"] = AlanBulgusu(
             deger=0.0,
             ham_metin=cumle,
             kural="masraf_yok_kalibi",
@@ -657,7 +677,7 @@ def masraf_cikar(metin: str) -> Dict[str, AlanBulgusu]:
             birim="TL",
         )
 
-        bulgular["k_masraf_bilgi"] = AlanBulgusu(
+        bulgular["masraf_bilgi"] = AlanBulgusu(
             deger=cumle,
             ham_metin=cumle,
             kural="masraf_yok_kalibi",
@@ -675,7 +695,7 @@ def masraf_cikar(metin: str) -> Dict[str, AlanBulgusu]:
             _BANKA_HIZMETI.search(cumle)
             and "sms" not in cumle.lower()
         ):
-            bulgular["k_masraf_bilgi"] = AlanBulgusu(
+            bulgular["masraf_bilgi"] = AlanBulgusu(
                 deger=cumle,
                 ham_metin=cumle,
                 kural="ucretsiz_hizmet_kalibi",

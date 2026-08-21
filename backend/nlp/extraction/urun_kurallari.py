@@ -108,7 +108,7 @@ def azami_finansman_orani_cikar(metin: str) -> Dict[str, AlanBulgusu]:
     if not oranlar:
         return {}
     return {
-        "kar_paylasim_orani": AlanBulgusu(
+        "kar_payi_orani": AlanBulgusu(
             max(oranlar), metin[esles.start(): esles.end() + 120],
             "urun_capa:azami_finansman_orani", birim="yüzde", kanit_metni=pencere
         )

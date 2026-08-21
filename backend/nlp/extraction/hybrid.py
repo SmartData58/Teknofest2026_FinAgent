@@ -21,7 +21,8 @@ def _llm_var_mi() -> bool:
         print(" ℹ️ FINAGENT_LLM=0 olduğu için LLM devre dışı.")
         return False
     
-    hazir = llm_hazir()
+    #hazir = llm_hazir()
+    hazir = False
     if not hazir:
         print(" ⚠️ UYARI: Ollama/Model erişilemez — Sadece kural tabanlı modda çalışılıyor.")
     return hazir

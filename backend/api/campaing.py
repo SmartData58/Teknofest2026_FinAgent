@@ -80,7 +80,7 @@ class KampanyaOzet(BaseModel):
     vade_ay: Optional[int] = None
     taksit_sayisi: Optional[int] = None
     tahsis_ucreti: Optional[float] = None
-    odul_miktari: Optional[float] = None
+    odul_tutari_tl: Optional[float] = None
     indirim_orani: Optional[float] = None
     baslangic_tarihi: Optional[str] = None
     bitis_tarihi: Optional[str] = None

@@ -75,8 +75,8 @@ ALAN_SEMASI = {
         "(TL, kredi/finansman üst limiti. DİKKAT: minimum hesap açılış tutarı, "
         "ATM para yatırma/çekme limiti ve ödül tutarı finansman DEĞİLDİR)"
     ),
-    "odul_miktari": (
-        '"odul_miktari": sayı|null  '
+    "odul_tutari_tl": (
+        '"odul_tutari_tl": sayı|null  '
         "(TL cinsinden hediye/çek/bonus/puan ödülü. DİKKAT: finansman veya "
         "taksit desteği ödül DEĞİLDİR)"
     ),
@@ -240,7 +240,7 @@ _BAGLAM_KURALLARI: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("açıl", "para yatırma", "para çekme", "mil", "puan", "hediye",
          "bonus", "iade", "parafpara", "kredi kart"),
     ),
-    "odul_miktari": (
+    "odul_tip": (
         ("hediye", "ödül", "odul", "bonus", "puan", "mil", "çek", "kazan"),
         ("finansman", "kredi"),
     ),

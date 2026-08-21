@@ -52,12 +52,12 @@ sql_agent_prompt = PromptTemplate(
     Mevcut Sütunlarımız:
     1. "kar_payi": Kâr payı, faiz, finansman oranı
     2. "vade": Taksit, ay
-    3. "odul_tl": Para ödülü, hediye TL
+    3. "odul_tutari_tl": Para ödülü, hediye TL
 
     Soru: {question}
     SADECE AŞAĞIDAKİ FORMATTA JSON DÖN:
     {{
-        "hedef_sutun": "kar_payi VEYA vade VEYA odul_tl",
+        "hedef_sutun": "kar_payi VEYA vade VEYA odul_tutari_tl",
         "kategori": "kart VEYA taşıt VEYA konut VEYA ihtiyaç VEYA hepsi",
         "prefix": "Birim öneki",
         "suffix": "Birim soneki",

@@ -74,11 +74,11 @@ def _get_val(bulgular: dict, keys: str | list[str], default=None):
 
 
 def semaya_donustur(doc: dict, bulgular: dict) -> dict:
-    kar_payı = _get_val(bulgular, ["k_kar_paylasim_orani", "kar_payi"])
+    kar_payı = _get_val(bulgular, ["kar_payi_orani", "kar_payi"])
     vade = _get_val(bulgular, ["vade", "vade_ay"])
     finansman_tutari = _get_val(bulgular, ["finansman_tutari", "tutar"])
     masraf = _get_val(bulgular, "masraf")
-    odul_tutari = _get_val(bulgular, ["odul_tutari", "odul_tutari_tl"])
+    odul_tutari_tl = _get_val(bulgular, ["odul_tutari", "odul_tutari_tl"])
 
     # Kampanya Türü için Çoklu Anahtar Kontrolü
     kampanya_turu = _get_val(bulgular, ["tur", "kampanya_turu", "kampanya_tipi", "kategori"], default="Genel")
@@ -98,6 +98,17 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
     baslangic_tarihi = _get_val(bulgular, "baslangic_tarihi")
     bitis_tarihi = _get_val(bulgular, "bitis_tarihi")
     sure_gun = _get_val(bulgular, "sure_gun") or doc.get("sure_gun")
+    
+    masraf_bilgi_val = _get_val(bulgular, "masraf_bilgi")
+
+    if not masraf_bilgi_val:
+        oran = _get_val(bulgular, "tahsis_ucreti_orani")
+        if oran is not None:
+            masraf_bilgi_val = f"Tahsis ücreti oranı: %{oran}"
+        else:
+            masraf_bilgi_val = "Tahsis ücreti belirtilmemiştir."
+    
+    
 
     structured_doc = {
         "_id": f"kamp_{banka_id}_{raw_id}",
@@ -117,16 +128,16 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
             "cekilis_tarihi": doc.get("cekilis_tarihi")
         },
         "finansman_detay": {
-            "kar_paylasım_orani": _safe_float(kar_payı),
+            "kar_payi_orani": _safe_float(kar_payı),
             "vade_ay": _safe_int(vade),
             "finansman_tutari": _safe_float(finansman_tutari),
             "taksit": _safe_float(_get_val(bulgular, "taksit")),
-            "tahsis_ucreti": _get_val(bulgular, "tahsis_ucreti"),
-            "masraf_bilgi": _get_val(bulgular, "masraf_bilgi", "Tahsis ücreti belirtilmemiştir.")
+            "tahsis_ucreti": _get_val(bulgular, "tahsis_ucreti_orani"),
+            "masraf_bilgi": masraf_bilgi_val
         },
         "promosyon_detay": {
             "odul_tip": _get_val(bulgular, "odul_tip"),
-            "odul_tutari_tl": _safe_float(odul_tutari),
+            "odul_tutari": _safe_float(odul_tutari_tl),
             "odul_metni": _get_val(bulgular, "odul_metni"),
             "nakit_iade_yuzde": _safe_float(_get_val(bulgular, ["cashback_orani", "nakit_iade_yuzde"])),
             "puan_kazanc": _safe_float(_get_val(bulgular, "puan_kazanc")),
@@ -160,8 +171,8 @@ def urun_semasina_donustur(doc: dict, bulgular: dict) -> dict:
         "tur": tur,
         "max_vade_ay": _safe_int(_get_val(bulgular, ["max_vade_ay", "vade"])),
         "min_vade_ay": _safe_int(_get_val(bulgular, "min_vade_ay")),
-        "min_finansman_tutari": _safe_float(_get_val(bulgular, ["min_fin_tutar", "finansman_tutari"])),
-        "max_finansman_tutari": _safe_float(_get_val(bulgular, "max_fin_tutar")),
+        "min_finansman_tutari": _safe_float(_get_val(bulgular, ["min_finansman_tutar", "finansman_tutari"])),
+        "max_finansman_tutari": _safe_float(_get_val(bulgular, "max_finansman_tutar")),
         "standart_masraf_tutari": _safe_float(_get_val(bulgular, ["masraf_tl", "masraf"])),
         "standart_masraf_bilgisi": _get_val(bulgular, ["masraf_bilgisi", "masraf_bilgi"]),
         "durum": "aktif",
@@ -229,13 +240,13 @@ def _kanit_dokumani_hazirla(doc: dict, alan_adi: str, bulgu_obj) -> dict | None:
 
 def temiz_verilerden_bilgi_cikar() -> None:
     
-    print(" 🔍 LLM servisi ve model erişilebilirliği kontrol ediliyor...")
+    print(" 🔍 LLM servisi kontrol ediliyor...")
     if not _llm_var_mi():
-        print(" ❌ HATA: LLM (Ollama/Model) hazır veya erişilebilir değil!")
-        print(" ⛔ İşlem iptal edildi. Lütfen LLM servisini başlatıp tekrar deneyin.")
-        return
+        print(" ⚠️  UYARI: LLM servisine erişilemedi! İşlem Regex/Kural bazlı modda devam edecek.")
+    else:
+        print(" ✅ LLM servisi hazır ve aktif.")
 
-    print(" ✅ LLM hazır! Veritabanı işlemleri başlatılıyor...\n")
+    print(" 🚀 Veritabanı işlemleri başlatılıyor...\n")
     
     client = None
     try:
@@ -263,8 +274,7 @@ def temiz_verilerden_bilgi_cikar() -> None:
             baslik = doc.get("baslik") or doc.get("kampanya_adi", "")
             metin = doc.get("ham_metin", "")
 
-            # 1. Kural + LLM Hibrit Çıkarımı Yap
-            
+            # 1. Kural + LLM Hibrit Çıkarımı Yap (LLM yoksa hibrit_cikar fonksiyonu regex ile çalışmaya devam edecektir)
             cikarim_sonucu = hibrit_cikar(baslik, metin) or {}
 
             # 2. Altın Kampanya Şemasına Dönüştür ve Kaydet
