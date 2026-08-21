@@ -1,5 +1,5 @@
 # =============================================================================
-# intent_engine.py — Niyet Tespiti, Statik Yanıtlar ve RAG Prompt Yönetimi
+# intent.py — Niyet Tespiti, Statik Yanıtlar ve RAG Prompt Yönetimi
 # =============================================================================
 
 import re
@@ -10,12 +10,14 @@ from typing import Sequence, Optional
 # 1. LLM PROMPT VE STATİK CEVAP Mimarisi
 # -----------------------------------------------------------------------------
 
-RAG_CEVAP_PROMPTU = """Sen Türkiye'deki katılım bankalarının kampanyalarını bilen bir asistansın.
+# 🚀 TOKAT: Dil ve Görünüm Modu kuralları eklendi!
+RAG_CEVAP_PROMPTU = """Sen yetenekli bir yapay zeka finans asistanısın.
 KURALLAR:
 - SADECE aşağıdaki kampanya bilgilerine dayanarak cevap ver.
 - Bilgi kampanya metinlerinde yoksa açıkça "elimdeki kampanya verilerinde bu bilgi yok" de. ASLA tahmin etme, sayı uydurma.
 - Hangi bankanın hangi kampanyasından bahsettiğini belirt.
-- Kısa ve doğal Türkçe ile cevapla (2-5 cümle).
+- {dil_kurali}
+- {mod_kurali}
 - Sorular yatırım tavsiyesi isterse: kampanya bilgisi verdiğini, tavsiye veremeyeceğini söyle.
 
 KAMPANYA BİLGİLERİ:
@@ -109,8 +111,8 @@ class Mesaj:
 
 @dataclass
 class Niyet:
-    tur: str                           # statik | tavsiye | hesaplama | karsilastirma | banka_listesi | kampanya_soru
-    statik_cevap: Optional[str] = None # Eğer statik veya tavsiye ise doğrudan verilecek cevap
+    tur: str                           
+    statik_cevap: Optional[str] = None 
     banka_kodu: Optional[str] = None
     alan: Optional[str] = None
     ham_soru: str = field(default="", repr=False)
@@ -129,9 +131,7 @@ def banka_bul(soru: str) -> Optional[str]:
     return None
 
 def statik_yanit_bul(soru: str) -> Optional[str]:
-    """Kullanıcı mesajı basit bir niyet kalıbıyla eşleşirse doğrudan statik cevabı döner."""
     s = tr_lower(soru.strip())
-    # Sosyal selam/hal-hatır sorularının uzamaması şartı (≤5 kelime)
     if len(s.split()) <= 5:
         for intent_name, pattern in _STATIK_PATTERNS:
             if pattern.search(s):
@@ -146,16 +146,13 @@ def niyet_bul(soru: str, gecmis: Sequence[Mesaj] = ()) -> Niyet:
     s_tr = tr_lower(soru)
     banka = banka_bul(soru)
 
-    # 1. ADIM: Statik Yanıt Tespiti (Chit-Chat / Sosyal)
     statik_cevap = statik_yanit_bul(soru)
     if statik_cevap:
         return Niyet("statik", statik_cevap=statik_cevap, ham_soru=soru)
 
-    # 2. ADIM: Tavsiye Reddi (Yasal / Etik Katman)
     if _TAVSIYE.search(s_tr):
         return Niyet("tavsiye", statik_cevap=STATIK_CEVAP["tavsiye_red"], banka_kodu=banka, ham_soru=soru)
 
-    # 3. ADIM: Bağlam Devri (Multi-turn sohbet geçmişi)
     devam = bool(gecmis) and bool(_DEVAM.search(soru))
     baglam_soru = None
     
@@ -170,7 +167,6 @@ def niyet_bul(soru: str, gecmis: Sequence[Mesaj] = ()) -> Niyet:
                         banka = b
                         break
 
-    # 4. ADIM: Karşılaştırma / SQL Sorguları
     for alan, desen in _KARSILASTIRMA_ALANLARI:
         if desen.search(soru):
             return Niyet("karsilastirma", banka_kodu=banka, alan=alan, ham_soru=soru, baglam_soru=baglam_soru)
@@ -178,9 +174,7 @@ def niyet_bul(soru: str, gecmis: Sequence[Mesaj] = ()) -> Niyet:
     if _KARSILASTIRMA_GENEL.search(soru):
         return Niyet("karsilastirma", banka_kodu=banka, alan="kar_payi_orani", ham_soru=soru, baglam_soru=baglam_soru)
 
-    # 5. ADIM: Banka Listeleme
     if banka and _LISTE.search(soru):
         return Niyet("banka_listesi", banka_kodu=banka, ham_soru=soru, baglam_soru=baglam_soru)
 
-    # 6. ADIM: Varsayılan Yol -> RAG + LLM (Serbest Kampanya Sorusu)
     return Niyet("kampanya_soru", banka_kodu=banka, ham_soru=soru, baglam_soru=baglam_soru)

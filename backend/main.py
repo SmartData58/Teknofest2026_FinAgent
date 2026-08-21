@@ -1,6 +1,7 @@
 import os
 import json
 import shutil
+import asyncio
 import httpx
 import requests
 import psycopg2
@@ -10,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from pydantic import BaseModel
 
+from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
@@ -76,7 +78,8 @@ class OzelQwenEmbedder(Embeddings):
             return []
 
     def embed_query(self, text: str) -> List[float]:
-        return self.embed_documents([text])[0]
+        res = self.embed_documents([text])
+        return res[0] if res else []
 
 EMBEDDING_API_URL = "http://embedding:8001/api/embed"
 embeddings = OzelQwenEmbedder(api_url=EMBEDDING_API_URL)
@@ -124,6 +127,75 @@ async def rerank_documents(query: str, docs: List) -> List:
             logger.error(f"Reranker Servis Hatası: {e}. Qdrant sıralaması kullanılıyor.")
             return docs[:4]
 
+async def auto_init_qdrant():
+    from pymongo import MongoClient
+    try:
+        logger.info("⏳ Qdrant Vektör Veritabanı OTOMATİK olarak inşa ediliyor...")
+        try:
+            q_client = QdrantClient(url="http://qdrant:6333")
+            q_client.delete_collection(collection_name="banka_kampanyalari")
+            logger.warning("🧹 Eski/Bozuk Qdrant koleksiyonu silindi!")
+        except Exception as e:
+            pass
+            
+        mongo_uri = os.getenv("MONGO_URI", "mongodb://admin:admin123@mongodb:27017/?authSource=admin")
+        client = MongoClient(mongo_uri)
+        
+        db = client["smartdata"]
+        kampanyalar = list(db["processed_campaigns"].find({}))
+        if not kampanyalar:
+            db = client["finagent"]
+            kampanyalar = list(db["kampanyalar"].find({}))
+            
+        if not kampanyalar:
+            logger.warning("❌ Qdrant için MongoDB'de veri bulunamadı!")
+            return
+            
+        docs = []
+        for k in kampanyalar:
+            banka = k.get("banka_adi", k.get("banka", "Bilinmeyen Banka"))
+            if isinstance(banka, dict): banka = banka.get("kisa_ad", "Bilinmeyen Banka")
+            kampanya_adi = k.get("kampanya_adi", k.get("baslik", "Kampanya"))
+            kar_payi = k.get("kar_payi", k.get("kar_payi_orani", 0))
+            vade = k.get("vade", k.get("vade_ay", 0))
+            odul = k.get("odul_tl", k.get("odul_miktari", 0))
+            
+            icerik = f"Banka: {banka}\nKampanya: {kampanya_adi}\nKâr Payı/Faiz Oranı: %{kar_payi}\nMaksimum Vade: {vade} Ay\nÖdül Miktarı: {odul} TL"
+            
+            if k.get("kosullar"): icerik += f"\nKoşullar: {k.get('kosullar')}"
+            if k.get("ham_metin"): icerik += f"\nDetay: {k.get('ham_metin')}"
+            
+            docs.append(Document(page_content=icerik, metadata={"kampanya_id": str(k["_id"])}))
+
+        logger.info(f"⏳ {len(docs)} kampanya vektörlenip Qdrant'a yükleniyor, lütfen bekleyin...")
+        
+        QdrantVectorStore.from_documents(
+            docs,
+            embeddings,
+            url="http://qdrant:6333",
+            collection_name="banka_kampanyalari",
+            content_payload_key="belge",
+            force_recreate=True 
+        )
+        logger.info(f"✅ BİNGO! Qdrant Vektör Veritabanı {len(docs)} kampanya ile OTOMATİK oluşturuldu!")
+    except Exception as e:
+        logger.error(f"Qdrant Otomatik Kurulum Hatası: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🚀 Sistem Başlıyor: Otomatik Qdrant kurulumu tetiklendi...")
+    asyncio.create_task(auto_init_qdrant())
+    
+    # 🚀 YENİ NÜKLEER TOKAT: REDIS'İ KÖKÜNDEN TEMİZLE!
+    # Sistem her başladığında LLM'in o eski hatalı ezberleri tamamen uçar.
+    try:
+        from chatbot.redis_cache import get_redis
+        r = await get_redis()
+        await r.flushall()
+        logger.info("🧹 Redis Hafızası (Cache) başlangıçta tamamen TERTEMİZ edildi!")
+    except Exception as e:
+        logger.error(f"Redis temizlenirken hata: {e}")
+
 TEMP_DIR = "./temp"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
@@ -133,9 +205,11 @@ async def chat_endpoint(
     model: str = Form("qwen3.5:4b"), 
     thinking: str = Form("false"),
     history: str = Form("[]"),
-    files: List[UploadFile] = File(default=None)
+    view_mode: str = Form("musteri"), 
+    language: str = Form("tr"),       
+    files: List[UploadFile] = File(default=[]) 
 ):
-    logger.info(f"🚀 Sinyal alındı! Mesaj: '{prompt}'")
+    logger.info(f"🚀 Sinyal alındı! Mesaj: '{prompt}' | Mod: {view_mode} | Dil: {language}")
     
     try:
         parsed_history = json.loads(history)
@@ -149,7 +223,7 @@ async def chat_endpoint(
         dosya_icerikleri = []
         
         for file in files:
-            if file.filename: 
+            if getattr(file, "filename", None): 
                 file_path = os.path.join(TEMP_DIR, file.filename)
                 try:
                     with open(file_path, "wb") as buffer:
@@ -189,7 +263,9 @@ async def chat_endpoint(
             model=model,
             thinking=thinking,
             history=parsed_history,
-            file_context=file_context
+            file_context=file_context,
+            view_mode=view_mode, 
+            language=language    
         )
         
         if isinstance(response, str):

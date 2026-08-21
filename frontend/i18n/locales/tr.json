@@ -1,48 +1,66 @@
 {
-  "landing": {
-    "nav": {
-      "assistant": "Asistan",
-      "problem": "Problem & Çözüm",
-      "architecture": "Sistem Mimarisi",
-      "team": "Takım & Misyon"
-    },
-    "hero": {
-      "title": "Akıllı Finans Asistanı"
-    },
-    "problem": {
-      "title": "Problem ve Çözüm Yaklaşımı",
-      "problemTitle": "Problem",
-      "problemText": "Katılım bankacılığında kampanya metinleri farklı formatlarda, farklı terminolojilerle yazılmakta ve manuel karşılaştırma zorlaşmaktadır. Bu durum banka çalışanlarının ve müşterilerin en avantajlı ürünü seçmesini geciktirmektedir.",
-      "solutionTitle": "Çözüm",
-      "solutionText": "Web scraping ile veri toplama, Türkçe NLP modelleri ile metin analizi ve bilgi çıkarımı, çıkarılan verileri standart formata dönüştürüp karşılaştırılabilir hale getirme, sonuçları interaktif dashboard ve soru-cevap chatbotu ile kullanıcıya sunma."
-    },
-    "architecture": {
-      "title": "Sistem Mimarisi",
-      "step1": "1. Web Scraping",
-      "step2": "2. Regex + ModernBERT-TR",
-      "step3": "3. PostgreSQL",
-      "step4": "4. Qdrant & Qwen2.5 7B",
-      "step5": "5. Dashboard & Chatbot"
-    },
-    "vision": {
-      "title": "Vizyon",
-      "text": "Türkiye'de katılım bankacılığı alanında, doğal dil işleme tabanlı karşılaştırma ve analiz çözümlerinin öncüsü olmak."
-    },
-    "mission": {
-      "title": "Misyon",
-      "text": "Katılım bankalarının ürün metinlerinden kritik finansal bilgileri otomatik çıkararak, banka çalışanlarına ve müşterilere anlaşılır, karşılaştırılabilir ve erişilebilir veri sunmak."
-    },
-    "team": {
-      "title": "SmartData Takımı",
-      "roleCaptain": "Takım Kaptanı",
-      "roleComputerEng": "Bilgisayar Mühendisliği",
-      "roleMis": "Yönetim Bilişim Sis.",
-      "roleAiEng": "Yapay Zeka Mühendisliği"
-    },
-    "scrollHint": "Sohbete başlamak için kaydırmaya devam edin ↓",
-    "transition": {
-      "title": "Sohbete geçiliyor...",
-      "subtitle": "Akıllı Finans Asistanı hazırlanıyor"
-    }
+  "brand": "FinAgent",
+  "menu": {
+    "customer_view": "Ana Sayfa",
+    "banks_markets": "Bankalar & Pazarlar",
+    "campaigns_list": "Kampanyalar",
+    "data_validation": "Veri Doğrulama",
+    "ai_assistant": "AI Asistan (Bot)"
+  },
+  "header": {
+    "menu": "Menü",
+    "customer": "Müşteri",
+    "customer_info": "Yalnızca genel kampanyaları gösterir",
+    "bank_employee": "Banka Çalışanı",
+    "bank_employee_info": "Kurum içi ve gizli kampanyaları da içerir",
+    "change_language": "Dil Değiştir",
+    "change_theme": "Tema Değiştir"
+  },
+  "chat": {
+    "db_title": "MONGODB VERİTABANI KAMPANYA KAYDI",
+    "bank_institution": "Banka / Kurum",
+    "campaign_name": "Kampanya Adı",
+    "not_specified": "Belirtilmedi",
+    "value": "Değer",
+    "system_note": "Sistem Notu",
+    "sql_desc": "Bu veriler yapılandırılmış SQL veritabanından hatasız olarak çekilmiştir.",
+    "png_preparing": "PNG görseli hazırlanıyor...",
+    "png_error": "PNG oluşturulamadı.",
+    "average": "Ortalama",
+    "avg_value": "Ortalama Değer",
+    "min_value": "En Düşük",
+    "max_value": "En Yüksek",
+    "no_data_export": "Bu mesajda dışa aktarılacak veri veya tablo bulunamadı.",
+    "report_footer": "Bu rapor, FinAgent Yapay Zeka asistanı tarafından otomatik olarak oluşturulmuştur.",
+    "table": "Tablo ",
+    "excel_error": "Excel oluşturulurken bir hata meydana geldi.",
+    "market_analysis": "Pazar Analizi",
+    "bank_comparison": "Bankalar Arası Veri Kıyaslaması",
+    "detailed_comparison": "Detaylı Kampanya Kıyaslaması",
+    "no_report_content": "Raporlanacak içerik bulunamadı.",
+    "report_error": "Rapor oluşturulurken bir hata meydana geldi.",
+    "max_files": "En fazla {max} dosya yükleyebilirsiniz.",
+    "files_sent": "dosya gönderildi.",
+    "docs_analyzing": "Belgeler analiz ediliyor",
+    "history_scanning": "Sohbet geçmişi taranıyor",
+    "starting": "başlatılıyor...",
+    "process_starting": "İşlem başlatılıyor...",
+    "server_error": "Üzgünüm, sunucuyla iletişim kurulamadı.",
+    "download_excel_title": "Excel Olarak İndir",
+    "create_pdf_title": "PDF Raporu Oluştur",
+    "save_png_title": "Grafiği PNG Olarak Kaydet",
+    "view_db_source": "Veritabanı kaynağını görüntüle",
+    "full_data_table": "Eksiksiz Veri Tablosu",
+    "download_excel": "Excel İndir",
+    "generating": "Oluşturuluyor...",
+    "view_report": "Raporu Görüntüle",
+    "sql_powered": "SQL Veritabanı ile Güçlendirildi (Tıklayın)",
+    "drop_files_here": "Dosyaları Buraya Bırakın",
+    "placeholder": "Bir şeyler sorun, yapıştırın (Ctrl+V) veya dosya bırakın...",
+    "report_preview": "Rapor Önizleme",
+    "db_record": "Veritabanı Kaydı",
+    "download": "İndir",
+    "process_completed": "İşlem tamamlandı",
+    "campaign_detail": "Kampanya Detayı"
   }
 }

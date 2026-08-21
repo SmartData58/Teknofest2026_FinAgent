@@ -1,10 +1,13 @@
+import os
 import json
 import re
 from pymongo import MongoClient
 from loguru import logger
 
-# 🚀 MONGODB BAĞLANTI AYARLARI (Kendi URL'in varsa burayı değiştir)
-MONGO_URI = "mongodb://localhost:27017/"
+# 🚀 TOKAT: Localhost ve Şifresiz giriş iptal! Docker Compose'daki admin şifresi eklendi!
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:admin123@mongodb:27017/?authSource=admin")
+
+# ... Kodun geri kalanı aynı kalacak
 DB_NAME = "finagent"
 COLLECTION_NAME = "kampanyalar"
 
