@@ -143,7 +143,8 @@ def ham_verileri_temizle_in_memory(raw_kayitlar: list[dict]) -> list[dict]:
 
 
 def bankayi_calistir(banka_conf: dict, db) -> None:
-    """Tek bankanın spider'ını çalıştırır, verileri temizler ve DB kaydı için ilgili fonksiyona iletir."""
+    """Tek bankanın spider'ını çalıştırır; kampanyaları ham_kampanya'ya,
+    ürünleri ham_urun koleksiyonuna kaydeder."""
     banka_id = banka_conf["_id"]
     kisa_ad = banka_conf.get("kisa_ad", banka_id)
     spider_adi = banka_conf.get("spider", banka_id)
@@ -158,22 +159,44 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
         spider_class = spider_sinifini_bul(spider_adi)
         spider = spider_class()
 
-        # 1. Spider'dan gelen ham verileri topla
+        # ---------------- KAMPANYALAR (ham_kampanya) ----------------
         raw_kayitlar = list(spider.kampanyalari_topla())
-
-        # 2. Verileri DB'ye yazmadan önce hafızada (in-memory) temizle ve tarihleri ayrıştır
         temizlenmis_kayitlar = ham_verileri_temizle_in_memory(raw_kayitlar)
-
-        # 3. MongoDB BSON uyumsuzluğu oluşmaması için date objelerini datetime'a dönüştür
         bson_uyumlu_kayitlar = bson_uyumlu_hale_getir(temizlenmis_kayitlar)
 
-        # 4. Temizlenmiş ve BSON uyumlu kayıtları DB kaydı için ilet
         ham_kampanyalari_kaydet(
             banka_conf=banka_conf,
             raw_kayitlar=bson_uyumlu_kayitlar,
             baslangic_zamani=baslangic_zamani,
             db=db,
         )
+
+        # ---------------- ÜRÜNLER (ham_urun) ----------------
+        if hasattr(spider, "urunleri_topla"):
+            print(f"  🔎 [{banka_id.upper()}] Ürünler taranıyor...")
+            raw_urunler = list(spider.urunleri_topla())
+
+            if raw_urunler:
+                temiz_urunler = ham_verileri_temizle_in_memory(raw_urunler)
+                bson_urunler = bson_uyumlu_hale_getir(temiz_urunler)
+
+                urun_koleksiyonu = db["ham_urun"]
+                eklenen = 0
+                for urun in bson_urunler:
+                    urun["banka_id"] = banka_id
+                    urun["tarama_zamani"] = baslangic_zamani
+                    # url'ye göre upsert -> tekrar çalıştırınca duplike olmasın
+                    urun_koleksiyonu.update_one(
+                        {"url": urun.get("url")},
+                        {"$set": urun},
+                        upsert=True,
+                    )
+                    eklenen += 1
+                print(f"  ✅ {eklenen} adet ürün 'ham_urun' koleksiyonuna kaydedildi.")
+            else:
+                print("  ℹ️ Ürün bulunamadı.")
+        else:
+            print("  ⏭️ Bu spider'da urunleri_topla() yok, ürün adımı atlandı.")
 
     except NotImplementedError:
         print("  ⏭️ Spider henüz yazılmadı (NotImplementedError), atlanıyor.")
