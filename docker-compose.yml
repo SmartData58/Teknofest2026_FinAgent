@@ -123,3 +123,4 @@ networks:
 volumes:
   mongo_data:
   qdrant_data:
+  ollama_data:
