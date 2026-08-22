@@ -1,5 +1,7 @@
 import argparse
 import asyncio
+import json
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -53,11 +55,104 @@ def run_step_3_extraction():
         sys.exit(1)
 
 
+def _vektorleme_sonucunu_raporla(adet: int):
+    if adet == 0:
+        print(
+            "⚠️ Vektörlenecek kampanya bulunamadı; Qdrant koleksiyonu değiştirilmedi.\n"
+            "   MongoDB'de veri var mı diye kontrol edin: python mongo_durum.py"
+        )
+    else:
+        print(f"✅ {adet} kampanya Qdrant'a vektörlendi.")
+
+
+def _adim4_http_ile_calistir():
+    """'chatbot' paketi yerel olarak import edilemedi — muhtemelen pipeline.py,
+    sohbet servisinin (main.py + chatbot/) çalıştığı container'dan AYRI bir
+    container'da/pakette çalışıyor. Kanıt: ADIM 1-3, backend.* ve scraper.*
+    modüllerini sorunsuz import edebiliyor ama chatbot.* hiç bulunamıyor — yani
+    bu ortamda o paket dosya sisteminde bile yok, bir PYTHONPATH ayarı bunu
+    çözmez.
+
+    Bu durumda aynı işi, sohbet servisinin sunduğu POST /admin/reindex ucunu
+    HTTP üzerinden çağırarak yaptırıyoruz (container sınırını import değil ağ
+    üzerinden aşan tek yol budur). Hedef adres CHATBOT_SERVICE_URL ortam
+    değişkeninden okunur — docker-compose.yml'nizde main.py'yi çalıştıran
+    servisin adını buraya yazmanız gerekir (ör. "http://backend:8000";
+    gerçek servis adı sizin compose dosyanıza göre değişir, buradaki
+    "localhost" varsayılanı sadece aynı container/host'ta çalıştırma durumu
+    içindir).
+    """
+    import urllib.error
+    import urllib.request
+
+    # 🛠️ Varsayılan artık http://backend:8000 — localhost DEĞİL. Doğrulandı:
+    # pipeline.py "docker compose exec scraper python pipeline.py ..." ile
+    # ÇALIŞIYOR, yani "scraper" container'ının İÇİNDEN çalışıyor. Bir
+    # container'ın içinden "localhost" HER ZAMAN o container'ın kendisini
+    # işaret eder — backend container'ının host'a açtığı 8003 portuna (hatta
+    # kendi iç portu 8000'e bile) "localhost" ile ASLA ulaşılamaz. Aynı Docker
+    # Compose ağındaki container'lar birbirine, host'a açılan portla değil,
+    # compose'daki SERVİS ADIYLA ve container'ın KENDİ İÇ PORTUYLA ulaşır:
+    # "backend" (compose service adı) + 8000 (main.py'nin container içinde
+    # dinlediği port, docker-compose.yml'de "8003:8000" olarak host'a
+    # eşlenmiş olan İKİNCİ sayı). Farklı bir servis adından çalıştırırsanız
+    # CHATBOT_SERVICE_URL ortam değişkeniyle geçersiz kılabilirsiniz.
+    taban_url = os.getenv("CHATBOT_SERVICE_URL", "http://backend:8000").rstrip("/")
+    url = f"{taban_url}/admin/reindex"
+    print(
+        "ℹ️ 'chatbot' paketi bu ortamda import edilemiyor (ayrı bir servis/container "
+        "olabilir).\n"
+        f"   Bunun yerine sohbet servisinin admin ucu deneniyor: POST {url}"
+    )
+
+    headers = {"Content-Type": "application/json"}
+    token = os.getenv("ADMIN_TOKEN")
+    if token:
+        headers["X-Admin-Token"] = token
+
+    istek = urllib.request.Request(url, method="POST", headers=headers, data=b"{}")
+
+    # 🛠️ Proxy'yi BİLEREK devre dışı bırakıyoruz. Windows'ta urllib.request,
+    # varsayılan olarak sistem proxy ayarlarını (kayıt defterinden/WinINet)
+    # otomatik okur ve "localhost" isteklerini bile bir proxy üzerinden
+    # göndermeye çalışabilir — curl.exe bunu yapmadığı için `curl.exe` çalışırken
+    # aynı adrese Python'dan "Connection refused" alınması tam olarak bu
+    # yüzdendir (curl proxy'yi atlıyor/farklı okuyor, urllib proxy'ye
+    # yönlendirip başarısız oluyor). Bu çağrı sohbet servisinin KENDİ Docker
+    # ağındaki/host'undaki admin ucuna gidiyor; hiçbir zaman dış bir proxy'den
+    # geçmesi gerekmiyor.
+    acici = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with acici.open(istek, timeout=900) as yanit:
+            gövde = json.loads(yanit.read().decode("utf-8"))
+    except urllib.error.URLError as e:
+        print(
+            f"❌ Vektörleme (Qdrant) hatası: 'chatbot' paketi yerel olarak import "
+            f"edilemedi VE {url} adresine de ulaşılamadı ({e}).\n"
+            "   Çözüm seçenekleri:\n"
+            "   1) pipeline.py'yi chatbot/main.py ile AYNI container'da çalıştırın, YA DA\n"
+            "   2) CHATBOT_SERVICE_URL ortam değişkenini sohbet servisinizin gerçek "
+            "adresine ayarlayın\n"
+            "      (docker-compose.yml'deki servis adı, ör. 'http://backend:8000')."
+        )
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Vektörleme (Qdrant) hatası: sunucu isteğine hazırlanırken hata: {e}")
+        sys.exit(1)
+
+    if "adet" not in gövde:
+        print(f"❌ Vektörleme (Qdrant) hatası: sunucudan beklenmeyen yanıt: {gövde}")
+        sys.exit(1)
+
+    _vektorleme_sonucunu_raporla(gövde["adet"])
+
+
 def run_step_4_embedding():
     """MongoDB'deki TÜM kampanyaları vektörleyip Qdrant'a yazar.
 
     Mevcut RAG altyapısını yeniden kullanır — chatbot/indexing.py:
-      • Kayıtları okur (smartdata.processed_campaigns, boşsa finagent.kampanyalar)
+      • Kayıtları okur (önce islenmis_kampanyalar, boşsa smartdata.processed_campaigns,
+        boşsa finagent.kampanyalar)
       • Her kampanya için arama metnini kurar
       • payload'a "banka_kodu" ekler  -> bankaya göre filtreli arama bunu kullanır
       • content_payload_key="belge"   -> sohbet tarafı bu anahtarı okur
@@ -67,26 +162,30 @@ def run_step_4_embedding():
     kazımadan sonra tam yeniden inşa yaptığı için burada istenen davranış budur.
     Embedding servisi kapalıysa mevcut koleksiyon KORUNUR (veri okunamazsa 0 döner
     ve yazma hiç yapılmaz), yani yarım/boş bir indeksle kalınmaz.
+
+    🛠️ 'chatbot' paketi bu process'ten import edilemiyorsa (ayrı container/servis
+    ihtimali — bkz. _adim4_http_ile_calistir), sessizce patlamak yerine aynı işi
+    HTTP admin ucu üzerinden yaptırmayı DENER; o da başarısız olursa açık ve
+    eyleme geçirilebilir bir hata mesajıyla durur.
     """
     log("ADIM 4: Kampanyalar Vektörlenip Qdrant'a Yükleniyor...")
+
     try:
         from chatbot.indexing import auto_init_qdrant
+    except ModuleNotFoundError:
+        _adim4_http_ile_calistir()
+        return
 
+    try:
         # auto_init_qdrant async; pipeline senkron olduğu için burada çalıştırıyoruz.
         # embeddings=None -> indexing.py hafif varsayılan embedder'ı kurar
         # (embedding_client üzerinden; LLM/sohbet yığınını import etmez).
         adet = asyncio.run(auto_init_qdrant())
-
-        if adet == 0:
-            print(
-                "⚠️ Vektörlenecek kampanya bulunamadı; Qdrant koleksiyonu değiştirilmedi.\n"
-                "   MongoDB'de veri var mı diye kontrol edin: python mongo_durum.py"
-            )
-        else:
-            print(f"✅ {adet} kampanya Qdrant'a vektörlendi.")
     except Exception as e:
         print(f"❌ Vektörleme (Qdrant) hatası: {e}")
         sys.exit(1)
+
+    _vektorleme_sonucunu_raporla(adet)
 
 
 def main():

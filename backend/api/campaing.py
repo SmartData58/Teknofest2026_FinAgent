@@ -23,16 +23,15 @@ from chatbot.redis_cache import get_redis
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:admin123@mongodb:27017/?authSource=admin")
 
 # 🛠️ Koleksiyon adı artık ortam değişkeninden ayarlanabilir.
-# ⚠️ DİKKAT — VERİ KAYNAĞI UYUŞMAZLIĞI: Bu REST API `smartdata.kampanyalar`
-# koleksiyonunu okuyor. Ama sohbet tarafı BAŞKA yerlere bakıyor:
-#   chatbot/indexing.py          -> smartdata.processed_campaigns, yoksa finagent.kampanyalar
-#   chatbot/generate_response.py -> smartdata.extracted_fields / structured_campaigns /
-#                                   processed_campaigns / kampanyalar, yoksa finagent.kampanyalar
-# Yani /campaigns ucu ile chatbot FARKLI veri görebilir. Hangisinin gerçek
-# veriyi tuttuğunu görmek için `python mongo_durum.py` çalıştırın; doğru
-# koleksiyon belirlendikten sonra üç dosyayı da aynı kaynağa hizalayın.
+# ⚠️ DAHA ÖNCE BURADA UYUŞMAZLIK VARDI: bu REST API varsayılan olarak
+# `smartdata.kampanyalar` okuyordu — MongoDB Compass'ta doğrulandı, bu
+# koleksiyonda 0 (sıfır) doküman var, yani /campaigns ucu hep boş dönüyordu.
+# Gerçek veri (pipeline.py ADIM 1-3'ün yazdığı) `smartdata.islenmis_kampanyalar`
+# koleksiyonunda (344 kayıt). Varsayılan artık buna güncellendi.
+# chatbot/indexing.py ve chatbot/generate_response.py da AYNI koleksiyonu
+# öncelikli olarak arayacak şekilde hizalandı — üçü artık aynı kaynağı okuyor.
 DB_ADI = os.getenv("CAMPAIGN_DB", "smartdata")
-KOLEKSIYON_ADI = os.getenv("CAMPAIGN_COLLECTION", "kampanyalar")
+KOLEKSIYON_ADI = os.getenv("CAMPAIGN_COLLECTION", "islenmis_kampanyalar")
 
 # serverSelectionTimeoutMS: Mongo erişilemezse istek 30sn (varsayılan) asılı
 # kalmasın, hızlıca hata versin.
@@ -72,7 +71,7 @@ class KampanyaOzet(BaseModel):
     vade_ay: Optional[int] = None
     taksit_sayisi: Optional[int] = None
     tahsis_ucreti: Optional[float] = None
-    odul_tutari_tl: Optional[float] = None
+    odul_miktari: Optional[float] = None
     indirim_orani: Optional[float] = None
     baslangic_tarihi: Optional[str] = None
     bitis_tarihi: Optional[str] = None

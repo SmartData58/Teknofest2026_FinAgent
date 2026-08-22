@@ -209,13 +209,28 @@ def niyet_bul(soru: str, gecmis: Sequence[Mesaj] = ()) -> Niyet:
     if devam:
         parcalar = [m.icerik for m in reversed(gecmis) if m.rol == "user"]
         baglam_soru = " ".join(reversed(parcalar[:2])) if parcalar else None
-        if banka is None and not _BANKA_SORGUSU.search(soru):
-            for m in reversed(gecmis):
-                if m.rol == "user":
-                    b = banka_bul(m.icerik)
-                    if b:
-                        banka = b
-                        break
+
+    # 🛠️ HATA DÜZELTMESİ: Banka mirası (önceki mesajdan banka_kodu çıkarma)
+    # önceden YALNIZCA yukarıdaki dar `devam` (_DEVAM regex'i: "peki", "aynı",
+    # "bu/o/şu X", "bir de" vb.) True olduğunda çalışıyordu. Ama "Daha yüksek
+    # getiri sağlayan alternatifler var mı?" gibi çok doğal bir takip sorusu bu
+    # kalıplardan hiçbirine uymuyor — devam=False kalıyor, banka_kodu None'da
+    # kalıyor, ve (generate_response.py'deki) vektör arama/derin RAG bankaya
+    # göre HİÇ FİLTRELENMEDEN çalışıyor. Sonuç: Kuveyt Türk hakkında konuşulan
+    # bir sohbette bu tür bir takip sorusuna, TAMAMEN ALAKASIZ bir bankanın
+    # (ör. Albaraka) kampanyası cevaba karışabiliyordu — kullanıcının fark
+    # ettiği ve raporladığı tam olarak buydu. Artık banka mirası `devam`
+    # regex'ine bağlı DEĞİL: sohbette geçmiş varsa ve mevcut mesaj kendi
+    # başına farklı/yeni bir banka belirtmiyorsa (ve açıkça "hangi banka(lar)"
+    # diye SORMUYORSA — bu durumda kasıtlı olarak TÜM bankalar aranmalı), en
+    # son bahsedilen banka otomatik olarak devralınır.
+    if banka is None and bool(gecmis) and not _BANKA_SORGUSU.search(soru):
+        for m in reversed(gecmis):
+            if m.rol == "user":
+                b = banka_bul(m.icerik)
+                if b:
+                    banka = b
+                    break
 
     for alan, desen in _KARSILASTIRMA_ALANLARI:
         if desen.search(soru):

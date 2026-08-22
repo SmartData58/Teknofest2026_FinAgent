@@ -1,159 +1,35 @@
-import os
-import json
-import re
-from pymongo import MongoClient
-from loguru import logger
+# 🛠️ TEMİZLİK: Bu dosyada SADECE gercek_finansman_hesapla() gerçekten
+# kullanılıyordu (generate_response.py'nin "hesaplama" niyetinde çağrılıyor —
+# bkz. `from chatbot.tools import gercek_finansman_hesapla`). Aşağıdakiler
+# kod tabanının hiçbir yerinden çağrılmadığı grep ile doğrulanarak SİLİNDİ:
+#   - init_mongo_db() + 32 kayıtlık sahte örnek veri listesi: sadece dosya
+#     doğrudan `python tools.py` ile çalıştırılırsa tetikleniyordu (üstelik
+#     finagent.kampanyalar'ı SİLİP test verisiyle dolduruyordu); production
+#     akışı buna hiç dokunmuyor, gerçek veri smartdata.* koleksiyonlarında.
+#   - safe_json_parse(): hiçbir dosyada import/çağrı yok.
+#   - grafigi_hazirla_mongo_dinamik() (bu dosyadaki, düz finagent.kampanyalar
+#     şemasına bakan versiyon): hiçbir yerden çağrılmıyor. Gerçek production
+#     akışı generate_response.py'nin KENDİ İÇİNDEKİ aynı isimli ama farklı
+#     (gerçek islenmis_kampanyalar/smartdata iç içe şemasını okuyan)
+#     fonksiyonunu kullanıyor — bu ikisi hiçbir zaman birbirinin yerine
+#     geçmiyordu.
+# Bu fonksiyonlarla birlikte artık kullanılmayan importlar (os, json, re,
+# MongoClient, logger) ve MONGO_URI/DB_NAME/COLLECTION_NAME sabitleri de
+# kaldırıldı — hiçbiri chatbot.tools dışından import edilmiyordu (grep ile
+# doğrulandı).
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:admin123@mongodb:27017/?authSource=admin")
-
-DB_NAME = "finagent"
-COLLECTION_NAME = "kampanyalar"
-
-def init_mongo_db():
-    try:
-        client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-        db = client[DB_NAME]
-        collection = db[COLLECTION_NAME]
-
-        # Her çağrıldığında koleksiyonu sıfırlar ki yeni veriler eklenebilsin (Test aşaması için)
-        collection.drop()
-
-        if collection.count_documents({}) == 0:
-            ornek_kampanyalar = [
-                {"banka_adi": "Kuveyt Türk", "kampanya_adi": "Sağlam Business Kart Erteleme", "kategori": "kart", "kar_payi": 3.49, "vade": 3, "odul_tl": 500.0},
-                {"banka_adi": "Kuveyt Türk", "kampanya_adi": "Taksitlio'da Yeni Müşterilere", "kategori": "kart", "kar_payi": 2.99, "vade": 6, "odul_tl": 1000.0},
-                {"banka_adi": "Kuveyt Türk", "kampanya_adi": "Müşterilere Özel Oran", "kategori": "kart", "kar_payi": 2.99, "vade": 12, "odul_tl": 0.0},
-                {"banka_adi": "Kuveyt Türk", "kampanya_adi": "İhracatınız Fazlaysa Bonus", "kategori": "kart", "kar_payi": 2.79, "vade": 12, "odul_tl": 2000.0},
-                {"banka_adi": "Kuveyt Türk", "kampanya_adi": "Evlenecek Çiftlere", "kategori": "ihtiyaç", "kar_payi": 1.99, "vade": 24, "odul_tl": 0.0},
-                {"banka_adi": "Kuveyt Türk", "kampanya_adi": "Seyahat Severlere Uçuş Kartı", "kategori": "kart", "kar_payi": 2.49, "vade": 6, "odul_tl": 1500.0},
-                {"banka_adi": "Kuveyt Türk", "kampanya_adi": "Sağlam Kart Nakit Avans", "kategori": "kart", "kar_payi": 3.19, "vade": 9, "odul_tl": 300.0},
-                {"banka_adi": "Kuveyt Türk", "kampanya_adi": "Market Alışverişlerine Özel", "kategori": "kart", "kar_payi": 2.89, "vade": 3, "odul_tl": 250.0},
-                {"banka_adi": "Kuveyt Türk", "kampanya_adi": "Akaryakıt Kampanyası", "kategori": "kart", "kar_payi": 2.89, "vade": 5, "odul_tl": 400.0},
-                {"banka_adi": "Kuveyt Türk", "kampanya_adi": "Giyim Sektörüne Özel", "kategori": "kart", "kar_payi": 2.99, "vade": 4, "odul_tl": 150.0},
-                {"banka_adi": "Kuveyt Türk", "kampanya_adi": "Teknoloji Alışverişlerinde", "kategori": "kart", "kar_payi": 3.29, "vade": 12, "odul_tl": 750.0},
-                {"banka_adi": "Albaraka Türk", "kampanya_adi": "Konut ve Taşıt Finansmanı", "kategori": "taşıt", "kar_payi": 2.87, "vade": 48, "odul_tl": 0.0},
-                {"banka_adi": "Albaraka Türk", "kampanya_adi": "Faizsiz Pratik Kart", "kategori": "kart", "kar_payi": 0.0, "vade": 6, "odul_tl": 250.0},
-                {"banka_adi": "Albaraka Türk", "kampanya_adi": "E-Ticaret Bonus Kart", "kategori": "kart", "kar_payi": 2.65, "vade": 3, "odul_tl": 450.0},
-                {"banka_adi": "Albaraka Türk", "kampanya_adi": "Yurt Dışı Harcama Kartı", "kategori": "kart", "kar_payi": 3.10, "vade": 6, "odul_tl": 800.0},
-                {"banka_adi": "Albaraka Türk", "kampanya_adi": "Worldcard Hoşgeldin Bonusu", "kategori": "kart", "kar_payi": 2.90, "vade": 6, "odul_tl": 550.0},
-                {"banka_adi": "TOM Katılım", "kampanya_adi": "Hadi Hesaplı Kredi", "kategori": "ihtiyaç", "kar_payi": 4.99, "vade": 36, "odul_tl": 0.0},
-                {"banka_adi": "TOM Katılım", "kampanya_adi": "Hadi Gold Kart", "kategori": "kart", "kar_payi": 4.50, "vade": 12, "odul_tl": 1200.0},
-                {"banka_adi": "TOM Katılım", "kampanya_adi": "Gençlere Özel Hadi Kart", "kategori": "kart", "kar_payi": 4.20, "vade": 6, "odul_tl": 600.0},
-                {"banka_adi": "Türkiye Finans", "kampanya_adi": "Masrafsız Finansman", "kategori": "ihtiyaç", "kar_payi": 0.0, "vade": 12, "odul_tl": 0.0},
-                {"banka_adi": "Türkiye Finans", "kampanya_adi": "Happy Zero Kart", "kategori": "kart", "kar_payi": 0.0, "vade": 6, "odul_tl": 200.0},
-                {"banka_adi": "Türkiye Finans", "kampanya_adi": "Happy Kart Bayram Kampanyası", "kategori": "kart", "kar_payi": 2.50, "vade": 9, "odul_tl": 850.0},
-                {"banka_adi": "Türkiye Finans", "kampanya_adi": "Happy Kart Yılbaşı Çekilişi", "kategori": "kart", "kar_payi": 2.60, "vade": 12, "odul_tl": 1100.0},
-                {"banka_adi": "Türkiye Finans", "kampanya_adi": "Happy Eğitim Kampanyası", "kategori": "kart", "kar_payi": 2.10, "vade": 9, "odul_tl": 650.0},
-                {"banka_adi": "Vakıf Katılım", "kampanya_adi": "Sıfır Kar Paylı Taşıt", "kategori": "taşıt", "kar_payi": 0.0, "vade": 24, "odul_tl": 0.0},
-                {"banka_adi": "Vakıf Katılım", "kampanya_adi": "VKart Nakit İade Kampanyası", "kategori": "kart", "kar_payi": 2.45, "vade": 6, "odul_tl": 350.0},
-                {"banka_adi": "Vakıf Katılım", "kampanya_adi": "Eğitim Harcamalarına Özel", "kategori": "kart", "kar_payi": 2.10, "vade": 6, "odul_tl": 400.0},
-                {"banka_adi": "Vakıf Katılım", "kampanya_adi": "Sağlık Harcamaları İadesi", "kategori": "kart", "kar_payi": 2.20, "vade": 3, "odul_tl": 300.0},
-                {"banka_adi": "Ziraat Katılım", "kampanya_adi": "Tüketici Finansmanı", "kategori": "ihtiyaç", "kar_payi": 0.0, "vade": 18, "odul_tl": 0.0},
-                {"banka_adi": "Ziraat Katılım", "kampanya_adi": "Ziraat Katılım Kredi Kartı", "kategori": "kart", "kar_payi": 2.75, "vade": 12, "odul_tl": 900.0},
-                {"banka_adi": "Ziraat Katılım", "kampanya_adi": "Tatil ve Seyahat Fırsatı", "kategori": "kart", "kar_payi": 2.60, "vade": 6, "odul_tl": 750.0},
-                {"banka_adi": "Ziraat Katılım", "kampanya_adi": "Ramazan Bayramı Harçlığı", "kategori": "kart", "kar_payi": 2.40, "vade": 3, "odul_tl": 500.0}
-            ]
-            collection.insert_many(ornek_kampanyalar)
-            logger.info("✅ MongoDB Veritabanı 32 Kampanyalık Dev Havuzla Kuruldu!")
-        client.close()
-    except Exception as e:
-        logger.error(f"MongoDB Bağlantı Hatası: {e}. Lütfen MongoDB'nin çalıştığından emin olun.")
-
-
-# 🛠️ DÜZELTME: init_mongo_db() önceden bu dosyanın en altında modül seviyesinde
-# çıplak bir çağrı olarak duruyordu (`init_mongo_db()`). Bu, tools.py'nin sadece
-# `gercek_finansman_hesapla` veya `safe_json_parse` gibi saf yardımcı fonksiyonlarını
-# kullanmak için import edilmesi durumunda bile HER SEFERİNDE finagent.kampanyalar
-# koleksiyonunu SİLİP test verisiyle yeniden dolduruyordu — production'daki gerçek
-# veri kaynağı (smartdata.*) etkilenmese de sürpriz ve istenmeyen bir yan etkiydi.
-# Artık sadece bu dosya doğrudan çalıştırıldığında (örn. `python tools.py` ile
-# test verisini bilinçli olarak yeniden kurmak istendiğinde) tetikleniyor.
-if __name__ == "__main__":
-    init_mongo_db()
-
-def safe_json_parse(text: str) -> dict:
-    try:
-        if not text or not text.strip(): return {}
-        text = text.replace("```json", "").replace("```", "").strip()
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        if match: return json.loads(match.group(0))
-        return {}
-    except Exception: return {}
 
 def gercek_finansman_hesapla(tutar: float, vade: int, kar_payi: float) -> str:
-    if kar_payi == 0: return ""
+    if kar_payi == 0:
+        return ""
     r = kar_payi / 100
-    aylik = tutar * (r * (1 + r)**vade) / (((1 + r)**vade) - 1)
+    aylik = tutar * (r * (1 + r) ** vade) / (((1 + r) ** vade) - 1)
     toplam = aylik * vade
-    return f"| Parametre | Değer |\n| :--- | :--- |\n| **🏦 Finansman Tutarı** | {tutar:,.2f} TL |\n| **📅 Vade Süresi** | {vade} Ay |\n| **⚖️ Kâr Payı Oranı** | %{kar_payi} |\n| **💳 Aylık Taksit** | **{aylik:,.2f} TL** |\n| **💰 Toplam Geri Ödeme** | **{toplam:,.2f} TL** |"
-
-# 🚀 OTONOM TEXT-TO-MONGO YÜRÜTÜCÜSÜ (finagent.kampanyalar test/demo şeması içindir).
-# NOT: Bu fonksiyon `finagent.kampanyalar` düz (flat) şemasını okur — production
-# akışındaki chatbot/generate_response.py ise gerçek kazınmış veriyi tutan
-# `smartdata.*` koleksiyonlarını (genel_bilgi/finansman_detay/... iç içe şeması)
-# okur. İki fonksiyon FARKLI veritabanlarına bakar; production sorgu üretimi hâlâ
-# generate_response.py'deki grafigi_hazirla_mongo_dinamik'i kullanır, bu fonksiyon
-# değildir — birbirinin yerine geçmezler.
-def grafigi_hazirla_mongo_dinamik(user_query: str, db_params: dict):
-    query_lower = user_query.lower()
-    chart_type = "bar" if any(w in query_lower for w in ["çubuk", "bar", "tablo", "liste"]) else "doughnut"
-
-    hedef_sutun = db_params.get("hedef_sutun", "kar_payi")
-    kategori = db_params.get("kategori", "hepsi")
-    prefix = db_params.get("prefix", "")
-    suffix = db_params.get("suffix", "")
-    title = db_params.get("title", "Dinamik Pazar Analizi")
-
-    if hedef_sutun not in ["kar_payi", "vade", "odul_tl"]:
-        hedef_sutun = "kar_payi"
-        prefix, suffix = "%", ""
-
-    client = MongoClient(MONGO_URI)
-    collection = client[DB_NAME][COLLECTION_NAME]
-
-    mongo_query = {hedef_sutun: {"$ne": None}}
-
-    if hedef_sutun in ["odul_tl", "vade"]:
-        mongo_query[hedef_sutun] = {"$gt": 0}
-
-    if kategori != "hepsi" and kategori in ["kart", "taşıt", "konut", "ihtiyaç"]:
-        mongo_query["$or"] = [
-            {"kategori": kategori},
-            {"kampanya_adi": {"$regex": kategori, "$options": "i"}}
-        ]
-
-    sonuclar = list(collection.find(mongo_query).sort(hedef_sutun, -1))
-    client.close()
-
-    labels, sub_labels, values, source_indices = [], [], [], []
-    db_context = ""
-
-    for idx, doc in enumerate(sonuclar):
-        labels.append(doc["banka_adi"])
-        sub_labels.append(doc["kampanya_adi"])
-        values.append(doc[hedef_sutun])
-        source_indices.append(idx + 1)
-        db_context += f"- Banka: {doc['banka_adi']}, Kampanya: {doc['kampanya_adi']}, {hedef_sutun.upper()}: {doc[hedef_sutun]}\n"
-
-    if len(labels) > 0:
-        non_zero_values = [v for v in values if v > 0]
-        avg_val = sum(non_zero_values) / len(non_zero_values) if len(non_zero_values) > 0 else 0
-
-        chart_data = {
-            "type": chart_type,
-            "title": title,
-            "subtitle": f"Otonom MongoDB Ajanı {len(labels)} sonucu başarıyla sıraladı.",
-            "prefix": prefix,
-            "suffix": suffix,
-            "labels": labels,
-            "sub_labels": sub_labels,
-            "values": values,
-            "source_indices": source_indices,
-            "stats": {
-                "avg": round(avg_val, 2),
-                "min": min(values),
-                "max": max(values)
-            }
-        }
-        return f'\n\n[CHART]{json.dumps(chart_data)}[/CHART]\n\n', db_context
-    return "", ""
+    return (
+        f"| Parametre | Değer |\n| :--- | :--- |\n"
+        f"| **Finansman Tutarı** | {tutar:,.2f} TL |\n"
+        f"| **Vade Süresi** | {vade} Ay |\n"
+        f"| **Kâr Payı Oranı** | %{kar_payi} |\n"
+        f"| **Aylık Taksit** | **{aylik:,.2f} TL** |\n"
+        f"| **Toplam Geri Ödeme** | **{toplam:,.2f} TL** |"
+    )

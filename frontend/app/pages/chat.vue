@@ -59,6 +59,18 @@ const toggleStatus = (msg) => {
   }
 }
 
+// 🛠️ YENİ: Kaynak bölümü artık native <details>/<summary> DEĞİL — tarayıcı
+// bunu animasyonsuz, anında açıp kapatıyordu (CSS transition <details>'ın
+// açık/kapalı durumları arasında çalışmaz). Bunun yerine msg üzerinde tutulan
+// bu bayrakla elle kontrol ediliyor; şablonda CSS grid-rows (0fr/1fr) tekniğiyle
+// içerik yüksekliği ne olursa olsun (dinamik) yumuşak bir açılış/kapanış elde
+// ediliyor.
+const toggleSources = (msg) => {
+  if (msg && msg.sources && msg.sources.length > 0) {
+    msg.isSourcesExpanded = !msg.isSourcesExpanded;
+  }
+}
+
 const isExpectingChart = (msg) => {
   if (!msg) return false;
   const check = (s) => s && (s.icon === 'database' || (s.text && (s.text.toLowerCase().includes('mongo') || s.text.toLowerCase().includes('redis') || s.text.toLowerCase().includes('veritabanı'))));
@@ -502,15 +514,21 @@ const getObjectUrl = (file) => {
   catch (e) { return ''; }
 }
 
+// 🛠️ HATA DÜZELTMESİ (gerçek chatStore.js görülünce doğrulandı): Bu onMounted
+// önceden useState('sharedPrompt')/useState('sharedFiles')'ı okuyordu — ama
+// ChatPrompt.vue verileri Pinia store'un `initialPrompt`/`initialFiles`
+// alanlarına yazıyor (bkz. chatStore.js: setChatData(prompt, files) bunları
+// dolduruyor). Bu iki mekanizma birbirinden habersizdi; `chatStore` bu dosyada
+// zaten import edilip oluşturuluyordu (üstte, satır 15) ama BİR KEZ bile
+// kullanılmıyordu. Artık asıl kaynak — Pinia store — okunuyor ve tüketildikten
+// sonra store'un kendi clearChatData() eylemiyle temizleniyor (aynı sayfaya
+// tekrar dönüldüğünde eski prompt/dosyaların yeniden gönderilmemesi için).
 onMounted(() => {
   requestAnimationFrame(() => { mounted.value = true })
-  const sharedPrompt = useState('sharedPrompt', () => '')
-  const sharedFiles = useState('sharedFiles', () => [])
-  if (sharedPrompt.value || sharedFiles.value.length > 0) {
-    userMessage.value = sharedPrompt.value
-    selectedFiles.value = [...sharedFiles.value]
-    sharedPrompt.value = ''
-    sharedFiles.value = []
+  if (chatStore.initialPrompt || chatStore.initialFiles.length > 0) {
+    userMessage.value = chatStore.initialPrompt
+    selectedFiles.value = [...chatStore.initialFiles]
+    chatStore.clearChatData()
     setTimeout(() => { sendMessage() }, 500)
   }
 })
@@ -690,7 +708,7 @@ const sendMessage = async () => {
   chatHistory.value.push({
     role: 'assistant', content: '', sources: null, chart: null, statuses: [], 
     currentStatus: null, activeTimer: '0.0', isStatusExpanded: false, isFinished: false,
-    suggestions: [] 
+    isSourcesExpanded: false, suggestions: []
   });
   const aIdx = chatHistory.value.length - 1;
 
@@ -844,6 +862,27 @@ const sendMessage = async () => {
        @dragover.prevent 
        @dragleave.prevent="handleDragLeave" 
        @drop.prevent="handleDrop">
+
+    <!-- 🛠️ EKSİK ÖZELLİK: isDragging/handleDragEnter/handleDragLeave/handleDrop
+         script'te zaten vardı ve dış div'e bağlıydı (sürükleme TEKNİK OLARAK
+         çalışıyordu) ama hiçbir GÖRSEL geri bildirimi yoktu — kullanıcı bir dosyayı
+         sayfanın üzerine sürüklediğinde hiçbir şey olmuyormuş gibi görünüyordu
+         (ChatPrompt.vue'deki "Buraya Bırakın" katmanının burada karşılığı yoktu). -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div v-if="isDragging" class="fixed inset-4 z-[150] flex items-center justify-center border-2 border-dashed border-blue-500 bg-blue-500/10 dark:bg-blue-500/15 rounded-[32px] pointer-events-none backdrop-blur-[2px]">
+        <div class="flex flex-col items-center gap-3 text-blue-600 dark:text-blue-400">
+          <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
+          <span class="text-base font-bold">{{ t('chat.drop_here', 'Dosyaları buraya bırakın') }}</span>
+        </div>
+      </div>
+    </Transition>
 
     <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="opacity-0 -translate-y-4" enter-to-class="opacity-100 translate-y-0" leave-active-class="transition duration-200 ease-in" leave-from-class="opacity-100 translate-y-0" leave-to-class="opacity-0 -translate-y-4">
       <div v-if="toastMessage" class="fixed top-10 left-1/2 -translate-x-1/2 z-[200] bg-neutral-800 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3">
@@ -1157,24 +1196,36 @@ const sendMessage = async () => {
                                 </button>
                               </div>
 
+                              <!-- 🛠️ HATA DÜZELTMESİ: native <details>/<summary> tarayıcının kendi
+                                   açık/kapalı geçişini kullanıyordu — bu geçiş animasyonsuzdur
+                                   (CSS transition <details> için çalışmaz), yani açılıp kapanma
+                                   sert ve anlıktı. Artık msg.isSourcesExpanded ile elle kontrol
+                                   ediliyor ve CSS grid-rows (0fr ⇄ 1fr) tekniğiyle, içerik kısa da
+                                   uzun da olsa yüksekliğe göre DİNAMİK, yumuşak bir açılış/kapanış
+                                   animasyonu uygulanıyor. Ayrıca "MongoDB (NoSQL)" etiketi artık
+                                   kaynağı teknik olarak isimlendirmek yerine sade "Kaynak" diyor. -->
                               <div v-if="msg.sources && msg.sources.length > 0" class="w-full hover:-translate-y-0.5 transition-transform duration-300">
-                                  <details class="group bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700/80 overflow-hidden shadow-sm hover:shadow-md transition-shadow w-full">
-                                      <summary class="flex justify-between items-center font-medium cursor-pointer list-none px-4 py-3 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
+                                  <div class="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700/80 overflow-hidden shadow-sm hover:shadow-md transition-shadow w-full">
+                                      <button type="button" @click="toggleSources(msg)" class="w-full flex justify-between items-center font-medium cursor-pointer px-4 py-3 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
                                           <div class="flex items-center gap-2.5">
                                               <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
-                                              <span class="font-bold tracking-wide text-emerald-600 dark:text-emerald-400">MongoDB (NoSQL) Veritabanı Kayıtları</span>
+                                              <span class="font-bold tracking-wide text-emerald-600 dark:text-emerald-400">Kaynak</span>
                                           </div>
-                                          <span class="transition-transform duration-300 group-open:rotate-180 bg-white dark:bg-neutral-700 rounded-full p-1 shadow-sm border border-neutral-200 dark:border-neutral-600"><svg class="w-4 h-4 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></span>
-                                      </summary>
-                                      <div class="p-4 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700/80">
-                                          <div class="text-xs text-neutral-500 dark:text-neutral-400 mb-2">Sistemin analiz için kullandığı MongoDB logları ve detayları:</div>
-                                          <div class="space-y-2 mt-3">
-                                              <div v-for="(src, sIdx) in msg.sources" :key="sIdx" class="text-xs p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 font-mono text-neutral-600 dark:text-neutral-300">
-                                                  {{ src.icerik }}
+                                          <span class="transition-transform duration-300 bg-white dark:bg-neutral-700 rounded-full p-1 shadow-sm border border-neutral-200 dark:border-neutral-600" :class="msg.isSourcesExpanded ? 'rotate-180' : ''"><svg class="w-4 h-4 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></span>
+                                      </button>
+                                      <div class="grid transition-all duration-300 ease-in-out" :class="msg.isSourcesExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'">
+                                        <div class="overflow-hidden">
+                                          <div class="p-4 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700/80">
+                                              <div class="text-xs text-neutral-500 dark:text-neutral-400 mb-2">Sistemin analiz için kullandığı kaynak logları ve detayları:</div>
+                                              <div class="space-y-2 mt-3">
+                                                  <div v-for="(src, sIdx) in msg.sources" :key="sIdx" class="text-xs p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 font-mono text-neutral-600 dark:text-neutral-300">
+                                                      {{ src.icerik }}
+                                                  </div>
                                               </div>
                                           </div>
+                                        </div>
                                       </div>
-                                  </details>
+                                  </div>
                               </div>
                             </div>
                             
@@ -1199,6 +1250,32 @@ const sendMessage = async () => {
         <div class="w-full max-w-4xl mx-auto px-4 pb-4 pointer-events-auto relative z-20">
           
           <form @submit.prevent="sendMessage" class="flex flex-col w-full p-2 rounded-2xl border transition-all duration-300 relative bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 shadow-sm focus-within:shadow-lg focus-within:border-blue-400 dark:focus-within:border-blue-600 focus-within:ring-4 focus-within:ring-blue-500/10 dark:focus-within:ring-blue-500/20 focus-within:-translate-y-1">
+
+            <!-- 🛠️ EKSİK ÖZELLİK: selectedFiles seçim/sürükle-bırak/yapıştırma ile
+                 zaten doluyordu (script'te tüm mantık vardı) ama ŞABLONDA hiçbir
+                 yerde gösterilmiyordu — kullanıcı gönder'e basana kadar bir dosyanın
+                 eklendiğine dair hiçbir görsel geri bildirim yoktu. Bu tam olarak
+                 "dosya yükleme fonksiyonu" kullanıcıya kayboldu diye görünen kısımdı.
+                 ChatPrompt.vue'deki aynı önizleme deseni buraya da eklendi. -->
+            <Transition
+              enter-active-class="transition-all duration-300 ease-out"
+              enter-from-class="opacity-0 translate-y-2 scale-95"
+              enter-to-class="opacity-100 translate-y-0 scale-100"
+              leave-active-class="transition-all duration-200 ease-in"
+              leave-from-class="opacity-100 translate-y-0 scale-100"
+              leave-to-class="opacity-0 translate-y-2 scale-95"
+            >
+              <div v-if="selectedFiles.length > 0" class="flex items-center gap-2 flex-wrap px-1.5 pb-2">
+                <div v-for="(file, index) in selectedFiles" :key="index" class="flex items-center gap-1.5 bg-neutral-50 dark:bg-neutral-700/60 px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-600 shadow-sm">
+                  <svg class="w-3.5 h-3.5 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                  <span class="text-[12px] font-medium text-neutral-600 dark:text-neutral-300 truncate max-w-[140px]">{{ file.name }}</span>
+                  <button @click.prevent="removeFile(index)" type="button" :disabled="isStreaming" class="ml-0.5 p-0.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                  </button>
+                </div>
+              </div>
+            </Transition>
+
             <div class="flex gap-2 items-center relative z-20">
               <input type="file" multiple ref="fileInput" class="hidden" @change="handleFileSelect" accept=".pdf, image/*, .xls, .xlsx, .doc, .docx, .ppt, .pptx" />
               <button type="button" @click="triggerFileInput" :disabled="isStreaming" class="p-3 text-neutral-400 hover:text-blue-500 transition-all duration-300 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-700 active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5 hover:shadow-sm">
@@ -1221,7 +1298,10 @@ const sendMessage = async () => {
                 <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> {{ activeFile?.isUserFile ? t('chat.file_preview', 'Dosya Önizleme') : t('chat.report_preview', 'Rapor Önizleme') }}
               </template>
               <template v-else>
-                <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg> MongoDB (NoSQL) Veritabanı Kaydı
+                <!-- 🛠️ Yukarıdaki kaynak bölümünün etiketiyle tutarlı olsun diye
+                     ("Kaynak" düğmesine basınca burası hâlâ "MongoDB (NoSQL)" derse
+                     kafa karıştırır) burası da aynı şekilde sadeleştirildi. -->
+                <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg> Kaynak Kaydı
               </template>
             </h3>
             <div class="flex items-center gap-2">

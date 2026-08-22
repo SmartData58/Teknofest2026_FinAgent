@@ -1,5 +1,7 @@
-import os
-import json
+# 🛠️ TEMİZLİK: `os` ve `json` importları kaldırıldı — bu dosyada artık ikisi de
+# kullanılmıyor. `os` zaten önceden de kullanılmıyordu (mevcut kod hiçbir yerde
+# os.* çağırmıyordu); `json` ise sadece aşağıda silinen get_cached_db_params/
+# set_cached_db_params fonksiyonlarında kullanılıyordu.
 import hashlib
 import redis.asyncio as aioredis
 from loguru import logger
@@ -46,26 +48,13 @@ def generate_hash_key(text: str) -> str:
     return hashlib.md5(text.strip().lower().encode('utf-8')).hexdigest()
 
 
-async def get_cached_db_params(query: str):
-    redis_db = await get_redis()
-    key = f"db_params:{generate_hash_key(query)}"
-    try:
-        cached_data = await redis_db.get(key)
-        if cached_data:
-            logger.info("⚡ REDIS CACHE HIT: Veritabanı parametreleri RAM'den çekildi!")
-            return json.loads(cached_data)
-    except Exception as e:
-        logger.warning(f"Redis Get Hatası: {e}")
-    return None
-
-
-async def set_cached_db_params(query: str, params: dict, ttl_seconds: int = 86400):
-    redis_db = await get_redis()
-    key = f"db_params:{generate_hash_key(query)}"
-    try:
-        await redis_db.set(key, json.dumps(params), ex=ttl_seconds)
-    except Exception as e:
-        logger.warning(f"Redis Set Hatası (db_params): {e}")
+# 🛠️ TEMİZLİK: get_cached_db_params()/set_cached_db_params() buradan SİLİNDİ.
+# Kod tabanında hiçbir dosya bu iki fonksiyonu import etmiyor ya da çağırmıyordu
+# (grep ile doğrulandı) — text-to-mongo ajanının (agents.py::yapisal_analiz_
+# parametreleri_uret) parametrelerini önbelleğe almak için tasarlanmış olmalılar
+# ama hiçbir zaman bağlanmamışlar. Gerçekten kullanılan tam-yanıt önbelleği
+# (get_cached_full_response/set_cached_full_response, generate_response.py'de
+# çağrılıyor) aşağıda korunuyor.
 
 
 async def get_cached_full_response(query: str):

@@ -55,6 +55,33 @@ const handleDrop = (event) => {
   selectedFiles.value.push(...files)
 }
 
+// 🛠️ EKSİK ÖZELLİK: Bu bileşende sürükle-bırak vardı ama Ctrl+V ile
+// yapıştırma HİÇ yoktu (chat.vue'de zaten vardı, buraya hiç eklenmemişti).
+// Mantık chat.vue'deki handlePaste ile aynı: panodaki dosya/görsel
+// öğelerini selectedFiles'a ekler, panoda dosya yoksa (sadece metin
+// yapıştırılıyorsa) hiçbir şey yapmaz — metin yapıştırma zaten input'un
+// kendi varsayılan davranışıyla çalışır.
+const handlePaste = (event) => {
+  const items = (event.clipboardData || window.clipboardData)?.items
+  if (!items) return
+
+  for (const item of items) {
+    if (item.kind === 'file') {
+      const file = item.getAsFile()
+      if (!file) continue
+      if (selectedFiles.value.length >= maxFiles) {
+        alert(`En fazla ${maxFiles} dosya yükleyebilirsiniz.`)
+        return
+      }
+      // chat.vue'deki handlePaste ile aynı: "Buraya Bırakın" katmanını kısaca
+      // yanıp söndürerek yapıştırmanın algılandığına dair görsel bir onay verir.
+      isDragging.value = true
+      setTimeout(() => { isDragging.value = false }, 300)
+      selectedFiles.value.push(file)
+    }
+  }
+}
+
 const removeFile = (index) => {
   selectedFiles.value.splice(index, 1)
   if (selectedFiles.value.length === 0 && fileInput.value) fileInput.value.value = ''
@@ -62,9 +89,17 @@ const removeFile = (index) => {
 
 const goToChat = () => {
   if (isNavigating.value || (!inputText.value.trim() && selectedFiles.value.length === 0)) return
-  
+
   isNavigating.value = true
 
+  // 🛠️ HATA DÜZELTMESİ — "dosya yükleme fonksiyonunun geri gelmesi": chatStore.js'in
+  // gerçek içeriği görülünce netleşti — setChatData(prompt, files) verileri store'un
+  // initialPrompt/initialFiles alanlarına doğru şekilde yazıyor. Sorun burada değil,
+  // OKUYAN taraftaydı: chat.vue'nun onMounted'ı bu store'u hiç okumuyor, ayrı bir
+  // useState('sharedPrompt')/useState('sharedFiles') çiftine bakıyordu — bu yüzden
+  // buradan yazılan metin/dosyalar /chat sayfasına hiç ulaşmıyordu. Düzeltme chat.vue
+  // tarafında yapıldı (onMounted artık chatStore.initialPrompt/initialFiles okuyor);
+  // burada değişiklik gerekmiyor, setChatData() çağrısı zaten doğruydu.
   chatStore.setChatData(inputText.value.trim(), selectedFiles.value)
 
   setTimeout(() => {
@@ -147,13 +182,14 @@ const goToChat = () => {
         <span class="text-neutral-500 text-base">{{ t('askGemini') }}</span>
       </div>
 
-      <input 
+      <input
         ref="inputRef"
-        type="text" 
+        type="text"
         v-model="inputText"
         :disabled="isNavigating"
         @focus="isFocused = true"
         @blur="isFocused = false"
+        @paste="handlePaste"
         class="flex-1 bg-transparent border-none outline-none text-neutral-800 dark:text-neutral-100 px-2 py-2 text-base z-10 transition-opacity duration-300 disabled:opacity-50"
         :class="isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'"
       >

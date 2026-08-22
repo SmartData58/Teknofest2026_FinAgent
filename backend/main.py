@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from typing import List
 
 import httpx
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from pydantic import BaseModel
@@ -17,7 +17,7 @@ from pydantic import BaseModel
 # Rotalar
 from api.campaing import router as campaign_router
 from chatbot.generate_response import get_chatbot_response
-from chatbot.indexing import qdrant_durumu
+from chatbot.indexing import qdrant_durumu, auto_init_qdrant
 
 # ⚠️ document_processor.parser BİLEREK en üstte import EDİLMİYOR — bkz. _belge_isleyici_al().
 
@@ -149,6 +149,41 @@ async def kaziyici_tetikle(payload: ScrapePayload):
             # istemci tarafı bunu başarı sanıyordu. Artık gerçek bir hata kodu döner.
             logger.error(f"Kazıyıcı bağlantı hatası: {e}")
             raise HTTPException(status_code=502, detail="Scraper servisinden yanıt alınamadı.")
+
+
+class ReindexYaniti(BaseModel):
+    adet: int
+
+
+@app.post("/admin/reindex", response_model=ReindexYaniti)
+async def admin_reindex(x_admin_token: str | None = Header(default=None)):
+    """Qdrant koleksiyonunu MongoDB'deki (pipeline'ın yazdığı) kampanyalardan
+    yeniden kurar — chatbot/indexing.py::auto_init_qdrant()'ı çalıştırır.
+
+    🛠️ Neden var: pipeline.py'nin ADIM 4'ü (kampanyaları vektörleyip Qdrant'a
+    yazma) normalde 'chatbot' paketini doğrudan import edip aynı işi
+    process-içinde yapar. Ancak pipeline.py backend.*/scraper.* modüllerini
+    (ADIM 1-3) import edebiliyorken chatbot.*'ı edemiyorsa, bu ikisinin AYRI
+    container'larda/servislerde çalıştığı anlamına gelir — o durumda import
+    çözüm değildir, çünkü paket o dosya sisteminde hiç yok. Bu uç, container
+    sınırını process değil AĞ üzerinden aşmak için var: pipeline.py bu ucu
+    HTTP ile çağırır (bkz. pipeline.py::_adim4_http_ile_calistir).
+
+    Aynı container'da çalışıyorsanız pipeline zaten doğrudan auto_init_qdrant()'ı
+    import edip çağırır; bu durumda bu uca hiç istek gelmez, sadece hazır bulunur.
+
+    Güvenlik: ADMIN_TOKEN ortam değişkeni ayarlıysa, eşleşen X-Admin-Token
+    header'ı taşımayan istekler 401 ile reddedilir. ADMIN_TOKEN ayarlı
+    değilse (varsayılan/geliştirme) bu uç korumasızdır — dışa açık bir
+    ortamda ADMIN_TOKEN ayarlamanız önerilir, çünkü bu uç Qdrant koleksiyonunu
+    force_recreate=True ile SIFIRDAN kurar.
+    """
+    beklenen_token = os.getenv("ADMIN_TOKEN")
+    if beklenen_token and x_admin_token != beklenen_token:
+        raise HTTPException(status_code=401, detail="Geçersiz veya eksik X-Admin-Token.")
+
+    adet = await auto_init_qdrant()
+    return ReindexYaniti(adet=adet)
 
 
 # 🛠️ /api/kampanya-kaydet kaldırıldı. Uç, gövdesinde HİÇBİR ŞEY YAPMADAN
