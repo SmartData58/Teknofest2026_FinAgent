@@ -7,8 +7,12 @@ const { locale, setLocale, t } = useI18n()
 const colorMode = useColorMode()
 const route = useRoute()
 
-// 🚀 TOKAT 1: useState iptal! Artık dümdüz ref kullanıyoruz.
-const viewMode = ref('musteri')
+// viewMode artık Nuxt'un paylaşımlı global state'i (useState) ile tutuluyor.
+// dashboard.vue layout'u da AYNI 'globalViewMode' anahtarını kullanıyor,
+// böylece hangi layout aktifse ordan yapılan değişiklik diğerine de yansıyor.
+// (Önceden burada yerel bir ref() vardı; bu yüzden default layout'ta yapılan
+// seçim, dashboard layout'una hiç ulaşmıyordu ve sayfa boş/senkronsuz kalıyordu.)
+const viewMode = useState('globalViewMode', () => 'musteri')
 
 const toggleTheme = () => {
   colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'
@@ -17,16 +21,19 @@ const toggleTheme = () => {
 const toggleLanguage = () => {
   const nextLang = locale.value === 'tr' ? 'en' : 'tr'
   setLocale(nextLang)
-  localStorage.setItem('language', nextLang) // 🚀 SADECE BU SATIRI EKLE
+  try {
+    if (process.client) localStorage.setItem('language', nextLang)
+  } catch (e) {}
 }
 
 // Mobil cihazlar için menü açma kapama
 const isMobileMenuOpen = ref(false)
 
-// 🚀 TOKAT 2: Mod değiştiğinde anında tarayıcının beton hafızasına (localStorage) kazıyoruz!
 const setViewMode = (mode) => {
-    viewMode.value = mode
-    localStorage.setItem('viewMode', mode)
+  viewMode.value = mode
+  try {
+    if (process.client) localStorage.setItem('viewMode', mode)
+  } catch (e) {}
 }
 
 // Üst barın görünürlük durumu
@@ -49,13 +56,15 @@ const handleScroll = () => {
 }
 
 onMounted(() => {
-  // 🚀 TOKAT 3: Sayfa yüklendiğinde hafızadaki modu geri getiriyoruz
-  const savedMode = localStorage.getItem('viewMode')
-  if (savedMode) viewMode.value = savedMode
+  try {
+    if (process.client) {
+      const savedMode = localStorage.getItem('viewMode')
+      if (savedMode) viewMode.value = savedMode
 
-  // 🚀 SADECE BU İKİ SATIRI EKLE (Hafızadan dili çeker)
-  const savedLang = localStorage.getItem('language')
-  if (savedLang) setLocale(savedLang)
+      const savedLang = localStorage.getItem('language')
+      if (savedLang) setLocale(savedLang)
+    }
+  } catch (e) {}
 
   scrollerElement = document.getElementById('main-scroller')
   if (scrollerElement) {
@@ -80,30 +89,30 @@ watch(() => route.path, () => {
 })
 
 const menuItems = computed(() => [
-  { 
-    name: t('menu.customer_view', 'Müşteri Görünümü'), 
-    path: '/', 
-    icon: '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>' 
+  {
+    name: t('menu.customer_view', 'Müşteri Görünümü'),
+    path: '/',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>'
   },
-  { 
-    name: t('menu.banks_markets', 'Bankalar & Pazarlar'), 
-    path: '/dashboard', 
-    icon: '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" /><path stroke-linecap="round" stroke-linejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" /></svg>' 
+  {
+    name: t('menu.banks_markets', 'Bankalar & Pazarlar'),
+    path: '/dashboard',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" /><path stroke-linecap="round" stroke-linejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" /></svg>'
   },
-  { 
-    name: t('menu.campaigns_list', 'Kampanyalar'), 
-    path: '/comparison', 
-    icon: '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>' 
+  {
+    name: t('menu.campaigns_list', 'Kampanyalar'),
+    path: '/comparison',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>'
   },
-  { 
-    name: t('menu.data_validation', 'Veri Doğrulama'), 
-    path: '/campaigns', 
-    icon: '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z" /></svg>' 
+  {
+    name: t('menu.data_validation', 'Veri Doğrulama'),
+    path: '/campaigns',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z" /></svg>'
   },
-  { 
-    name: t('menu.ai_assistant', 'AI Asistan (Bot)'), 
-    path: '/chat', 
-    icon: '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 0 1-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>' 
+  {
+    name: t('menu.ai_assistant', 'AI Asistan (Bot)'),
+    path: '/chat',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 0 1-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>'
   }
 ])
 </script>
@@ -124,7 +133,7 @@ const menuItems = computed(() => [
         <div class="h-14 flex items-center px-6 border-b border-neutral-200 dark:border-neutral-700 shrink-0">
           <span class="text-xl font-bold tracking-wider brand-text">{{ t('brand', 'KatılımPazar') }}</span>
         </div>
-        
+
         <nav class="p-4 space-y-2 overflow-y-auto custom-scrollbar flex-1">
           <NuxtLink
             v-for="(item, index) in menuItems"
@@ -145,7 +154,7 @@ const menuItems = computed(() => [
 
     <div id="main-scroller" class="flex-1 h-full overflow-y-auto relative">
 
-      <header 
+      <header
         :class="isHeaderVisible ? 'translate-y-0 opacity-100' : '-translate-y-[120%] opacity-0 pointer-events-none'"
         class="sticky top-0 w-full h-14 bg-transparent flex items-center justify-between px-6 z-40 transition-all duration-500 ease-in-out -mb-14"
       >
@@ -178,10 +187,9 @@ const menuItems = computed(() => [
         </div>
 
         <div class="flex items-center space-x-3 sm:space-x-4 pointer-events-auto">
-          
+
           <div class="hidden md:flex p-1 rounded-lg border border-neutral-300/50 dark:border-neutral-600/50 bg-white/40 dark:bg-neutral-800/40 backdrop-blur-md shadow-sm">
             <div class="relative group flex items-center">
-              <!-- 🚀 TOKAT 4: setViewMode fonksiyonunu kullanıyoruz -->
               <button @click="setViewMode('musteri')" :class="viewMode === 'musteri' ? 'bg-white dark:bg-neutral-700 shadow-sm text-blue-600 dark:text-cyan-400' : 'text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white'" class="px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1.5">
                 <svg class="w-3.5 h-3.5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
                 {{ t('header.customer', 'Müşteri') }}

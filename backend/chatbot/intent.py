@@ -10,12 +10,12 @@ from typing import Sequence, Optional
 # 1. LLM PROMPT VE STATİK CEVAP Mimarisi
 # -----------------------------------------------------------------------------
 
-# 🚀 TOKAT: Dil ve Görünüm Modu kuralları eklendi!
 RAG_CEVAP_PROMPTU = """Sen yetenekli bir yapay zeka finans asistanısın.
 KURALLAR:
 - SADECE aşağıdaki kampanya bilgilerine dayanarak cevap ver.
 - Bilgi kampanya metinlerinde yoksa açıkça "elimdeki kampanya verilerinde bu bilgi yok" de. ASLA tahmin etme, sayı uydurma.
 - Hangi bankanın hangi kampanyasından bahsettiğini belirt.
+- Aşağıda "GEÇMİŞ KONUŞMA" varsa, konuşmanın bağlamını (hangi bankadan/kampanyadan bahsedildiğini) dikkate al.
 - {dil_kurali}
 - {mod_kurali}
 - Sorular yatırım tavsiyesi isterse: kampanya bilgisi verdiğini, tavsiye veremeyeceğini söyle.
@@ -92,8 +92,15 @@ _KARSILASTIRMA_ALANLARI: tuple[tuple[str, re.Pattern], ...] = (
 
 _KARSILASTIRMA_GENEL = re.compile(r"karşılaştır|kıyasla|hangi\s+banka\w*\s+daha|hangisi\s+daha", re.IGNORECASE)
 _LISTE = re.compile(r"kampanyalar[ıi]?\b|hangi\s+kampanya|neler\s+var|listele|göster", re.IGNORECASE)
-_HESAP_DILI = re.compile(r"taksit\w*\s+hesapla|hesaplar\s*m[ıi]s[ıi]n|ayl[ıi]k\s+taksit|ayda\s+ne\s+kadar|ne\s+kadar\s+öde(rim|nir)", re.IGNORECASE)
+_HESAP_DILI = re.compile(r"taksit\w*\s+hesapla|taksit\w*\s+hesab|hesaplar\s*m[ıi]s[ıi]n|ayl[ıi]k\s+taksit|ayda\s+ne\s+kadar|ne\s+kadar\s+öde(rim|nir)|kaç\s+taksit", re.IGNORECASE)
 _FINANSMAN_BAGLAMI = re.compile(r"finansman|kredi(?!\s*kart)", re.IGNORECASE)
+
+# Taksit hesaplama sorularından tutar / vade / oran çıkarmak için kullanılır
+# (bkz. hesaplama_parametreleri_cikar). STATİK_CEVAP["yetenekler"] "taksit hesabı
+# yapabilirim" diyor ama bu çıkarım olmadan bu özellik hiçbir zaman tetiklenmiyordu.
+_TUTAR_DESENI = re.compile(r'(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?)\s*(?:tl|lira|₺)', re.IGNORECASE)
+_VADE_DESENI = re.compile(r'(\d{1,3})\s*(?:ay|aylık|taksit)', re.IGNORECASE)
+_ORAN_DESENI = re.compile(r'%\s*(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*%')
 
 _DEVAM = re.compile(r"^\s*(peki|pekala|o\s+zaman|ya\s+\S)|\bpeki\b|\bayn[ıi](s[ıi])?\b|\bonun\b|\bbunun\b|\bşunun\b|\b(o|bu|şu)\s+(kampanya|banka|hesap|plan|oran)|\bolsa(yd[ıi])?\b|\bolursa\b|\bbir\s+de\b", re.IGNORECASE)
 _BANKA_SORGUSU = re.compile(r"hangi\s+banka|bankalar|başka\s+banka", re.IGNORECASE)
@@ -111,8 +118,8 @@ class Mesaj:
 
 @dataclass
 class Niyet:
-    tur: str                           
-    statik_cevap: Optional[str] = None 
+    tur: str
+    statik_cevap: Optional[str] = None
     banka_kodu: Optional[str] = None
     alan: Optional[str] = None
     ham_soru: str = field(default="", repr=False)
@@ -138,6 +145,41 @@ def statik_yanit_bul(soru: str) -> Optional[str]:
                 return STATIK_CEVAP.get(intent_name)
     return None
 
+_TR_BINLIK_DESENI = re.compile(r'^\d{1,3}(\.\d{3})+$')
+
+def _sayi_ayikla(ham: str) -> float:
+    """'10.000,50' / '100.000' / '50000.5' / '2,99' gibi TR/EN karışık sayı
+    yazımlarını float'a çevirir. TEK BAŞINA nokta içeren "100.000" gibi bir
+    yazım TR'de %99 ihtimalle binlik ayırıcıdır (100000), ondalık değil — bu
+    yüzden üç haneli gruplara ayrılmış saf noktalı sayılar özel olarak ele alınır."""
+    if not ham:
+        return 0.0
+    s = ham.strip()
+    if ',' in s and '.' in s:
+        s = s.replace('.', '').replace(',', '.')
+    elif _TR_BINLIK_DESENI.match(s):
+        s = s.replace('.', '')
+    elif ',' in s:
+        s = s.replace(',', '.')
+    try:
+        return float(s)
+    except Exception:
+        return 0.0
+
+def hesaplama_parametreleri_cikar(soru: str):
+    """Taksit hesabı isteyen bir sorudan (tutar, vade, oran) çıkarmaya çalışır.
+    Herhangi biri bulunamazsa None döner; çağıran taraf eksik alanları
+    (özellikle oran) başka bir kaynaktan (örn. Mongo'daki güncel ortalama) tamamlayabilir."""
+    tutar_m = _TUTAR_DESENI.search(soru)
+    vade_m = _VADE_DESENI.search(soru)
+    oran_m = _ORAN_DESENI.search(soru)
+    tutar = _sayi_ayikla(tutar_m.group(1)) if tutar_m else None
+    vade = int(_sayi_ayikla(vade_m.group(1))) if vade_m else None
+    oran = None
+    if oran_m:
+        oran = _sayi_ayikla(oran_m.group(1) or oran_m.group(2))
+    return tutar, vade, oran
+
 # -----------------------------------------------------------------------------
 # 5. ANA NIYET TESPIT MOTORU
 # -----------------------------------------------------------------------------
@@ -153,9 +195,17 @@ def niyet_bul(soru: str, gecmis: Sequence[Mesaj] = ()) -> Niyet:
     if _TAVSIYE.search(s_tr):
         return Niyet("tavsiye", statik_cevap=STATIK_CEVAP["tavsiye_red"], banka_kodu=banka, ham_soru=soru)
 
+    # 🧮 Taksit hesaplama: "hesapla/kaç taksit/ayda ne kadar" gibi dil kalıpları +
+    # metinden çıkarılabilen en az tutar VE vade varsa doğrudan deterministik
+    # hesaplamaya yönlendirilir (LLM'in sayı uydurmasına gerek kalmaz).
+    if _HESAP_DILI.search(s_tr):
+        tutar, vade, oran = hesaplama_parametreleri_cikar(soru)
+        if tutar and vade:
+            return Niyet("hesaplama", banka_kodu=banka, tutar=tutar, vade=vade, oran=oran, ham_soru=soru)
+
     devam = bool(gecmis) and bool(_DEVAM.search(soru))
     baglam_soru = None
-    
+
     if devam:
         parcalar = [m.icerik for m in reversed(gecmis) if m.rol == "user"]
         baglam_soru = " ".join(reversed(parcalar[:2])) if parcalar else None
@@ -178,3 +228,27 @@ def niyet_bul(soru: str, gecmis: Sequence[Mesaj] = ()) -> Niyet:
         return Niyet("banka_listesi", banka_kodu=banka, ham_soru=soru, baglam_soru=baglam_soru)
 
     return Niyet("kampanya_soru", banka_kodu=banka, ham_soru=soru, baglam_soru=baglam_soru)
+
+
+# -----------------------------------------------------------------------------
+# 6. KONUŞMA GEÇMİŞİ FORMATLAYICI (RAG prompt'una beslemek için)
+# -----------------------------------------------------------------------------
+
+def gecmis_metni_olustur(gecmis: Sequence[Mesaj], limit: int = 6, max_uzunluk: int = 400) -> str:
+    """Son konuşma geçmişini RAG_CEVAP_PROMPTU'ndaki {gecmis} yerine geçecek
+    şekilde formatlar. Boşsa boş string döner (prompt formatı bozulmaz)."""
+    if not gecmis:
+        return ""
+    son_mesajlar = list(gecmis)[-limit:]
+    satirlar = []
+    for m in son_mesajlar:
+        icerik = (m.icerik or "").strip()
+        if not icerik:
+            continue
+        if len(icerik) > max_uzunluk:
+            icerik = icerik[:max_uzunluk] + "..."
+        rol = "Kullanıcı" if m.rol == "user" else "Asistan"
+        satirlar.append(f"{rol}: {icerik}")
+    if not satirlar:
+        return ""
+    return "GEÇMİŞ KONUŞMA (bağlam için, cevabı buna göre şekillendir):\n" + "\n".join(satirlar) + "\n\n"

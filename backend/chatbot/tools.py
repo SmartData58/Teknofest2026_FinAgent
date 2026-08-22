@@ -4,10 +4,8 @@ import re
 from pymongo import MongoClient
 from loguru import logger
 
-# 🚀 TOKAT: Localhost ve Şifresiz giriş iptal! Docker Compose'daki admin şifresi eklendi!
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:admin123@mongodb:27017/?authSource=admin")
 
-# ... Kodun geri kalanı aynı kalacak
 DB_NAME = "finagent"
 COLLECTION_NAME = "kampanyalar"
 
@@ -16,12 +14,11 @@ def init_mongo_db():
         client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
         db = client[DB_NAME]
         collection = db[COLLECTION_NAME]
-        
-        # Her başladığında koleksiyonu sıfırlar ki yeni veriler eklenebilsin (Test aşaması için)
+
+        # Her çağrıldığında koleksiyonu sıfırlar ki yeni veriler eklenebilsin (Test aşaması için)
         collection.drop()
-        
+
         if collection.count_documents({}) == 0:
-            # 🚀 TOKAT: Tam 32 Adetlik Dev Kampanya Havuzu (MongoDB JSON Formatında!)
             ornek_kampanyalar = [
                 {"banka_adi": "Kuveyt Türk", "kampanya_adi": "Sağlam Business Kart Erteleme", "kategori": "kart", "kar_payi": 3.49, "vade": 3, "odul_tl": 500.0},
                 {"banka_adi": "Kuveyt Türk", "kampanya_adi": "Taksitlio'da Yeni Müşterilere", "kategori": "kart", "kar_payi": 2.99, "vade": 6, "odul_tl": 1000.0},
@@ -62,7 +59,17 @@ def init_mongo_db():
     except Exception as e:
         logger.error(f"MongoDB Bağlantı Hatası: {e}. Lütfen MongoDB'nin çalıştığından emin olun.")
 
-init_mongo_db()
+
+# 🛠️ DÜZELTME: init_mongo_db() önceden bu dosyanın en altında modül seviyesinde
+# çıplak bir çağrı olarak duruyordu (`init_mongo_db()`). Bu, tools.py'nin sadece
+# `gercek_finansman_hesapla` veya `safe_json_parse` gibi saf yardımcı fonksiyonlarını
+# kullanmak için import edilmesi durumunda bile HER SEFERİNDE finagent.kampanyalar
+# koleksiyonunu SİLİP test verisiyle yeniden dolduruyordu — production'daki gerçek
+# veri kaynağı (smartdata.*) etkilenmese de sürpriz ve istenmeyen bir yan etkiydi.
+# Artık sadece bu dosya doğrudan çalıştırıldığında (örn. `python tools.py` ile
+# test verisini bilinçli olarak yeniden kurmak istendiğinde) tetikleniyor.
+if __name__ == "__main__":
+    init_mongo_db()
 
 def safe_json_parse(text: str) -> dict:
     try:
@@ -80,19 +87,23 @@ def gercek_finansman_hesapla(tutar: float, vade: int, kar_payi: float) -> str:
     toplam = aylik * vade
     return f"| Parametre | Değer |\n| :--- | :--- |\n| **🏦 Finansman Tutarı** | {tutar:,.2f} TL |\n| **📅 Vade Süresi** | {vade} Ay |\n| **⚖️ Kâr Payı Oranı** | %{kar_payi} |\n| **💳 Aylık Taksit** | **{aylik:,.2f} TL** |\n| **💰 Toplam Geri Ödeme** | **{toplam:,.2f} TL** |"
 
-# 🚀 NİHAİ TOKAT: OTONOM TEXT-TO-MONGO YÜRÜTÜCÜSÜ!
+# 🚀 OTONOM TEXT-TO-MONGO YÜRÜTÜCÜSÜ (finagent.kampanyalar test/demo şeması içindir).
+# NOT: Bu fonksiyon `finagent.kampanyalar` düz (flat) şemasını okur — production
+# akışındaki chatbot/generate_response.py ise gerçek kazınmış veriyi tutan
+# `smartdata.*` koleksiyonlarını (genel_bilgi/finansman_detay/... iç içe şeması)
+# okur. İki fonksiyon FARKLI veritabanlarına bakar; production sorgu üretimi hâlâ
+# generate_response.py'deki grafigi_hazirla_mongo_dinamik'i kullanır, bu fonksiyon
+# değildir — birbirinin yerine geçmezler.
 def grafigi_hazirla_mongo_dinamik(user_query: str, db_params: dict):
     query_lower = user_query.lower()
     chart_type = "bar" if any(w in query_lower for w in ["çubuk", "bar", "tablo", "liste"]) else "doughnut"
-    
-    # LLM'in Zekası Buradan Akar!
+
     hedef_sutun = db_params.get("hedef_sutun", "kar_payi")
     kategori = db_params.get("kategori", "hepsi")
     prefix = db_params.get("prefix", "")
     suffix = db_params.get("suffix", "")
     title = db_params.get("title", "Dinamik Pazar Analizi")
-    
-    # Güvenlik Zırhı
+
     if hedef_sutun not in ["kar_payi", "vade", "odul_tl"]:
         hedef_sutun = "kar_payi"
         prefix, suffix = "%", ""
@@ -100,28 +111,23 @@ def grafigi_hazirla_mongo_dinamik(user_query: str, db_params: dict):
     client = MongoClient(MONGO_URI)
     collection = client[DB_NAME][COLLECTION_NAME]
 
-    # 🚀 MONGODB (BSON) SORGUSUNU İNŞA EDİYORUZ
-    # Temel Kural: İlgili hedef sütun boş (null) olmamalı
     mongo_query = {hedef_sutun: {"$ne": None}}
 
-    # Ödül ve Vade aranıyorsa 0 olanları gizle ki grafik temiz kalsın
     if hedef_sutun in ["odul_tl", "vade"]:
         mongo_query[hedef_sutun] = {"$gt": 0}
 
-    # Dinamik Kategori Filtresi (Mongo $or ile hem kategoride hem isimde arar)
     if kategori != "hepsi" and kategori in ["kart", "taşıt", "konut", "ihtiyaç"]:
         mongo_query["$or"] = [
             {"kategori": kategori},
             {"kampanya_adi": {"$regex": kategori, "$options": "i"}}
         ]
 
-    # 🚀 Verileri büyükten küçüğe sıralıyoruz (-1)
     sonuclar = list(collection.find(mongo_query).sort(hedef_sutun, -1))
     client.close()
 
     labels, sub_labels, values, source_indices = [], [], [], []
     db_context = ""
-    
+
     for idx, doc in enumerate(sonuclar):
         labels.append(doc["banka_adi"])
         sub_labels.append(doc["kampanya_adi"])
@@ -132,13 +138,13 @@ def grafigi_hazirla_mongo_dinamik(user_query: str, db_params: dict):
     if len(labels) > 0:
         non_zero_values = [v for v in values if v > 0]
         avg_val = sum(non_zero_values) / len(non_zero_values) if len(non_zero_values) > 0 else 0
-        
+
         chart_data = {
             "type": chart_type,
             "title": title,
             "subtitle": f"Otonom MongoDB Ajanı {len(labels)} sonucu başarıyla sıraladı.",
-            "prefix": prefix, 
-            "suffix": suffix, 
+            "prefix": prefix,
+            "suffix": suffix,
             "labels": labels,
             "sub_labels": sub_labels,
             "values": values,

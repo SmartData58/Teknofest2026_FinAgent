@@ -2,25 +2,112 @@ import os
 import json
 import shutil
 import asyncio
-import httpx
-import requests
-import psycopg2
+import uuid
+import inspect
+import tempfile
+from contextlib import asynccontextmanager
 from typing import List
+
+import httpx
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from pydantic import BaseModel
 
-from langchain_core.documents import Document
-from langchain_core.embeddings import Embeddings
-from langchain_qdrant import QdrantVectorStore
-from qdrant_client import QdrantClient
-
 # Rotalar
 from api.campaing import router as campaign_router
 from chatbot.generate_response import get_chatbot_response
+from chatbot.indexing import qdrant_durumu
 
-app = FastAPI(title="SmartData API")
+# ⚠️ document_processor.parser BİLEREK en üstte import EDİLMİYOR — bkz. _belge_isleyici_al().
+
+# -----------------------------------------------------------------------------
+# Yapılandırma — 🛠️ Tüm servis adresleri ve kimlik bilgileri artık ortam
+# değişkenlerinden okunuyor. Önceden bunlar kodun içine gömülüydü (özellikle
+# Postgres şifresi düz metin haldeydi) ve chatbot/generate_response.py zaten
+# env kullandığı için iki dosya farklı adreslere bakabiliyordu.
+# -----------------------------------------------------------------------------
+SCRAPER_URL = os.getenv("SCRAPER_URL", "http://scraper:8002/scrape")
+TEMP_DIR = os.getenv("TEMP_DIR", "./temp")
+
+# Redis önbelleğini başlangıçta temizleme — varsayılan AÇIK.
+# Kapatmak için: STARTUP_CACHE_FLUSH=0
+STARTUP_CACHE_TEMIZLE = os.getenv("STARTUP_CACHE_FLUSH", "1") == "1"
+
+os.makedirs(TEMP_DIR, exist_ok=True)
+
+# Arka plan indeksleme görevine referans tutulur — 🛠️ asyncio.create_task()'in
+# dönüşü bir yerde tutulmazsa görev çöp toplayıcı tarafından çalışırken
+# toplanabilir (Python belgelerinin açıkça uyardığı bir durum); eski kodda
+# referans hiçbir yerde saklanmıyordu.
+_arka_plan_gorevleri: set[asyncio.Task] = set()
+
+
+async def _redis_onbellegini_temizle() -> None:
+    """Uygulamanın kendi önbellek anahtarlarını siler.
+
+    🛠️ Eski kod `await r.flushall()` çağırıyordu. flushall() Redis
+    sunucusundaki TÜM veritabanlarını, TÜM anahtarları siler — sadece bu
+    uygulamanınkileri değil. Redis başka bir servisle (oturum yönetimi, kuyruk,
+    başka bir uygulama) paylaşılıyorsa onların verisi de yok olur. Ayrıca
+    uvicorn --reload ile çalışırken her kod değişikliği yeniden başlatma
+    tetiklediği için önbellek sürekli sıfırlanıyor, dolayısıyla önbellek
+    pratikte hiç işe yaramıyordu. Artık yalnızca kendi ön ekli anahtarlarımızı
+    siliyoruz. Bu davranış varsayılan olarak AÇIK; kapatmak için
+    STARTUP_CACHE_FLUSH=0.
+    """
+    from chatbot.redis_cache import get_redis
+
+    r = await get_redis()
+    silinen = 0
+    # 🛠️ "api:*" eklendi — api/campaing.py'nin kampanya listesi/detay önbelleği
+    # bu ön eki kullanıyor ve önceki sürümde temizlikten kaçıyordu.
+    for onek in ("db_params:*", "full_res:*", "api:*"):
+        async for anahtar in r.scan_iter(match=onek, count=500):
+            await r.delete(anahtar)
+            silinen += 1
+    logger.info(f"🧹 Redis önbelleği temizlendi ({silinen} anahtar silindi).")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 🛠️ @app.on_event("startup") FastAPI'de kullanımdan kaldırıldı (deprecated);
+    # yerine lifespan bağlam yöneticisi kullanılıyor.
+    logger.info("🚀 Sistem başlıyor...")
+
+    # 🛠️ OTOMATİK QDRANT VEKTÖRLEMESİ KALDIRILDI.
+    # auto_init_qdrant() koleksiyonu force_recreate=True ile sıfırdan kuruyordu;
+    # vektörlemeyi kendi pipeline'ınız yaptığı için uygulamanın her açılışı
+    # sizin gerçek vektörlerinizi silip yerine MongoDB'de bulduğunu (32 adetlik
+    # sahte demo havuzu) koyuyordu. uvicorn --reload ile bu, her kod
+    # değişikliğinde tekrarlanıyordu. Elle çalıştırmak için:
+    #     python -m chatbot.indexing
+    # Koleksiyonun canlı durumu artık GET /health ile görülebilir.
+
+    # 🛠️ /campaigns ucu banka_kodu / kampanya_turu / hedef_kitle alanlarında
+    # filtreliyor; indeks yoksa her istek koleksiyonu baştan sona tarar.
+    # Bloke eden bir çağrı olduğu için ayrı thread'de çalıştırılıyor.
+    try:
+        from api.campaing import indeksleri_kur
+        await asyncio.to_thread(indeksleri_kur)
+    except Exception as e:
+        logger.warning(f"Kampanya indeksleri kurulamadı: {e}")
+
+    if STARTUP_CACHE_TEMIZLE:
+        try:
+            await _redis_onbellegini_temizle()
+        except Exception as e:
+            logger.error(f"Redis temizlenirken hata: {e}")
+    else:
+        logger.info("ℹ️ Başlangıç önbellek temizliği kapalı (STARTUP_CACHE_FLUSH=0).")
+
+    yield
+
+    for g in list(_arka_plan_gorevleri):
+        g.cancel()
+
+
+app = FastAPI(title="SmartData API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,250 +119,186 @@ app.add_middleware(
 
 app.include_router(campaign_router)
 
-def get_db_connection():
-    return psycopg2.connect(
-        host="postgres",
-        database="smartdata",
-        user="user",
-        password="degistir_guclu_bir_sifre" 
-    )
 
 class ScrapePayload(BaseModel):
     url: str
 
-class YeniKampanya(BaseModel):
-    baslik: str
-    kaynak: str    
+
+@app.get("/health")
+async def health():
+    """Servisin ve Qdrant koleksiyonunun CANLI durumu.
+
+    Vektörlemeyi kendi pipeline'ınız yaptığı için bu uç, uygulamanın ne
+    yazdığını değil, Qdrant'ta GERÇEKTEN ne olduğunu okur (salt okunur) ve
+    payload sözleşmesi bozuksa ('belge' / 'banka_kodu' alanları) uyarır.
+    """
+    qdrant = await asyncio.to_thread(qdrant_durumu)
+    return {"status": "ok", "qdrant": qdrant}
+
 
 @app.post("/api/kaziyiciyi-baslat")
 async def kaziyici_tetikle(payload: ScrapePayload):
-    scraper_url = "http://scraper:8002/scrape"
     logger.info(f"Kazıyıcıya istek gönderiliyor: {payload.url}")
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(scraper_url, json={"url": payload.url}, timeout=120.0)
+            response = await client.post(SCRAPER_URL, json={"url": payload.url}, timeout=120.0)
+            response.raise_for_status()
             return response.json()
         except Exception as e:
-            logger.error(f"Kazıyıcı bağlantı hatası: {str(e)}")
-            return {"error": "Scraper servisinden yanıt alınamadı"}
-
-@app.post("/api/kampanya-kaydet")
-def kampanya_kaydet(kampanya: YeniKampanya):
-    return {"status": "ok"}
+            # 🛠️ Eski kod hata durumunda HTTP 200 ile {"error": ...} dönüyordu;
+            # istemci tarafı bunu başarı sanıyordu. Artık gerçek bir hata kodu döner.
+            logger.error(f"Kazıyıcı bağlantı hatası: {e}")
+            raise HTTPException(status_code=502, detail="Scraper servisinden yanıt alınamadı.")
 
 
-class OzelQwenEmbedder(Embeddings):
-    def __init__(self, api_url: str):
-        self.api_url = api_url
+# 🛠️ /api/kampanya-kaydet kaldırıldı. Uç, gövdesinde HİÇBİR ŞEY YAPMADAN
+# {"status": "ok"} dönüyordu — yani istemciye kaydedildi diyip veriyi sessizce
+# çöpe atıyordu (sessiz veri kaybı). Gerçekten gerekiyorsa kaydetme mantığıyla
+# birlikte api/campaing.py router'ına eklenmeli; sahte bir başarı yanıtı
+# döndürmektense ucu hiç sunmamak daha güvenli.
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+
+# Belge işleyici (OCR) tembel yükleme önbelleği: (fonksiyon, progress_callback_kabul_ediyor_mu)
+_belge_isleyici: tuple | None = None
+
+
+def _belge_isleyici_al():
+    """document_processor.parser'ı İLK DOSYA YÜKLENDİĞİNDE import eder.
+
+    🛠️ Bu import en üst seviyede olursa (bir önceki sürümde öyleydi) OCR modeli
+    uygulama açılışında, hiç dosya yüklenmese bile belleğe yükleniyor; container
+    başlangıcı yavaşlıyor ve RAM boşuna tutuluyor. Artık modül yalnızca gerçekten
+    bir dosya işlenmesi gerektiğinde yükleniyor ve sonuç önbelleğe alınıyor —
+    yani ikinci ve sonraki yüklemelerde tekrar import maliyeti yok.
+    """
+    global _belge_isleyici
+    if _belge_isleyici is None:
+        logger.info("📄 Belge işleyici (OCR) ilk kez yükleniyor...")
+        from document_processor.parser import parse_document
+
+        # parse_document'ın imzası projeye göre değişebiliyor (bazı sürümleri
+        # zorunlu bir progress_callback bekliyor). Eski kod bunu her çağrıda
+        # TypeError yakalayarak deniyordu — bu, parse_document'ın İÇİNDEKİ
+        # gerçek bir TypeError'ı da yutup sessizce yanlış yola sapabilirdi.
+        # Artık imza bir kez, açıkça inceleniyor.
         try:
-            response = requests.post(self.api_url, json={"input": texts})
-            response.raise_for_status()
-            return response.json().get("embeddings", [])
-        except Exception as e:
-            logger.error(f"Embedding API Hatası: {e}")
-            return []
+            cb_destekli = "progress_callback" in inspect.signature(parse_document).parameters
+        except (TypeError, ValueError):
+            cb_destekli = False
 
-    def embed_query(self, text: str) -> List[float]:
-        res = self.embed_documents([text])
-        return res[0] if res else []
+        _belge_isleyici = (parse_document, cb_destekli)
+        logger.info(f"✅ Belge işleyici hazır (progress_callback: {cb_destekli}).")
+    return _belge_isleyici
 
-EMBEDDING_API_URL = "http://embedding:8001/api/embed"
-embeddings = OzelQwenEmbedder(api_url=EMBEDDING_API_URL)
 
-_vector_store = None
+async def _belgeyi_ayristir(file_path: str) -> str:
+    parse_document, cb_destekli = _belge_isleyici_al()
+    if cb_destekli:
+        async def _bos_cb(mesaj):
+            return None
+        return await parse_document(file_path, progress_callback=_bos_cb)
+    return await parse_document(file_path)
 
-def get_vector_store():
-    global _vector_store
-    if _vector_store is None:
-        logger.info("Qdrant ve Embedding servisine ilk bağlantı kuruluyor...")
-        qdrant_client = QdrantClient(url="http://qdrant:6333")
-        _vector_store = QdrantVectorStore(
-            client=qdrant_client,
-            collection_name="banka_kampanyalari",
-            embedding=embeddings,
-            content_payload_key="belge"
-        )
-    return _vector_store
 
-async def rerank_documents(query: str, docs: List) -> List:
-    if not docs:
-        return []
-    
-    rerank_url = "http://reranker:8002/api/rerank"
-    texts = [doc.page_content for doc in docs]
-    payload = {"query": query, "texts": texts}
-    
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(rerank_url, json=payload, timeout=30.0)
-            response.raise_for_status()
-            result = response.json()
-            
-            if isinstance(result, list):
-                ranked_indices = [item["index"] for item in result if "index" in item]
-            elif isinstance(result, dict) and "indices" in result:
-                ranked_indices = result["indices"]
-            else:
-                ranked_indices = list(range(len(docs)))
-                
-            reranked_docs = [docs[i] for i in ranked_indices if i < len(docs)]
-            return reranked_docs[:4]
-            
-        except Exception as e:
-            logger.error(f"Reranker Servis Hatası: {e}. Qdrant sıralaması kullanılıyor.")
-            return docs[:4]
+async def _yuklenen_dosyalari_isle(files: List[UploadFile]) -> str:
+    """Yüklenen dosyaları geçici bir dizine yazar, metnini çıkarır ve LLM'e
+    verilecek bağlam metnini üretir."""
+    if not files:
+        return ""
 
-async def auto_init_qdrant():
-    from pymongo import MongoClient
+    file_names: list[str] = []
+    dosya_icerikleri: list[str] = []
+
+    # 🛠️ İki güvenlik/doğruluk sorunu birden çözülüyor:
+    #  1) Yol sızması (path traversal): eski kod kullanıcıdan gelen
+    #     file.filename'i doğrudan os.path.join(TEMP_DIR, ...) içinde
+    #     kullanıyordu. "../../etc/cron.d/x" gibi bir dosya adı TEMP_DIR
+    #     dışına yazmaya izin verirdi. Artık os.path.basename ile
+    #     yalnızca dosya adı kısmı alınıyor.
+    #  2) Eşzamanlılık çakışması: aynı anda iki kullanıcı "rapor.pdf"
+    #     yüklerse eski kodda ikisi de aynı yola yazıyor, biri diğerinin
+    #     içeriğini eziyor ve finally bloğunda diğerinin dosyasını siliyordu.
+    #     Artık her istek kendi izole geçici dizinini kullanıyor.
+    istek_dizini = tempfile.mkdtemp(prefix=f"upload_{uuid.uuid4().hex[:8]}_", dir=TEMP_DIR)
+
     try:
-        logger.info("⏳ Qdrant Vektör Veritabanı OTOMATİK olarak inşa ediliyor...")
-        try:
-            q_client = QdrantClient(url="http://qdrant:6333")
-            q_client.delete_collection(collection_name="banka_kampanyalari")
-            logger.warning("🧹 Eski/Bozuk Qdrant koleksiyonu silindi!")
-        except Exception as e:
-            pass
-            
-        mongo_uri = os.getenv("MONGO_URI", "mongodb://admin:admin123@mongodb:27017/?authSource=admin")
-        client = MongoClient(mongo_uri)
-        
-        db = client["smartdata"]
-        kampanyalar = list(db["processed_campaigns"].find({}))
-        if not kampanyalar:
-            db = client["finagent"]
-            kampanyalar = list(db["kampanyalar"].find({}))
-            
-        if not kampanyalar:
-            logger.warning("❌ Qdrant için MongoDB'de veri bulunamadı!")
-            return
-            
-        docs = []
-        for k in kampanyalar:
-            banka = k.get("banka_adi", k.get("banka", "Bilinmeyen Banka"))
-            if isinstance(banka, dict): banka = banka.get("kisa_ad", "Bilinmeyen Banka")
-            kampanya_adi = k.get("kampanya_adi", k.get("baslik", "Kampanya"))
-            kar_payi = k.get("kar_payi", k.get("kar_payi_orani", 0))
-            vade = k.get("vade", k.get("vade_ay", 0))
-            odul = k.get("odul_tl", k.get("odul_miktari", 0))
-            
-            icerik = f"Banka: {banka}\nKampanya: {kampanya_adi}\nKâr Payı/Faiz Oranı: %{kar_payi}\nMaksimum Vade: {vade} Ay\nÖdül Miktarı: {odul} TL"
-            
-            if k.get("kosullar"): icerik += f"\nKoşullar: {k.get('kosullar')}"
-            if k.get("ham_metin"): icerik += f"\nDetay: {k.get('ham_metin')}"
-            
-            docs.append(Document(page_content=icerik, metadata={"kampanya_id": str(k["_id"])}))
+        for file in files:
+            ham_ad = getattr(file, "filename", None)
+            if not ham_ad:
+                continue
 
-        logger.info(f"⏳ {len(docs)} kampanya vektörlenip Qdrant'a yükleniyor, lütfen bekleyin...")
-        
-        QdrantVectorStore.from_documents(
-            docs,
-            embeddings,
-            url="http://qdrant:6333",
-            collection_name="banka_kampanyalari",
-            content_payload_key="belge",
-            force_recreate=True 
-        )
-        logger.info(f"✅ BİNGO! Qdrant Vektör Veritabanı {len(docs)} kampanya ile OTOMATİK oluşturuldu!")
-    except Exception as e:
-        logger.error(f"Qdrant Otomatik Kurulum Hatası: {e}")
+            guvenli_ad = os.path.basename(ham_ad) or f"dosya_{uuid.uuid4().hex[:8]}"
+            file_path = os.path.join(istek_dizini, guvenli_ad)
 
-@app.on_event("startup")
-async def startup_event():
-    logger.info("🚀 Sistem Başlıyor: Otomatik Qdrant kurulumu tetiklendi...")
-    asyncio.create_task(auto_init_qdrant())
-    
-    # 🚀 YENİ NÜKLEER TOKAT: REDIS'İ KÖKÜNDEN TEMİZLE!
-    # Sistem her başladığında LLM'in o eski hatalı ezberleri tamamen uçar.
-    try:
-        from chatbot.redis_cache import get_redis
-        r = await get_redis()
-        await r.flushall()
-        logger.info("🧹 Redis Hafızası (Cache) başlangıçta tamamen TERTEMİZ edildi!")
-    except Exception as e:
-        logger.error(f"Redis temizlenirken hata: {e}")
+            try:
+                with open(file_path, "wb") as buffer:
+                    shutil.copyfileobj(file.file, buffer)
 
-TEMP_DIR = "./temp"
-os.makedirs(TEMP_DIR, exist_ok=True)
+                extracted_text = await _belgeyi_ayristir(file_path)
+
+                file_names.append(guvenli_ad)
+                dosya_icerikleri.append(
+                    f"--- {guvenli_ad} İÇERİĞİ ---\n{extracted_text}\n-------------------"
+                )
+            except Exception as e:
+                logger.error(f"Dosya işlenirken hata oluştu ({guvenli_ad}): {e}")
+    finally:
+        # 🛠️ Geçici dizin, içindeki her şeyle birlikte tek seferde siliniyor.
+        # Eski kodda dosya silme her dosyanın kendi finally'sindeydi; parse
+        # sırasında beklenmedik bir hata olursa dosya diskte kalabiliyordu.
+        shutil.rmtree(istek_dizini, ignore_errors=True)
+        logger.info(f"🗑️ Geçici yükleme dizini silindi: {istek_dizini}")
+
+    if not file_names:
+        return ""
+
+    isimler_str = ", ".join(file_names)
+    tum_icerik = "\n\n".join(dosya_icerikleri)
+    return (
+        f"\n\n[KULLANICI SİSTEME {len(file_names)} ADET DOSYA YÜKLEDİ. "
+        f"Dosya adları: {isimler_str}]\n\n"
+        f"AŞAĞIDA BU DOSYALARIN İÇERİĞİ BULUNMAKTADIR:\n{tum_icerik}"
+    )
+
 
 @app.post("/api/chat")
 async def chat_endpoint(
     prompt: str = Form(""),
-    model: str = Form("qwen3.5:4b"), 
-    thinking: str = Form("false"),
+    model: str = Form("qwen3.5:4b"),
+    # 🛠️ Varsayılan "false" -> "auto". Frontend zaten "auto" gönderiyor ama
+    # varsayılanın "false" olması, parametreyi göndermeyen her istemcide derin
+    # RAG akışını (HyDE + Step-Back + Multi-Query) tamamen devre dışı bırakıyordu.
+    thinking: str = Form("auto"),
     history: str = Form("[]"),
-    view_mode: str = Form("musteri"), 
-    language: str = Form("tr"),       
-    files: List[UploadFile] = File(default=[]) 
+    view_mode: str = Form("musteri"),
+    language: str = Form("tr"),
+    files: List[UploadFile] = File(default=[]),
 ):
     logger.info(f"🚀 Sinyal alındı! Mesaj: '{prompt}' | Mod: {view_mode} | Dil: {language}")
-    
+
     try:
         parsed_history = json.loads(history)
+        if not isinstance(parsed_history, list):
+            parsed_history = []
     except Exception:
         parsed_history = []
-        
-    file_context = ""
-    
-    if files:
-        file_names = []
-        dosya_icerikleri = []
-        
-        for file in files:
-            if getattr(file, "filename", None): 
-                file_path = os.path.join(TEMP_DIR, file.filename)
-                try:
-                    with open(file_path, "wb") as buffer:
-                        shutil.copyfileobj(file.file, buffer)
 
-                    from document_processor.parser import parse_document
-                    
-                    try:
-                        extracted_text = await parse_document(file_path)
-                    except TypeError:
-                        async def dummy_cb(msg): pass
-                        extracted_text = await parse_document(file_path, progress_callback=dummy_cb)
-
-                    file_names.append(file.filename)
-                    dosya_icerikleri.append(f"--- {file.filename} İÇERİĞİ ---\n{extracted_text}\n-------------------")
-
-                except Exception as e:
-                    logger.error(f"Dosya işlenirken hata oluştu ({file.filename}): {e}")
-
-                finally:
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
-                        logger.info(f"🗑️ Geçici dosya silindi: {file_path}")
-                
-        if file_names:
-            isimler_str = ", ".join(file_names)
-            tum_icerik = "\n\n".join(dosya_icerikleri)
-            file_context = (
-                f"\n\n[KULLANICI SİSTEME {len(file_names)} ADET DOSYA YÜKLEDİ. "
-                f"Dosya adları: {isimler_str}]\n\n"
-                f"AŞAĞIDA BU DOSYALARIN İÇERİĞİ BULUNMAKTADIR:\n{tum_icerik}"
-            )
+    file_context = await _yuklenen_dosyalari_isle(files)
 
     try:
-        response = await get_chatbot_response(
+        return await get_chatbot_response(
             user_message=prompt,
             model=model,
             thinking=thinking,
             history=parsed_history,
             file_context=file_context,
-            view_mode=view_mode, 
-            language=language    
+            view_mode=view_mode,
+            language=language,
         )
-        
-        if isinstance(response, str):
-            return {"response": response}
-            
-        return response
-        
     except Exception as e:
-        logger.error(f"Chatbot işlem hatası: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Chatbot işlem hatası: {str(e)}")
+        logger.error(f"Chatbot işlem hatası: {e}")
+        raise HTTPException(status_code=500, detail="Chatbot isteği işlenemedi.")
+
 
 if __name__ == "__main__":
     import uvicorn

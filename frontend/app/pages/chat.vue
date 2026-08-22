@@ -27,33 +27,18 @@ const showToast = (msg) => {
   }, 3000)
 }
 
-const openSourceModal = (source) => {
-  activeSource.value = source
-  activeModalType.value = 'source'
-  showSourceModal.value = true
+// 🚀 TOKAT 5: TABLOYA TIKLANDIĞINDA KAYIT BULUNAMADI DEMEYECEK!
+// Direkt Python'un hazırladığı metni (full_texts) basacak.
+const openModalFromText = (text) => {
+    activeSource.value = { icerik: text || 'Detay bulunamadı.' }
+    activeModalType.value = 'source'
+    showSourceModal.value = true
 }
 
 const openUserFile = (file) => {
   activeFile.value = { ...file, isUserFile: true }
   activeModalType.value = 'file'
   showSourceModal.value = true
-}
-
-const openSourceFromChart = (sourceIndex, sources, label, subLabel, val, prefix, suffix) => {
-    let foundSource = null;
-    
-    if (sources && sources.length > 0) {
-        foundSource = sources.find(s => s.index === sourceIndex);
-    }
-    
-    if (!foundSource) {
-        foundSource = {
-            index: sourceIndex,
-            icerik: `[KAYIT BULUNAMADI]\n\nBanka/Kurum: ${label}\nKampanya: ${subLabel || '-'}\nDeğer: ${prefix || ''}${val}${suffix || ''}\n\n(Bu veri doğrudan LLM tarafından dinamik üretilmiş olabilir.)`
-        };
-    }
-    
-    openSourceModal(foundSource);
 }
 
 const downloadFile = (file, event) => {
@@ -131,193 +116,373 @@ const getSvgPaths = (chart) => {
     return paths;
 };
 
+// Akışta bölünmüş olabilecek arayüz etiketleri. Tampon bunlardan birinin
+// ÖN EKİYLE bitiyorsa, etiket tamamlanana kadar metne yazmayı bekletiriz.
+const BILINEN_ETIKETLER = [
+  '[STATUS]', '[/STATUS]',
+  '[CHART]', '[/CHART]',
+  '[SOURCES]', '[/SOURCES]',
+  '[SUGGESTIONS]', '[/SUGGESTIONS]',
+  '[SUGGESTION]', '[/SUGGESTION]',
+];
+
+const kismiEtiketMi = (buf) => {
+  if (!buf) return false;
+  return BILINEN_ETIKETLER.some((etiket) => {
+    const maks = Math.min(buf.length, etiket.length);
+    for (let n = maks; n >= 1; n--) {
+      if (buf.endsWith(etiket.slice(0, n))) return true;
+    }
+    return false;
+  });
+};
+
+// 🛠️ Bar genişliği güvenli hesap. Şablonda doğrudan
+//   msg.chart.values[i] / (stats ? stats.max : Math.max(...values)) * 100
+// yazıyordu. values[i] eksikse NaN%, max 0 ise Infinity% üretiyordu
+// (tarayıcı bunları sessizce yok sayıp barı hiç çizmiyordu).
+const barGenislik = (chart, i) => {
+  const degerler = Array.isArray(chart?.values) ? chart.values : [];
+  const v = degerler[i];
+  if (typeof v !== 'number' || Number.isNaN(v)) return '0%';
+  const sayilar = degerler.filter(x => typeof x === 'number' && !Number.isNaN(x));
+  const maks = (chart?.stats && typeof chart.stats.max === 'number' && chart.stats.max > 0)
+    ? chart.stats.max
+    : (sayilar.length ? Math.max(...sayilar) : 0);
+  if (!maks || !Number.isFinite(maks) || maks <= 0) return '0%';
+  return Math.max(0, Math.min(100, (v / maks) * 100)) + '%';
+};
+
+// Kademeli (stagger) animasyon gecikmesi — üst sınırla ki uzun listelerde
+// son satırlar dakikalarca beklemesin.
+const gecikme = (i, adim = 45, maks = 600) => ({ animationDelay: Math.min(i * adim, maks) + 'ms' });
+
 const isExporting = ref({})
 const isExportingExcel = ref({})
 const isExportingPNG = ref({})
 
-// 🚀 TOKAT 1: KESİLMEYEN PNG EKRAN GÖRÜNTÜSÜ
+// =============================================================================
+// DIŞA AKTARMA ORTAK YARDIMCILARI
+//
+// 🛠️ GRAFİK / ÇIKTI AYRIMI — buradaki en büyük hata buydu:
+// Şablonda dışa aktarma butonları İKİ AYRI YERDE duruyor:
+//   1) Grafik kartının üstünde (v-if="msg.chart")      -> bağlam: GRAFİK
+//   2) Cevap metninin altında (v-if="msg.content...")  -> bağlam: METİN
+// Ama ikisi de AYNI fonksiyonu çağırıyordu ve o fonksiyonlar YALNIZCA grafik
+// verisini dışa aktarıyordu. Sonuç: kullanıcı cevabın altındaki "Raporu
+// Görüntüle"ye bastığında, okuduğu analiz metni rapora HİÇ girmiyor; grafiği
+// olmayan bir mesajda ise "dışa aktarılacak veri bulunamadı" hatası alıyordu —
+// ekranda kocaman bir cevap dururken.
+// Artık her iki çıktı da mesajın SAHİP OLDUĞU her şeyi içeriyor: analiz metni
+// varsa metin, grafik varsa grafik verisi, ikisi de varsa ikisi birden.
+// (PNG bunun istisnası: o, grafiğin görüntüsünü yakaladığı için grafiğe özeldir.)
+// =============================================================================
+
+const escapeHtml = (s) => String(s ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+// 🛠️ Betik yükleyici: eski kod `await new Promise(resolve => script.onload = resolve)`
+// kullanıyordu — onerror YOKTU. CDN engelliyse/çevrimdışıysa promise ASLA
+// çözülmüyor, fonksiyon sonsuza kadar asılı kalıyor ve `isExporting[index]`
+// true kaldığı için buton kalıcı olarak devre dışı kalıyordu. Artık hata
+// yakalanıyor, aynı betik iki kez indirilmiyor ve başarısız denemeler
+// önbellekten düşürülüyor (tekrar denenebilsin diye).
+const _betekOnbellek = {};
+const betigiYukle = (src, globalAd) => {
+  if (window[globalAd]) return Promise.resolve();
+  if (_betekOnbellek[src]) return _betekOnbellek[src];
+  _betekOnbellek[src] = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => window[globalAd]
+      ? resolve()
+      : reject(new Error(`${globalAd} yüklendi ama tanımlı değil`));
+    s.onerror = () => {
+      delete _betekOnbellek[src];
+      reject(new Error(`Betik indirilemedi (internet/CDN erişimi yok): ${src}`));
+    };
+    document.head.appendChild(s);
+  });
+  return _betekOnbellek[src];
+};
+
+// 🛠️ Cevap metnini düz metne çevirir. Ham içerikte arayüz etiketleri
+// ([CHART], [SOURCES], [SUGGESTIONS], [STATUS]) ve markdown işaretleri kalmış
+// olabiliyor; bunlar rapora sızmasın diye temizleniyor.
+const cevabiDuzMetneCevir = (ham) => {
+  if (!ham) return '';
+  return String(ham)
+    .replace(/\[CHART\][\s\S]*?\[\/CHART\]/gi, '')
+    .replace(/\[SOURCES\][\s\S]*?\[\/SOURCES\]/gi, '')
+    .replace(/\[SUGGESTIONS?\][\s\S]*?\[\/SUGGESTIONS?\]/gi, '')
+    .replace(/\[STATUS\][\s\S]*?\[\/STATUS\]/gi, '')
+    .replace(/```[a-zA-Z]*\n?([\s\S]*?)```/g, '$1')
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    // Kalın (**) zaten yukarıda temizlendiği için burada kalan tek yıldızlar
+    // italik demektir. (Lookbehind kullanmıyoruz — eski Safari sürümleri
+    // desteklemiyor ve tüm regex bloğu sessizce patlardı.)
+    .replace(/\*([^*\n]+)\*/g, '$1')
+    .replace(/`([^`\n]+)`/g, '$1')
+    .replace(/^\s*[-*]\s+/gm, '• ')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
+// 🛠️ Değer biçimlendirme: `chart.prefix || ''` yerine `?? ''`.
+// PDF'te `chart.prefix || '%'` yazıyordu; prefix BOŞ STRING olduğunda ("" falsy)
+// bu ifade '%' üretiyordu. Ödül grafiklerinde backend prefix="" / suffix=" TL"
+// gönderdiği için PDF'te değerler "%500 TL" diye çıkıyordu (arayüz ve Excel
+// doğru gösterirken). ?? yalnızca null/undefined'da devreye girer.
+const degeriBicimlendir = (chart, v) =>
+  (v === null || v === undefined || Number.isNaN(v))
+    ? '-'
+    : `${chart.prefix ?? ''}${v}${chart.suffix ?? ''}`;
+
+// 🛠️ Grafik dizilerini güvenli satırlara çevirir. Eski kod chart.labels
+// üzerinde dönüp chart.values[i] okuyordu; diziler farklı uzunluktaysa
+// `undefined` değerler "undefined" metni olarak çıktıya yazılıyordu.
+const grafikSatirlari = (chart) => {
+  if (!chart || !Array.isArray(chart.labels)) return [];
+  const degerler = Array.isArray(chart.values) ? chart.values : [];
+  const altBaslik = Array.isArray(chart.sub_labels) ? chart.sub_labels : [];
+  return chart.labels.map((label, i) => {
+    const ham = degerler[i];
+    return {
+      banka: label ?? '-',
+      kampanya: altBaslik[i] || '-',
+      hamDeger: (typeof ham === 'number' && !Number.isNaN(ham)) ? ham : null,
+      metinDeger: degeriBicimlendir(chart, ham),
+    };
+  });
+};
+
+const birimEtiketi = (chart) =>
+  `${chart?.prefix ?? ''}${chart?.suffix ?? ''}`.trim() || '-';
+
+// Mesajda dışa aktarılabilir ne var? (grafik / metin / ikisi / hiçbiri)
+const mesajIcerigi = (index) => {
+  const msg = chatHistory.value[index] || {};
+  const chart = msg.chart || null;
+  const metin = cevabiDuzMetneCevir(msg.content);
+  return { msg, chart, metin, bosMu: !chart && !metin };
+};
+
 const exportToPNG = async (index) => {
     if (isExportingPNG.value[index]) return;
+
+    // PNG grafiğin GÖRÜNTÜSÜNÜ yakalar; grafik yoksa yakalanacak bir şey yoktur.
+    // (Diğer iki çıktının aksine bu, bilinçli olarak grafiğe özeldir.)
+    const el = document.getElementById('chart-container-' + index);
+    if (!chatHistory.value[index]?.chart || !el) {
+        showToast(t('chat.png_no_chart', "Bu mesajda görüntü olarak kaydedilecek bir grafik yok."));
+        return;
+    }
+
     isExportingPNG.value[index] = true;
     showToast(t('chat.png_preparing', "PNG görseli hazırlanıyor..."));
-    
-    try {
-        const el = document.getElementById('chart-container-' + index);
-        if (!el) throw new Error("Grafik bulunamadı");
-        
-        if (!window.html2canvas) {
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-            document.head.appendChild(script);
-            await new Promise(resolve => script.onload = resolve);
-        }
 
-        // Scrollbarları geçici olarak kaldır (Görüntü kesilmesin diye)
-        const scrollEls = el.querySelectorAll('.overflow-y-auto');
-        const backups = [];
-        scrollEls.forEach(sc => {
-            backups.push({ el: sc, maxH: sc.style.maxHeight, over: sc.style.overflow });
-            sc.style.maxHeight = 'none';
-            sc.style.overflow = 'visible';
+    try {
+        await betigiYukle('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'html2canvas');
+
+        const canvas = await window.html2canvas(el, {
+            scale: 2,
+            backgroundColor: document.documentElement.classList.contains('dark') ? '#171717' : '#ffffff'
         });
-        
-        const canvas = await window.html2canvas(el, { scale: 2, backgroundColor: document.documentElement.classList.contains('dark') ? '#171717' : '#ffffff' });
-        
-        // Stilleri geri yükle
-        backups.forEach(b => {
-            b.el.style.maxHeight = b.maxH;
-            b.el.style.overflow = b.over;
-        });
+
+        // 🛠️ toDataURL bazı tarayıcılarda büyük tuvallerde boş string döndürebiliyor;
+        // sessizce bozuk dosya indirmek yerine hata veriyoruz.
+        const dataUrl = canvas.toDataURL('image/png');
+        if (!dataUrl || dataUrl === 'data:,') throw new Error('Görüntü oluşturulamadı (tuval çok büyük olabilir)');
 
         const link = document.createElement('a');
-        link.download = `FinAgent_Pazar_Analizi_${new Date().getTime()}.png`;
-        link.href = canvas.toDataURL('image/png');
+        link.download = `FinAgent_Grafik_${new Date().getTime()}.png`;
+        link.href = dataUrl;
+        document.body.appendChild(link);
         link.click();
+        document.body.removeChild(link);
     } catch(e) {
-        console.error(e);
-        showToast(t('chat.png_error', "PNG oluşturulamadı."));
+        console.error('PNG dışa aktarma hatası:', e);
+        showToast(`${t('chat.png_error', "PNG oluşturulamadı")}: ${e.message}`);
     } finally {
         isExportingPNG.value[index] = false;
     }
 }
 
-// 🚀 TOKAT 2: KUSURSUZ (BOZULMAYAN) EXCEL İNDİRME MOTORU!
 const exportToExcel = async (index) => {
-  const chart = chatHistory.value[index].chart;
-  if (!chart) {
-      showToast(t('chat.no_data_export', "Bu mesajda dışa aktarılacak veri bulunamadı."));
+  if (isExportingExcel.value[index]) return;
+
+  const { msg, chart, metin, bosMu } = mesajIcerigi(index);
+  if (bosMu) {
+      showToast(t('chat.no_data_export', "Bu mesajda dışa aktarılacak içerik bulunamadı."));
       return;
   }
 
-  if (isExportingExcel.value[index]) return;
   isExportingExcel.value[index] = true;
-  
+
   try {
-      if (!window.XLSX) {
-        const script = document.createElement('script')
-        script.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js'
-        document.head.appendChild(script)
-        await new Promise(resolve => script.onload = resolve)
+      await betigiYukle('https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js', 'XLSX');
+
+      const wb = window.XLSX.utils.book_new();
+
+      // --- SAYFA 1: Kampanya verileri (yalnızca grafik varsa) ---
+      if (chart) {
+          const satirlar = grafikSatirlari(chart);
+          const wsData = [[
+              t('chat.bank_institution', 'Banka / Kurum'),
+              t('chat.campaign_detail', 'Kampanya Detayı'),
+              t('chat.value', 'Değer'),
+              t('chat.unit', 'Birim'),
+          ]];
+
+          // 🛠️ Değerler artık METİN değil SAYI olarak yazılıyor.
+          // Eskiden "%2.99" / "500 TL" gibi birleştirilmiş metinler yazılıyordu;
+          // Excel bunları metin sayıp toplayamıyor, sıralayamıyor, grafik
+          // çizemiyordu — yani tablo Excel'de işe yaramıyordu. Birim ayrı sütuna
+          // alındı, sayı sayı olarak kaldı.
+          satirlar.forEach(r => wsData.push([
+              r.banka,
+              r.kampanya,
+              r.hamDeger !== null ? r.hamDeger : r.metinDeger,
+              birimEtiketi(chart),
+          ]));
+
+          if (chart.stats) {
+              wsData.push([]);
+              wsData.push([t('chat.average', 'Ortalama Değer'), '-', chart.stats.avg ?? '-', birimEtiketi(chart)]);
+              wsData.push([t('chat.min_value', 'En Düşük'), '-', chart.stats.min ?? '-', birimEtiketi(chart)]);
+              wsData.push([t('chat.max_value', 'En Yüksek'), '-', chart.stats.max ?? '-', birimEtiketi(chart)]);
+          }
+
+          const ws = window.XLSX.utils.aoa_to_sheet(wsData);
+          ws['!cols'] = [{ wch: 28 }, { wch: 46 }, { wch: 14 }, { wch: 10 }];
+          window.XLSX.utils.book_append_sheet(wb, ws, 'Kampanya_Verileri');
       }
 
-      const wb = window.XLSX.utils.book_new()
-      const wsData = [];
-      
-      // Başlık Satırı
-      wsData.push([t('chat.bank_institution', 'Banka / Kurum'), t('chat.campaign_detail', 'Kampanya Detayı'), t('chat.value', 'Değer')]);
-      
-      // Veri Satırları
-      chart.labels.forEach((label, i) => {
-          const sub = chart.sub_labels ? chart.sub_labels[i] : '-';
-          const val = `${chart.prefix || ''}${chart.values[i]}${chart.suffix || ''}`;
-          wsData.push([label, sub, val]);
-      });
+      // --- SAYFA 2: Analiz metni (yalnızca metin varsa) ---
+      // 🛠️ Bu sayfa TAMAMEN YENİ. Kullanıcı cevabın altındaki "Excel İndir"e
+      // bastığında okuduğu analiz metni dosyaya hiç girmiyordu.
+      if (metin) {
+          const metinData = [[t('chat.analysis', 'Analiz')]];
+          metin.split('\n').forEach(satir => metinData.push([satir]));
+          metinData.push([]);
+          metinData.push([t('chat.report_footer', 'Bu rapor, FinAgent Yapay Zeka asistanı tarafından otomatik olarak oluşturulmuştur.')]);
 
-      // İstatistikler (Varsa)
-      if (chart.stats) {
-          wsData.push(["", "", ""]); // Boş satır
-          wsData.push([t('chat.average', 'Ortalama Değer'), "-", `${chart.prefix || ''}${chart.stats.avg}${chart.suffix || ''}`]);
-          wsData.push([t('chat.min_value', 'En Düşük'), "-", `${chart.prefix || ''}${chart.stats.min}${chart.suffix || ''}`]);
-          wsData.push([t('chat.max_value', 'En Yüksek'), "-", `${chart.prefix || ''}${chart.stats.max}${chart.suffix || ''}`]);
+          const wsMetin = window.XLSX.utils.aoa_to_sheet(metinData);
+          wsMetin['!cols'] = [{ wch: 120 }];
+          window.XLSX.utils.book_append_sheet(wb, wsMetin, 'Analiz');
       }
 
-      wsData.push(["", "", ""]); // Boş satır
-      wsData.push([t('chat.report_footer', "Bu rapor, FinAgent Yapay Zeka asistanı tarafından otomatik olarak oluşturulmuştur."), "", ""]);
-
-      const ws = window.XLSX.utils.aoa_to_sheet(wsData);
-      
-      // Sütun Genişlikleri
-      ws['!cols'] = [{ wch: 30 }, { wch: 50 }, { wch: 15 }];
-
-      window.XLSX.utils.book_append_sheet(wb, ws, "Pazar_Analizi");
       window.XLSX.writeFile(wb, `FinAgent_Rapor_${new Date().getTime()}.xlsx`);
-
   } catch (err) {
-      console.error("Excel oluşturulurken hata:", err)
-      showToast(t('chat.excel_error', "Excel oluşturulurken bir hata meydana geldi."))
+      console.error('Excel oluşturulurken hata:', err);
+      showToast(`${t('chat.excel_error', "Excel oluşturulamadı")}: ${err.message}`);
   } finally {
       isExportingExcel.value[index] = false;
   }
 }
 
-// 🚀 TOKAT 3: TERTEMİZ HTML2PDF MOTORU (İframe'siz Şık PDF Çıktısı)
 const exportToPDF = async (index) => {
   if (isExporting.value[index]) return;
+
+  const { chart, metin, bosMu } = mesajIcerigi(index);
+  if (bosMu) {
+      // 🛠️ Eskiden bu kontrol, ağır html2pdf kütüphanesi İNDİRİLDİKTEN SONRA
+      // `throw new Error("Veri Yok")` ile yapılıyordu ve kullanıcıya genel bir
+      // "Rapor oluşturulurken hata" mesajı gösteriliyordu. Artık en başta,
+      // anlaşılır bir mesajla duruyor.
+      showToast(t('chat.no_data_export', "Bu mesajda dışa aktarılacak içerik bulunamadı."));
+      return;
+  }
+
   isExporting.value[index] = true;
-  showToast("PDF Raporu hazırlanıyor...");
-  
+  showToast(t('chat.pdf_preparing', "PDF raporu hazırlanıyor..."));
+
   try {
-      if (!window.html2pdf) {
-          const script = document.createElement('script');
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-          document.head.appendChild(script);
-          await new Promise(resolve => script.onload = resolve);
-      }
+      await betigiYukle('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js', 'html2pdf');
 
-      const chart = chatHistory.value[index].chart;
-      if (!chart) throw new Error("Veri Yok");
+      const tarih = new Date().toLocaleDateString(t('locale', 'tr-TR'), { year: 'numeric', month: 'long', day: 'numeric' });
 
-      const maxVal = chart.stats ? chart.stats.max : Math.max(...chart.values);
-      const prefix = chart.prefix || '%';
-      const suffix = chart.suffix || '';
-      const currentDate = new Date().toLocaleDateString(t('locale', 'tr-TR'), { year: 'numeric', month: 'long', day: 'numeric' });
-
-      // Siyah-Beyaz, temiz, yazdırılabilir şık HTML yapısı
-      let htmlString = `
+      let html = `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #171717; padding: 20px;">
             <div style="border-bottom: 2px solid #2563eb; padding-bottom: 10px; margin-bottom: 20px;">
                 <h1 style="color: #2563eb; margin: 0; font-size: 24px;">FinAgent Raporu</h1>
-                <p style="color: #6b7280; font-size: 12px; margin: 5px 0 0 0;">Oluşturulma Tarihi: ${currentDate}</p>
-            </div>
-            
-            <h2 style="font-size: 18px; margin-bottom: 5px;">${chart.title || 'Pazar Analizi'}</h2>
-            <p style="font-size: 12px; color: #4b5563; margin-top: 0; margin-bottom: 20px;">${chart.subtitle || 'Bankalar Arası Veri Kıyaslaması'}</p>
-      `;
+                <p style="color: #6b7280; font-size: 12px; margin: 5px 0 0 0;">Oluşturulma Tarihi: ${escapeHtml(tarih)}</p>
+            </div>`;
 
-      if (chart.stats) {
-          htmlString += `
-          <div style="display: flex; gap: 15px; margin-bottom: 25px;">
-              <div style="flex: 1; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; text-align: center;">
-                  <strong style="font-size: 10px; color: #6b7280; display: block;">ORTALAMA</strong>
-                  <span style="font-size: 18px; font-weight: bold;">${prefix}${chart.stats.avg}${suffix}</span>
-              </div>
-              <div style="flex: 1; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; text-align: center;">
-                  <strong style="font-size: 10px; color: #6b7280; display: block;">EN DÜŞÜK</strong>
-                  <span style="font-size: 18px; font-weight: bold;">${prefix}${chart.stats.min}${suffix}</span>
-              </div>
-              <div style="flex: 1; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; text-align: center;">
-                  <strong style="font-size: 10px; color: #6b7280; display: block;">EN YÜKSEK</strong>
-                  <span style="font-size: 18px; font-weight: bold;">${prefix}${chart.stats.max}${suffix}</span>
-              </div>
-          </div>
-          `;
+      // --- BÖLÜM 1: Analiz metni ---
+      // 🛠️ TAMAMEN YENİ. Rapor eskiden sadece grafik tablosundan ibaretti;
+      // kullanıcının ekranda okuduğu analiz metni PDF'e hiç girmiyordu.
+      if (metin) {
+          html += `<h2 style="font-size: 16px; margin: 0 0 8px 0;">Analiz</h2>`;
+          metin.split(/\n{2,}/).forEach(p => {
+              // escapeHtml: kampanya adları/metin & < > " gibi karakterler
+              // içerebiliyor; ham yapıştırılırsa PDF'in HTML'ini bozar.
+              html += `<p style="font-size: 12px; line-height: 1.6; margin: 0 0 10px 0; text-align: justify;">${escapeHtml(p).replace(/\n/g, '<br>')}</p>`;
+          });
       }
 
-      htmlString += `<table style="width: 100%; border-collapse: collapse; font-size: 12px;">`;
-      htmlString += `<thead><tr style="background-color: #f3f4f6;"><th style="padding: 8px; border: 1px solid #d1d5db; text-align: left;">Banka / Kurum</th><th style="padding: 8px; border: 1px solid #d1d5db; text-align: left;">Kampanya Detayı</th><th style="padding: 8px; border: 1px solid #d1d5db; text-align: right;">Değer</th></tr></thead><tbody>`;
-      
-      chart.labels.forEach((label, i) => {
-          const camp = chart.sub_labels ? chart.sub_labels[i] : '-';
-          htmlString += `<tr><td style="padding: 8px; border: 1px solid #d1d5db;"><strong>${label}</strong></td><td style="padding: 8px; border: 1px solid #d1d5db;">${camp}</td><td style="padding: 8px; border: 1px solid #d1d5db; text-align: right; font-weight: bold;">${prefix}${chart.values[i]}${suffix}</td></tr>`;
-      });
-      htmlString += `</tbody></table></div>`;
+      // --- BÖLÜM 2: Grafik verileri ---
+      if (chart) {
+          const satirlar = grafikSatirlari(chart);
+          html += `<h2 style="font-size: 16px; margin: ${metin ? '22px' : '0'} 0 4px 0;">${escapeHtml(chart.title || 'Pazar Analizi')}</h2>
+                   <p style="font-size: 12px; color: #4b5563; margin: 0 0 14px 0;">${escapeHtml(chart.subtitle || 'Bankalar Arası Veri Kıyaslaması')}</p>`;
+
+          if (chart.stats) {
+              const kutu = (etiket, deger) => `
+                  <div style="flex: 1; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; text-align: center;">
+                      <strong style="font-size: 10px; color: #6b7280; display: block;">${etiket}</strong>
+                      <span style="font-size: 18px; font-weight: bold;">${escapeHtml(degeriBicimlendir(chart, deger))}</span>
+                  </div>`;
+              html += `<div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                  ${kutu('ORTALAMA', chart.stats.avg)}
+                  ${kutu('EN DÜŞÜK', chart.stats.min)}
+                  ${kutu('EN YÜKSEK', chart.stats.max)}
+              </div>`;
+          }
+
+          if (satirlar.length) {
+              html += `<table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                  <thead><tr style="background-color: #f3f4f6;">
+                      <th style="padding: 8px; border: 1px solid #d1d5db; text-align: left;">Banka / Kurum</th>
+                      <th style="padding: 8px; border: 1px solid #d1d5db; text-align: left;">Kampanya Detayı</th>
+                      <th style="padding: 8px; border: 1px solid #d1d5db; text-align: right;">Değer</th>
+                  </tr></thead><tbody>`;
+              satirlar.forEach(r => {
+                  html += `<tr>
+                      <td style="padding: 8px; border: 1px solid #d1d5db;"><strong>${escapeHtml(r.banka)}</strong></td>
+                      <td style="padding: 8px; border: 1px solid #d1d5db;">${escapeHtml(r.kampanya)}</td>
+                      <td style="padding: 8px; border: 1px solid #d1d5db; text-align: right; font-weight: bold;">${escapeHtml(r.metinDeger)}</td>
+                  </tr>`;
+              });
+              html += `</tbody></table>`;
+          }
+      }
+
+      html += `</div>`;
 
       const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = htmlString;
-      
-      const opt = {
+      tempDiv.innerHTML = html;
+
+      await window.html2pdf().set({
           margin:       0.5,
           filename:     `FinAgent_Rapor_${new Date().getTime()}.pdf`,
           image:        { type: 'jpeg', quality: 0.98 },
           html2canvas:  { scale: 2 },
-          jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
-      };
-
-      await window.html2pdf().set(opt).from(tempDiv).save();
+          jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' },
+          // 🛠️ Uzun analiz metni + tablo birden fazla sayfaya taşabiliyor;
+          // satırların sayfa ortasından bölünmemesi için sayfa sonu kuralı.
+          pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] },
+      }).from(tempDiv).save();
 
   } catch (err) {
-      console.error("Rapor oluşturulurken hata:", err)
-      showToast(t('chat.report_error', "Rapor oluşturulurken bir hata meydana geldi."))
+      console.error('Rapor oluşturulurken hata:', err);
+      showToast(`${t('chat.report_error', "Rapor oluşturulamadı")}: ${err.message}`);
   } finally {
       isExporting.value[index] = false;
   }
@@ -367,6 +532,7 @@ const handleFileSelect = (event) => {
 const handlePaste = (e) => {
   const items = (e.clipboardData || window.clipboardData).items;
   let hasFile = false;
+  
   for (let item of items) {
     if (item.kind === 'file') {
       const file = item.getAsFile();
@@ -438,10 +604,10 @@ const formatMessage = (text, hasChart = false) => {
   if (!text) return '';
   let html = text.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;');
   html = html.replace(/\n{3,}/g, '\n\n');
-  
   html = html.replace(/```(?:mermaid|pie)[\s\S]*?```/gi, ''); 
   html = html.replace(/pie chart title[\s\S]*?(?=\n\n|\n[A-Z])/gi, ''); 
 
+  // 🚀 TOKAT 6: EĞER CHART GELDİYSE LLM'İN ÇİZİM YAPMASINI (Markdown Tablo) ENGELLİYORUZ
   if (hasChart) {
       html = html.replace(/(?:^[ \t]*\|.*(?:\n|$))+/gm, '');
   } else {
@@ -497,12 +663,7 @@ const sendMessage = async () => {
 
   const text = userMessage.value || `${selectedFiles.value.length} ${t('chat.files_sent', 'dosya gönderildi.')}`
   
-  const attachedFiles = selectedFiles.value.map(f => ({
-    name: f.name,
-    type: f.type,
-    isImage: f.type.startsWith('image/'),
-    url: getObjectUrl(f) 
-  }))
+  const attachedFiles = selectedFiles.value.map(f => ({ name: f.name, type: f.type, isImage: f.type.startsWith('image/'), url: getObjectUrl(f) }))
   
   chatHistory.value.push({ role: 'user', content: text, files: attachedFiles })
   const historyToSend = chatHistory.value.slice(0, -1).map(msg => ({ role: msg.role, content: msg.content }))
@@ -533,9 +694,15 @@ const sendMessage = async () => {
   });
   const aIdx = chatHistory.value.length - 1;
 
+  // 🛠️ DÜRÜST STATUS: Buradaki etiketler istek GÖNDERİLMEDEN ÖNCE basılıyor,
+  // yani gerçek bir işin süresini ölçmüyorlar.
+  //   - "Sohbet geçmişi taranıyor" KALDIRILDI: sadece historyToSend.length > 0
+  //     kontrolüydü, arkasında hiçbir iş yoktu; bu yüzden hep 0.0s görünüyordu.
+  //     Geçmiş gerçekten kullanıldığında artık backend [STATUS] gönderiyor.
+  //   - "Belgeler analiz ediliyor" KALDI: dosyalar bu aşamada (istek gövdesi
+  //     yüklenirken ve sunucuda parse edilirken) gerçekten işleniyor.
   let activeTasks = [];
   if (selectedFiles.value.length > 0) activeTasks.push(t('chat.docs_analyzing', "Belgeler analiz ediliyor"));
-  if (historyToSend.length > 0) activeTasks.push(t('chat.history_scanning', "Sohbet geçmişi taranıyor"));
 
   userMessage.value = ''
   isLoading.value = true 
@@ -620,7 +787,6 @@ const sendMessage = async () => {
       }
       buffer = buffer.replace(/\[CHART\][\s\S]*?\[\/CHART\]/g, '');
 
-      // 🚀 TOKAT 5: SADECE KUSURSUZ JSON DİZİSİNİ KABUL ET!
       let sugRegex = /\[SUGGESTIONS?\]([\s\S]*?)\[\/SUGGESTIONS?\]/g;
       let matchSug;
       while ((matchSug = sugRegex.exec(buffer)) !== null) {
@@ -643,10 +809,14 @@ const sendMessage = async () => {
       let pSugIdx = buffer.lastIndexOf('[SUGGESTION');
       if (pSugIdx !== -1 && buffer.indexOf('[/SUGGESTION', pSugIdx) === -1) continue;
 
-      const tags = ["[", "[S", "[ST", "[STA", "[STAT", "[STATUS", "[STATUS]", "[C", "[CH", "[CHA", "[CHAR", "[CHART", "[CHART]", "[SU", "[SUG", "[SUGG", "[SUGGE", "[SUGGEST", "[SUGGESTI", "[SUGGESTIO", "[SUGGESTION", "[SUGGESTIONS"];
-      if (tags.some(t => buffer.endsWith(t))) continue; 
+      // 🛠️ Elle yazılmış kısmi etiket listesi EKSİKTİ: "[SO", "[SOU", "[SOUR",
+      // "[SOURC", "[SOURCE", "[SOURCES", "[SOURCES]" ve "[SUGGESTIONS]" listede
+      // yoktu. Akış parçası tam o noktalarda bölünürse yarım etiket cevabın
+      // içine yazılıyordu (ekranda "...oluyor?[SOURCES" gibi artıklar).
+      // Artık liste elle tutulmuyor; bilinen etiketlerin TÜM ön ekleri
+      // otomatik kontrol ediliyor.
+      if (kismiEtiketMi(buffer)) continue;
 
-      // 🚀 TOKAT 4: HİÇBİR ZAMAN KUTUYU ERKEN KAPATMA!
       if (buffer.length > 0) {
         chatHistory.value[aIdx].content += buffer;
         buffer = '';
@@ -660,7 +830,7 @@ const sendMessage = async () => {
     console.error('Akış sırasında hata:', error)
     chatHistory.value[aIdx].content = t('chat.server_error', 'Üzgünüm, sunucuyla iletişim kurulamadı.')
   } finally {
-    finishStatus(); // KUTU SADECE İŞ BİTİNCE, EN SONDA KAPANACAK!
+    finishStatus(); 
     isLoading.value = false
     isStreaming.value = false 
     scrollToBottom()
@@ -841,7 +1011,7 @@ const sendMessage = async () => {
                                 </button>
                             </div>
 
-                            <div class="bg-white dark:bg-neutral-800/90 rounded-2xl border border-neutral-200 dark:border-neutral-700 shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden relative">
+                            <div class="anim-card bg-white dark:bg-neutral-800/90 rounded-2xl border border-neutral-200 dark:border-neutral-700 shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden relative">
                                 <div class="p-5 sm:p-6 border-b border-neutral-100 dark:border-neutral-700/50 flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center bg-neutral-50/50 dark:bg-neutral-800/50">
                                     <div class="flex items-center gap-3">
                                         <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-600 text-white shadow-sm shrink-0">
@@ -855,16 +1025,16 @@ const sendMessage = async () => {
                                     
                                     <div class="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
                                         <div v-if="msg.chart.stats" class="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
-                                            <div class="flex-1 sm:flex-none bg-white dark:bg-neutral-800 px-4 py-2 rounded-xl border border-blue-100 dark:border-blue-900/50 shadow-sm text-center transform transition-transform hover:-translate-y-0.5">
+                                            <div :style="gecikme(0, 90)" class="anim-tile flex-1 sm:flex-none bg-white dark:bg-neutral-800 px-4 py-2 rounded-xl border border-blue-100 dark:border-blue-900/50 shadow-sm text-center transform transition-transform hover:-translate-y-0.5">
                                                 <span class="block text-[8px] text-blue-500 font-bold uppercase tracking-wider mb-0.5">{{ t('chat.avg_value', 'Ortalama Değer') }}</span>
                                                 <span class="text-sm font-black text-neutral-800 dark:text-neutral-100">{{ msg.chart.prefix || '' }}{{ msg.chart.stats.avg }}{{ msg.chart.suffix || '' }}</span>
                                             </div>
-                                            <div class="flex-1 sm:flex-none bg-white dark:bg-neutral-800 px-4 py-2 rounded-xl border border-green-100 dark:border-green-900/50 shadow-sm text-center relative overflow-hidden transform transition-transform hover:-translate-y-0.5">
+                                            <div :style="gecikme(1, 90)" class="anim-tile flex-1 sm:flex-none bg-white dark:bg-neutral-800 px-4 py-2 rounded-xl border border-green-100 dark:border-green-900/50 shadow-sm text-center relative overflow-hidden transform transition-transform hover:-translate-y-0.5">
                                                 <div class="absolute top-0 right-0 w-6 h-6 bg-green-500/10 rounded-bl-full"></div>
                                                 <span class="block text-[8px] text-green-500 font-bold uppercase tracking-wider mb-0.5">{{ t('chat.min_value', 'En Düşük') }}</span>
                                                 <span class="text-sm font-black text-green-600 dark:text-green-400">{{ msg.chart.prefix || '' }}{{ msg.chart.stats.min }}{{ msg.chart.suffix || '' }}</span>
                                             </div>
-                                            <div class="flex-1 sm:flex-none bg-white dark:bg-neutral-800 px-4 py-2 rounded-xl border border-red-100 dark:border-red-900/50 shadow-sm text-center relative overflow-hidden transform transition-transform hover:-translate-y-0.5">
+                                            <div :style="gecikme(2, 90)" class="anim-tile flex-1 sm:flex-none bg-white dark:bg-neutral-800 px-4 py-2 rounded-xl border border-red-100 dark:border-red-900/50 shadow-sm text-center relative overflow-hidden transform transition-transform hover:-translate-y-0.5">
                                                 <div class="absolute top-0 right-0 w-6 h-6 bg-red-500/10 rounded-bl-full"></div>
                                                 <span class="block text-[8px] text-red-500 font-bold uppercase tracking-wider mb-0.5">{{ t('chat.max_value', 'En Yüksek') }}</span>
                                                 <span class="text-sm font-black text-red-600 dark:text-red-400">{{ msg.chart.prefix || '' }}{{ msg.chart.stats.max }}{{ msg.chart.suffix || '' }}</span>
@@ -873,9 +1043,9 @@ const sendMessage = async () => {
                                     </div>
                                 </div>
                                 
-                                <div class="p-5 sm:p-6 flex flex-col md:flex-row gap-8">
+                                <div v-if="msg.chart.type !== 'table'" class="p-5 sm:p-6 flex flex-col md:flex-row gap-8">
                                     <div class="w-full md:w-1/3 flex flex-col items-center md:border-r border-neutral-100 dark:border-neutral-700/50 pr-0 md:pr-4">
-                                        <div class="relative w-48 h-48 sm:w-52 sm:h-52 shrink-0 flex items-center justify-center mb-6">
+                                        <div class="anim-donut relative w-48 h-48 sm:w-52 sm:h-52 shrink-0 flex items-center justify-center mb-6">
                                             <svg :id="'doughnut-svg-' + index" viewBox="0 0 100 100" class="w-full h-full transform -rotate-90 filter drop-shadow-md">
                                                 <template v-for="(slice, i) in getSvgPaths(msg.chart)" :key="'slice-'+i">
                                                     <circle v-if="slice.isCircle" cx="50" cy="50" r="40" fill="transparent" :stroke="slice.color" stroke-width="20">
@@ -894,7 +1064,7 @@ const sendMessage = async () => {
                                         </div>
                                         
                                         <div class="flex flex-col gap-2 w-full max-h-[220px] overflow-y-auto custom-scrollbar pr-2">
-                                            <div v-for="(label, i) in msg.chart.labels" :key="'pie-'+i" class="flex items-center gap-2.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 p-1.5 rounded-lg transition-colors cursor-default" :title="`${label} - ${msg.chart.sub_labels ? msg.chart.sub_labels[i] : ''} : ${msg.chart.prefix || ''}${msg.chart.values[i]}${msg.chart.suffix || ''}`">
+                                            <div v-for="(label, i) in msg.chart.labels" :key="'pie-'+i" :style="gecikme(i, 40)" class="anim-row flex items-center gap-2.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 p-1.5 rounded-lg transition-colors cursor-default" :title="`${label} - ${msg.chart.sub_labels ? msg.chart.sub_labels[i] : ''} : ${msg.chart.prefix || ''}${msg.chart.values[i]}${msg.chart.suffix || ''}`">
                                                 <div class="w-2.5 h-2.5 rounded-full shrink-0" :class="getChartColorClass(i)"></div>
                                                 <div class="flex flex-col flex-1 min-w-0">
                                                     <div class="flex justify-between items-center gap-2">
@@ -918,7 +1088,7 @@ const sendMessage = async () => {
                                                 <div class="flex justify-between items-end mb-1.5">
                                                     <div class="flex flex-col min-w-0 pr-2">
                                                         <button 
-                                                            @click="openSourceFromChart((msg.chart.source_indices ? msg.chart.source_indices[i] : (i+1)), msg.sources, label, (msg.chart.sub_labels ? msg.chart.sub_labels[i] : ''), msg.chart.values[i], msg.chart.prefix, msg.chart.suffix)"
+                                                            @click="openModalFromText(msg.chart.full_texts[i])"
                                                             class="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left"
                                                             :title="t('chat.view_db_source', 'Veritabanı kaynağını görüntüle')">
                                                             <span class="truncate">{{ label }}</span>
@@ -929,40 +1099,41 @@ const sendMessage = async () => {
                                                     <span class="text-[10px] font-black text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800/50 px-1.5 py-0.5 rounded shadow-sm shrink-0">{{ msg.chart.prefix || '' }}{{ msg.chart.values[i] }}{{ msg.chart.suffix || '' }}</span>
                                                 </div>
                                                 <div class="h-2 sm:h-2.5 bg-neutral-100 dark:bg-neutral-900/60 rounded-full overflow-hidden shadow-inner relative group-hover:bg-neutral-200 dark:group-hover:bg-neutral-800 transition-colors">
-                                                    <div class="h-full relative rounded-full transition-all duration-1000 ease-out"
+                                                    <div class="h-full relative rounded-full anim-bar"
                                                          :class="msg.chart.stats && msg.chart.values[i] === msg.chart.stats.min ? 'bg-gradient-to-r from-green-500 via-green-400 to-emerald-400' : 'bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-400'"
-                                                         :style="{ width: (msg.chart.values[i] / (msg.chart.stats ? msg.chart.stats.max : Math.max(...msg.chart.values)) * 100) + '%' }">
+                                                         :style="{ width: barGenislik(msg.chart, i), ...gecikme(i, 60) }">
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
-                                        
-                                        <div class="mt-8 pt-4 border-t border-neutral-100 dark:border-neutral-700/50">
-                                             <h4 class="text-xs font-bold text-neutral-800 dark:text-neutral-200 mb-3 flex items-center gap-2">
-                                                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                                                {{ t('chat.full_data_table', 'Eksiksiz Veri Tablosu') }}
-                                            </h4>
-                                            <div class="overflow-x-auto shadow-sm rounded-xl border border-neutral-200 dark:border-neutral-700 hover:shadow-md transition-shadow duration-300">
-                                                <table class="w-full text-xs text-left border-collapse bg-white dark:bg-neutral-800/80">
-                                                    <thead>
-                                                        <tr class="bg-neutral-100/80 dark:bg-neutral-800/90 border-b border-neutral-200 dark:border-neutral-700">
-                                                            <th class="px-3 py-2 font-bold text-neutral-800 dark:text-neutral-200 border-r border-neutral-200 dark:border-neutral-700 whitespace-nowrap min-w-[120px]">{{ t('chat.bank_institution', 'Banka / Kurum') }}</th>
-                                                            <th class="px-3 py-2 font-bold text-neutral-800 dark:text-neutral-200 border-r border-neutral-200 dark:border-neutral-700 whitespace-nowrap min-w-[120px]">{{ t('chat.campaign_detail', 'Kampanya Detayı') }}</th>
-                                                            <th class="px-3 py-2 font-bold text-neutral-800 dark:text-neutral-200 text-right whitespace-nowrap">{{ t('chat.value', 'Değer') }}</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        <tr v-for="(label, i) in msg.chart.labels" :key="'table-'+i" 
-                                                            @click="openSourceFromChart((msg.chart.source_indices ? msg.chart.source_indices[i] : (i+1)), msg.sources, label, (msg.chart.sub_labels ? msg.chart.sub_labels[i] : ''), msg.chart.values[i], msg.chart.prefix, msg.chart.suffix)"
-                                                            class="border-b border-neutral-200 dark:border-neutral-700 hover:bg-blue-50 dark:hover:bg-neutral-800/40 last:border-0 transition-colors cursor-pointer group/tr">
-                                                            <td class="px-3 py-2 text-neutral-600 dark:text-neutral-300 font-medium border-r border-neutral-200 dark:border-neutral-700 break-words min-w-[120px] group-hover/tr:text-blue-600 transition-colors">{{ label }}</td>
-                                                            <td class="px-3 py-2 text-neutral-500 dark:text-neutral-400 border-r border-neutral-200 dark:border-neutral-700 break-words min-w-[120px]">{{ msg.chart.sub_labels ? msg.chart.sub_labels[i] : '-' }}</td>
-                                                            <td class="px-3 py-2 font-bold text-blue-600 dark:text-blue-400 text-right whitespace-nowrap">{{ msg.chart.prefix || '' }}{{ msg.chart.values[i] }}{{ msg.chart.suffix || '' }}</td>
-                                                        </tr>
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
+                                    </div>
+                                </div>
+
+                                <div :class="msg.chart.type === 'table' ? 'p-5 sm:p-6' : 'mt-8 pt-4 border-t border-neutral-100 dark:border-neutral-700/50'">
+                                     <h4 class="text-xs font-bold text-neutral-800 dark:text-neutral-200 mb-3 flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                        {{ msg.chart.type === 'table' ? 'Kampanya Listesi (Tablo Görünümü)' : t('chat.full_data_table', 'Eksiksiz Veri Tablosu') }}
+                                    </h4>
+                                    <div class="overflow-x-auto shadow-sm rounded-xl border border-neutral-200 dark:border-neutral-700 hover:shadow-md transition-shadow duration-300">
+                                        <table class="w-full text-xs text-left border-collapse bg-white dark:bg-neutral-800/80">
+                                            <thead>
+                                                <tr class="bg-neutral-100/80 dark:bg-neutral-800/90 border-b border-neutral-200 dark:border-neutral-700">
+                                                    <th class="px-3 py-2 font-bold text-neutral-800 dark:text-neutral-200 border-r border-neutral-200 dark:border-neutral-700 whitespace-nowrap min-w-[120px]">{{ t('chat.bank_institution', 'Banka / Kurum') }}</th>
+                                                    <th class="px-3 py-2 font-bold text-neutral-800 dark:text-neutral-200 border-r border-neutral-200 dark:border-neutral-700 whitespace-nowrap min-w-[120px]">{{ t('chat.campaign_detail', 'Kampanya Detayı') }}</th>
+                                                    <th class="px-3 py-2 font-bold text-neutral-800 dark:text-neutral-200 text-right whitespace-nowrap">{{ t('chat.value', 'Değer') }}</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr v-for="(label, i) in msg.chart.labels" :key="'table-'+i" 
+                                                    @click="openModalFromText(msg.chart.full_texts[i])"
+                                                    :style="gecikme(i, 35)"
+                                                    class="anim-row border-b border-neutral-200 dark:border-neutral-700 hover:bg-blue-50 dark:hover:bg-neutral-800/40 last:border-0 transition-colors cursor-pointer group/tr">
+                                                    <td class="px-3 py-2 text-neutral-600 dark:text-neutral-300 font-medium border-r border-neutral-200 dark:border-neutral-700 break-words min-w-[120px] group-hover/tr:text-blue-600 transition-colors">{{ label }}</td>
+                                                    <td class="px-3 py-2 text-neutral-500 dark:text-neutral-400 border-r border-neutral-200 dark:border-neutral-700 break-words min-w-[120px]">{{ msg.chart.sub_labels ? msg.chart.sub_labels[i] : '-' }}</td>
+                                                    <td class="px-3 py-2 font-bold text-blue-600 dark:text-blue-400 text-right whitespace-nowrap">{{ msg.chart.prefix || '' }}{{ msg.chart.values[i] }}{{ msg.chart.suffix || '' }}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
                             </div>
@@ -976,69 +1147,39 @@ const sendMessage = async () => {
 
                             <div class="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700/50 flex flex-col gap-4 relative z-10">
                               <div class="flex items-center justify-end gap-2">
-                                <button 
-                                  v-if="msg.content.trim() !== ''"
-                                  :disabled="isExportingExcel[index] || (isStreaming && index === chatHistory.length - 1)"
-                                  @click="exportToExcel(index)" 
-                                  class="text-xs flex items-center gap-1.5 text-green-700 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 transition-all px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-lg shadow-sm hover:bg-green-100 dark:hover:bg-green-900/40 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                                >
-                                  <template v-if="!isExportingExcel[index]">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                                    {{ t('chat.download_excel', 'Excel İndir') }}
-                                  </template>
-                                  <template v-else>
-                                    <svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                    {{ t('chat.generating', 'Oluşturuluyor...') }}
-                                  </template>
+                                <button v-if="msg.content.trim() !== ''" :disabled="isExportingExcel[index] || (isStreaming && index === chatHistory.length - 1)" @click="exportToExcel(index)" class="text-xs flex items-center gap-1.5 text-green-700 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 transition-all px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-lg shadow-sm hover:bg-green-100 dark:hover:bg-green-900/40 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+                                  <template v-if="!isExportingExcel[index]"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg> {{ t('chat.download_excel', 'Excel İndir') }}</template>
+                                  <template v-else><svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> {{ t('chat.generating', 'Oluşturuluyor...') }}</template>
                                 </button>
-                                <button 
-                                  v-if="msg.content.trim() !== ''"
-                                  :disabled="isExporting[index] || (isStreaming && index === chatHistory.length - 1)"
-                                  @click="exportToPDF(index)" 
-                                  class="text-xs flex items-center gap-1.5 text-neutral-600 dark:text-neutral-300 hover:text-blue-600 dark:hover:text-blue-400 transition-all px-3 py-1.5 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                                >
-                                  <template v-if="!isExporting[index]">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                    {{ t('chat.view_report', 'Raporu Görüntüle') }}
-                                  </template>
-                                  <template v-else>
-                                    <svg class="animate-spin w-4 h-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                    {{ t('chat.generating', 'Oluşturuluyor...') }}
-                                  </template>
+                                <button v-if="msg.content.trim() !== ''" :disabled="isExporting[index] || (isStreaming && index === chatHistory.length - 1)" @click="exportToPDF(index)" class="text-xs flex items-center gap-1.5 text-neutral-600 dark:text-neutral-300 hover:text-blue-600 dark:hover:text-blue-400 transition-all px-3 py-1.5 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+                                  <template v-if="!isExporting[index]"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> {{ t('chat.view_report', 'Raporu Görüntüle') }}</template>
+                                  <template v-else><svg class="animate-spin w-4 h-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> {{ t('chat.generating', 'Oluşturuluyor...') }}</template>
                                 </button>
                               </div>
 
-                              <div class="flex-1 w-full">
-                                <Transition
-                                  enter-active-class="transition-all duration-500 delay-100 ease-out"
-                                  enter-from-class="opacity-0 translate-y-2"
-                                  enter-to-class="opacity-100 translate-y-0"
-                                >
-                                  <div v-if="msg.sources && msg.sources.length > 0" class="w-full hover:-translate-y-0.5 transition-transform duration-300">
-                                      <details class="group bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700/80 overflow-hidden shadow-sm hover:shadow-md transition-shadow w-full">
-                                          <summary class="flex justify-between items-center font-medium cursor-pointer list-none px-4 py-3 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
-                                              <div class="flex items-center gap-2.5">
-                                                  <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-                                                  <span class="font-bold tracking-wide">{{ t('chat.sql_powered', 'SQL Veritabanı ile Güçlendirildi (Tıklayın)') }}</span>
-                                              </div>
-                                              <span class="transition-transform duration-300 group-open:rotate-180 bg-white dark:bg-neutral-700 rounded-full p-1 shadow-sm border border-neutral-200 dark:border-neutral-600">
-                                                  <svg class="w-4 h-4 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                                              </span>
-                                          </summary>
-                                          <div class="p-4 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700/80">
-                                              <div class="text-xs text-neutral-500 dark:text-neutral-400 mb-2">{{ t('chat.sql_desc', 'Bu veriler yapılandırılmış SQL veritabanından hatasız olarak çekilmiştir.') }}</div>
+                              <div v-if="msg.sources && msg.sources.length > 0" class="w-full hover:-translate-y-0.5 transition-transform duration-300">
+                                  <details class="group bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700/80 overflow-hidden shadow-sm hover:shadow-md transition-shadow w-full">
+                                      <summary class="flex justify-between items-center font-medium cursor-pointer list-none px-4 py-3 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
+                                          <div class="flex items-center gap-2.5">
+                                              <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+                                              <span class="font-bold tracking-wide text-emerald-600 dark:text-emerald-400">MongoDB (NoSQL) Veritabanı Kayıtları</span>
                                           </div>
-                                      </details>
-                                  </div>
-                                </Transition>
+                                          <span class="transition-transform duration-300 group-open:rotate-180 bg-white dark:bg-neutral-700 rounded-full p-1 shadow-sm border border-neutral-200 dark:border-neutral-600"><svg class="w-4 h-4 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></span>
+                                      </summary>
+                                      <div class="p-4 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700/80">
+                                          <div class="text-xs text-neutral-500 dark:text-neutral-400 mb-2">Sistemin analiz için kullandığı MongoDB logları ve detayları:</div>
+                                          <div class="space-y-2 mt-3">
+                                              <div v-for="(src, sIdx) in msg.sources" :key="sIdx" class="text-xs p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 font-mono text-neutral-600 dark:text-neutral-300">
+                                                  {{ src.icerik }}
+                                              </div>
+                                          </div>
+                                      </div>
+                                  </details>
                               </div>
                             </div>
                             
-                            <!-- 🚀 TOKAT: ChatGPT Tipi Tıklanabilir Prompt Önerileri Animasyonlu -->
                             <div v-if="msg.suggestions && msg.suggestions.length > 0" class="mt-4 flex flex-wrap gap-2 relative z-10 animate-[msgPopIn_0.4s_ease-out]">
-                                <button v-for="(sug, sIdx) in msg.suggestions" :key="'sug-'+sIdx"
-                                        @click="sendSuggestedPrompt(sug)"
-                                        class="text-[11px] font-medium px-3 py-1.5 bg-blue-50/80 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 border border-blue-200/60 dark:border-blue-700/50 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:-translate-y-0.5 transition-all shadow-sm active:scale-95 flex items-center gap-1.5 cursor-pointer">
+                                <button v-for="(sug, sIdx) in msg.suggestions" :key="'sug-'+sIdx" @click="sendSuggestedPrompt(sug)" :style="gecikme(sIdx, 70)" class="anim-chip text-[11px] font-medium px-3 py-1.5 bg-blue-50/80 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 border border-blue-200/60 dark:border-blue-700/50 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:-translate-y-0.5 transition-all shadow-sm active:scale-95 flex items-center gap-1.5 cursor-pointer">
                                     <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                                     {{ sug }}
                                 </button>
@@ -1057,43 +1198,13 @@ const sendMessage = async () => {
 
         <div class="w-full max-w-4xl mx-auto px-4 pb-4 pointer-events-auto relative z-20">
           
-          <form @submit.prevent="sendMessage" 
-                :class="[
-                  'flex flex-col w-full p-2 rounded-2xl border transition-all duration-300 relative', 
-                  isDragging 
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-[0_0_30px_rgba(59,130,246,0.3)] ring-4 ring-blue-500/30 scale-[1.02] transform' 
-                    : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 shadow-sm focus-within:shadow-lg focus-within:border-blue-400 dark:focus-within:border-blue-600 focus-within:ring-4 focus-within:ring-blue-500/10 dark:focus-within:ring-blue-500/20 focus-within:-translate-y-1'
-                ]">
-            
-            <div v-if="isDragging" class="absolute inset-0 flex items-center justify-center bg-blue-500/10 backdrop-blur-[2px] rounded-2xl z-10 pointer-events-none transition-all duration-300">
-              <span class="text-blue-600 dark:text-blue-400 font-bold flex items-center gap-2 animate-bounce text-sm sm:text-base">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                {{ t('chat.drop_files_here', 'Dosyaları Buraya Bırakın') }}
-              </span>
-            </div>
-
-            <TransitionGroup name="fade-text" tag="div" class="flex flex-wrap gap-2 px-3 pt-2 pb-1 relative z-20" v-if="selectedFiles.length > 0">
-                <div v-for="(file, index) in selectedFiles" :key="file.name + index" class="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 pl-2 pr-1 py-1 rounded-lg border border-blue-200 dark:border-blue-800/50 text-xs font-medium shadow-sm transform transition-all duration-300 hover:scale-105">
-                    
-                    <img v-if="file.type.startsWith('image/')" :src="getObjectUrl(file)" class="w-6 h-6 rounded object-cover border border-blue-200 dark:border-blue-700" />
-                    <svg v-else class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                    
-                    <span class="truncate max-w-[120px]">{{ file.name }}</span>
-                    <button type="button" @click.prevent="removeFile(index)" class="hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-1 rounded-md transition-colors ml-1 active:scale-90">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
-                </div>
-            </TransitionGroup>
-
+          <form @submit.prevent="sendMessage" class="flex flex-col w-full p-2 rounded-2xl border transition-all duration-300 relative bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 shadow-sm focus-within:shadow-lg focus-within:border-blue-400 dark:focus-within:border-blue-600 focus-within:ring-4 focus-within:ring-blue-500/10 dark:focus-within:ring-blue-500/20 focus-within:-translate-y-1">
             <div class="flex gap-2 items-center relative z-20">
               <input type="file" multiple ref="fileInput" class="hidden" @change="handleFileSelect" accept=".pdf, image/*, .xls, .xlsx, .doc, .docx, .ppt, .pptx" />
-              
               <button type="button" @click="triggerFileInput" :disabled="isStreaming" class="p-3 text-neutral-400 hover:text-blue-500 transition-all duration-300 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-700 active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5 hover:shadow-sm">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
               </button>
-              
               <input v-model="userMessage" type="text" @paste="handlePaste" :placeholder="t('chat.placeholder', 'Bir şeyler sorun, yapıştırın (Ctrl+V) veya dosya bırakın...')" class="flex-1 bg-transparent px-2 py-3 text-neutral-900 dark:text-white outline-none placeholder:text-neutral-400 transition-all text-sm sm:text-base disabled:opacity-50" :disabled="isStreaming" />
-              
               <button type="submit" :disabled="isStreaming || (!userMessage.trim() && selectedFiles.length === 0)" class="px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl hover:from-blue-700 hover:to-blue-600 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center group active:scale-90 hover:shadow-lg hover:shadow-blue-500/30">
                 <svg class="w-5 h-5 transform group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
               </button>
@@ -1102,106 +1213,136 @@ const sendMessage = async () => {
         </div>
       </div>
 
-      <!-- 🚀 TOKAT 6: TERTEMİZ VERİTABANI ÖNİZLEME (MODAL) EKRANI! (Siyah Beyaz) -->
       <Transition enter-active-class="transform transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)]" enter-from-class="translate-x-[120%] opacity-0 scale-95" enter-to-class="translate-x-0 opacity-100 scale-100" leave-active-class="transform transition-all duration-300 ease-in" leave-from-class="translate-x-0 opacity-100 scale-100" leave-to-class="translate-x-[120%] opacity-0 scale-95">
-        <div v-if="showSourceModal" class="absolute right-4 top-4 bottom-4 w-[340px] lg:w-[480px] bg-white dark:bg-neutral-900 rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.2)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.6)] border border-neutral-200 dark:border-neutral-700 flex flex-col z-50 overflow-hidden">
-          
+        <div v-if="showSourceModal" class="absolute right-4 top-4 bottom-4 w-[340px] lg:w-[480px] bg-white dark:bg-[#121212] rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.2)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.6)] border border-neutral-200 dark:border-neutral-700 flex flex-col z-50 overflow-hidden">
           <div class="flex justify-between items-center p-4 border-b border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800">
             <h3 class="text-[14px] font-bold flex items-center gap-2 text-neutral-800 dark:text-white">
               <template v-if="activeModalType === 'file'">
-                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                {{ activeFile?.isUserFile ? t('chat.file_preview', 'Dosya Önizleme') : t('chat.report_preview', 'Rapor Önizleme') }}
+                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> {{ activeFile?.isUserFile ? t('chat.file_preview', 'Dosya Önizleme') : t('chat.report_preview', 'Rapor Önizleme') }}
               </template>
               <template v-else>
-                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
-                {{ t('chat.db_record', 'Veritabanı Kaydı') }}
+                <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg> MongoDB (NoSQL) Veritabanı Kaydı
               </template>
             </h3>
             <div class="flex items-center gap-2">
-              <button v-if="activeModalType === 'file'" @click="downloadFile(activeFile, $event)" class="text-xs font-bold flex items-center gap-1.5 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-2.5 py-1 rounded transition-colors active:scale-95 transform duration-200">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4-4m0 0l-4-4m4 4V4"></path></svg>
-                {{ t('chat.download', 'İndir') }}
-              </button>
-              <button @click="showSourceModal = false" class="p-1 text-neutral-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors active:scale-90 transform duration-200">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-              </button>
+              <button @click="showSourceModal = false" class="p-1 text-neutral-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors active:scale-90 transform duration-200"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
             </div>
           </div>
           
           <div class="flex-1 overflow-hidden bg-white dark:bg-neutral-900 flex flex-col relative p-4 lg:p-6 items-start justify-start">
                 <template v-if="activeModalType === 'file' && activeFile">
-                    <template v-if="activeFile.isUserFile">
-                        <div class="flex items-center justify-center w-full h-full">
-                            <img v-if="activeFile.isImage" :src="activeFile.url" class="max-w-full max-h-full object-contain rounded-xl shadow-lg animate-[msgPopIn_0.5s_ease-out]" />
-                            <div v-else class="flex flex-col items-center justify-center text-neutral-500 dark:text-neutral-400 animate-[msgPopIn_0.5s_ease-out]">
-                                <svg class="w-24 h-24 mb-4 text-neutral-400 dark:text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                                <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">{{ activeFile.name }}</p>
-                                <p class="text-xs mt-2 text-neutral-500">{{ t('chat.preview_not_available', 'Önizleme bu dosya türü için desteklenmiyor.') }}</p>
-                            </div>
-                        </div>
-                    </template>
-                    <template v-else>
-                        <iframe id="report-iframe" :srcdoc="activeFile.htmlContent" class="w-full h-full border border-neutral-200 dark:border-neutral-700 bg-white rounded-xl shadow-inner animate-[msgPopIn_0.5s_ease-out]"></iframe>
-                    </template>
+                    <iframe id="report-iframe" :srcdoc="activeFile.htmlContent" class="w-full h-full border border-neutral-200 dark:border-neutral-700 bg-white rounded-xl shadow-inner animate-[msgPopIn_0.5s_ease-out]"></iframe>
                 </template>
                 <template v-else>
                     <div class="w-full h-full overflow-y-auto p-2 custom-scrollbar text-left">
-                        <pre class="whitespace-pre-wrap text-[13px] font-sans leading-relaxed text-neutral-800 dark:text-neutral-200 break-words">{{ activeSource?.icerik || "{}" }}</pre>
+                        <div class="whitespace-pre-wrap text-[13px] font-medium leading-relaxed text-neutral-800 dark:text-neutral-200 break-words" v-html="formatMessage(activeSource?.icerik || '{}')"></div>
                     </div>
                 </template>
           </div>
         </div>
       </Transition>
-
     </div>
   </div>
 </template>
 
 <style scoped>
-@keyframes msgPopIn {
-  0% { opacity: 0; transform: translateY(20px) scale(0.95); }
-  60% { opacity: 1; transform: translateY(-3px) scale(1.01); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.msg-enter-active {
-  animation: msgPopIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-}
-.msg-leave-active {
-  transition: all 0.3s ease-in;
-}
-.msg-leave-to {
-  opacity: 0;
-  transform: translateY(-10px) scale(0.95);
-}
-
-@keyframes gradient-x {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-.animate-gradient-x {
-  background-size: 200% 200%;
-  animation: gradient-x 2s ease infinite;
-}
-
-@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
-
-.ease-out-back {
-  transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
+@keyframes msgPopIn { 0% { opacity: 0; transform: translateY(20px) scale(0.95); } 60% { opacity: 1; transform: translateY(-3px) scale(1.01); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+.msg-enter-active { animation: msgPopIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+.msg-leave-active { transition: all 0.3s ease-in; }
+.msg-leave-to { opacity: 0; transform: translateY(-10px) scale(0.95); }
 .custom-scrollbar::-webkit-scrollbar { width: 6px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
 .dark .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #404040; }
+.markdown-body p, .markdown-body li { word-break: break-word; }
 
+/* 🛠️ HATA DÜZELTMESİ: Durum metni (currentStatus.text) için <Transition name="fade-text">
+   kullanılıyordu ama karşılık gelen .fade-text-* sınıfları hiçbir yerde tanımlı değildi.
+   Vue, tanımsız transition sınıflarında sessizce hiçbir şey yapmaz — yani "HyDE: ...",
+   "Step-Back: ...", "MongoDB Ajanı Sorgulanıyor..." gibi durum metinleri birbirinin üstüne
+   anında (crossfade olmadan) "atlıyordu". Eksik sınıflar eklendi. */
 .fade-text-enter-active,
-.fade-text-leave-active { transition: all 0.3s ease; }
-.fade-text-enter-from { opacity: 0; transform: translateY(5px) scale(0.95); }
-.fade-text-leave-to { opacity: 0; transform: translateY(-5px) scale(0.95); }
+.fade-text-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.fade-text-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+.fade-text-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+.fade-text-leave-active {
+  position: absolute;
+}
 
-.markdown-body p, .markdown-body li {
-    word-break: break-word;
+/* 🛠️ HATA DÜZELTMESİ: Şablonda kullanılan animate-[shimmer_1.5s_infinite],
+   animate-gradient-x ve ease-out-back sınıfları Tailwind'in varsayılan
+   yardımcı sınıfları DEĞİL — projenin tailwind.config'inde tanımlı olmalıydı.
+   Burada tanımlı değilse (veya config'te unutulduysa) animasyonlar sessizce
+   çalışmıyordu (analiz iskeleti üzerindeki ışıltı taraması ve "işlem devam
+   ediyor" kartının nabız gibi atan gradienti gibi). Keyframes/utility'ler
+   component-seviyesinde de tanımlanarak garanti altına alındı. */
+@keyframes shimmer {
+  100% { transform: translateX(200%); }
+}
+@keyframes gradient-x {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.animate-gradient-x {
+  background-size: 200% 200%;
+  animation: gradient-x 3s ease infinite;
+}
+.ease-out-back {
+  transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* =========================================================================
+   DİNAMİK GİRİŞ ANİMASYONLARI
+   Hepsi `both` fill-mode ile: animasyon başlamadan önce eleman başlangıç
+   durumunda bekler, bittiğinde son durumda kalır — böylece stagger
+   (kademeli gecikme) sırasında titreme/atlama olmaz.
+   ========================================================================= */
+
+/* 🛠️ Bar grafik: şablonda `transition-all duration-1000` yazıyordu ama CSS
+   geçişleri ÖNCEKİ bir değer olmadan çalışmaz — eleman doğrudan son
+   genişliğinde doğduğu için o "1 saniyelik animasyon" hiç görünmüyordu.
+   Genişlik inline kalıp scaleX animasyonu uygulanarak gerçek bir dolum
+   animasyonu elde ediliyor (transform GPU'da çalışır, layout tetiklemez). */
+@keyframes barGrow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.anim-bar {
+  transform-origin: left center;
+  animation: barGrow 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes rowIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.anim-row { animation: rowIn 0.45s ease-out both; }
+
+@keyframes chipIn { from { opacity: 0; transform: translateY(8px) scale(0.94); } to { opacity: 1; transform: none; } }
+.anim-chip { animation: chipIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+@keyframes tileIn { from { opacity: 0; transform: translateY(-8px) scale(0.9); } to { opacity: 1; transform: none; } }
+.anim-tile { animation: tileIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+@keyframes donutIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }
+.anim-donut { animation: donutIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes cardIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.anim-card { animation: cardIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* ♿ ERİŞİLEBİLİRLİK: İşletim sisteminde "hareketi azalt" seçili kullanıcılar
+   için tüm giriş animasyonları kapatılır. Vestibüler rahatsızlığı olan
+   kullanıcılarda kademeli/zıplayan animasyonlar baş dönmesi yapabiliyor;
+   içerik yine tam görünür kalır, sadece hareket olmaz. */
+@media (prefers-reduced-motion: reduce) {
+  .anim-bar, .anim-row, .anim-chip, .anim-tile, .anim-donut, .anim-card,
+  .msg-enter-active, .msg-leave-active,
+  .fade-text-enter-active, .fade-text-leave-active {
+    animation: none !important;
+    transition: none !important;
+  }
+  .animate-gradient-x { animation: none !important; }
 }
 </style>

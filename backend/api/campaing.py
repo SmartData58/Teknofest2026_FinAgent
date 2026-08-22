@@ -2,66 +2,58 @@ from datetime import datetime
 import re
 import json
 import os
-import redis.asyncio as aioredis
+import asyncio
+import hashlib
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.encoders import jsonable_encoder  
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
-from pymongo import MongoClient
+from bson import ObjectId
+from bson.errors import InvalidId
+from pymongo import MongoClient, ASCENDING
 from loguru import logger
 
-# 🚀 MONGODB (Burası zaten sorunsuz çalışıyor)
+# 🛠️ Redis bağlantısı artık chatbot/redis_cache.py'den PAYLAŞILIYOR.
+# Bu dosyada get_redis()'in neredeyse birebir aynı ÜÇÜNCÜ bir kopyası vardı
+# (adres listesinin sırası bile farklıydı: burada "redis" önce, orada
+# "host.docker.internal" önce geliyordu). İki ayrı global istemci = iki ayrı
+# bağlantı havuzu ve iki farklı bağlanma davranışı demekti.
+from chatbot.redis_cache import get_redis
+
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:admin123@mongodb:27017/?authSource=admin")
-client = MongoClient(MONGO_URI)
-db = client["smartdata"]
-kampanyalar_col = db["kampanyalar"]
+
+# 🛠️ Koleksiyon adı artık ortam değişkeninden ayarlanabilir.
+# ⚠️ DİKKAT — VERİ KAYNAĞI UYUŞMAZLIĞI: Bu REST API `smartdata.kampanyalar`
+# koleksiyonunu okuyor. Ama sohbet tarafı BAŞKA yerlere bakıyor:
+#   chatbot/indexing.py          -> smartdata.processed_campaigns, yoksa finagent.kampanyalar
+#   chatbot/generate_response.py -> smartdata.extracted_fields / structured_campaigns /
+#                                   processed_campaigns / kampanyalar, yoksa finagent.kampanyalar
+# Yani /campaigns ucu ile chatbot FARKLI veri görebilir. Hangisinin gerçek
+# veriyi tuttuğunu görmek için `python mongo_durum.py` çalıştırın; doğru
+# koleksiyon belirlendikten sonra üç dosyayı da aynı kaynağa hizalayın.
+DB_ADI = os.getenv("CAMPAIGN_DB", "smartdata")
+KOLEKSIYON_ADI = os.getenv("CAMPAIGN_COLLECTION", "kampanyalar")
+
+# serverSelectionTimeoutMS: Mongo erişilemezse istek 30sn (varsayılan) asılı
+# kalmasın, hızlıca hata versin.
+client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+db = client[DB_ADI]
+kampanyalar_col = db[KOLEKSIYON_ADI]
 
 router = APIRouter(tags=["kampanyalar"])
-_redis_client = None
 
-# 🚀 TOKAT: Docker Ağ Duvarını Delen "Akıllı Tarayıcı (Smart Fallback)" Sistemi!
-async def get_redis():
-    global _redis_client
-    if _redis_client is None:
-        # Backend ve Redis farklı ağlardaysa diye bütün muhtemel kapıları çalıyoruz:
-        olasi_adresler = [
-            "redis",                 # 1. İhtimal: Aynı docker-compose ağındalarsa
-            "smartdata-redis",       # 2. İhtimal: Konteyner adı
-            "host.docker.internal",  # 3. İhtimal: Docker Desktop Windows/Mac Köprüsü (Dışarıdan içeri sızma)
-            "172.17.0.1",            # 4. İhtimal: Linux Varsayılan Docker Gateway
-            "172.18.0.1",            # 5. İhtimal: Alternatif Docker Gateway
-            "127.0.0.1"              # 6. İhtimal: En son çare (Lokal)
-        ]
-        
-        for adres in olasi_adresler:
-            try:
-                logger.info(f"🔄 Redis kapısı zorlanıyor: {adres} ...")
-                temp_client = aioredis.Redis(
-                    host=adres, 
-                    port=6379, 
-                    db=0, 
-                    decode_responses=True, 
-                    socket_connect_timeout=0.5 # Hızlı pes etsin, diğerine geçsin
-                )
-                await temp_client.ping()
-                _redis_client = temp_client
-                logger.info(f"✅ BİNGO! Redis'e '{adres}' üzerinden içeri sızdık!")
-                break
-            except Exception:
-                continue
-        
-        if _redis_client is None:
-            logger.error("❌ HİÇBİR KAPIDAN GİRİLEMEDİ! Redis kapalı veya tamamen farklı bir ağda.")
-            # Uygulama çökmesin diye boş bir istemci bırakıyoruz
-            _redis_client = aioredis.Redis(host="localhost", port=6379, socket_connect_timeout=0.1)
+# main.py'deki başlangıç önbellek temizliği bu ön eki de silebilsin diye dışa açık.
+CACHE_ONEKI = "api:"
 
-    return _redis_client
+# 🛠️ @router.on_event("startup") KALDIRILDI.
+# İki sebep:
+#  1) main.py artık lifespan= kullanıyor. Starlette'te özel bir lifespan
+#     verildiğinde on_startup/on_shutdown handler'ları ÇALIŞTIRILMAZ — yani bu
+#     handler sessizce ölü koda dönüşmüştü (bunu main.py'yi lifespan'e
+#     geçirirken ben yaptım, farkında değildim).
+#  2) Zaten yalnızca Redis bağlantısını önden ısıtıyordu; get_redis() ilk
+#     istekte kendiliğinden bağlanıyor, dolayısıyla işlevsel bir kaybı yok.
 
-# 🚀 YENİ EKLENTİ: Sunucu başlarken Redis ağlarını tarayacak
-@router.on_event("startup")
-async def startup_event():
-    logger.info("🔍 Redis zırhı test ediliyor, ağlar taranıyor...")
-    await get_redis()
 
 # -----------------------------------------------------------------------------
 # PYDANTIC ŞEMALARI
@@ -69,7 +61,7 @@ async def startup_event():
 
 class KampanyaOzet(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-    id: str = Field(default="", alias="_id") 
+    id: str = Field(default="", alias="_id")
     banka: str = ""
     banka_kodu: str = ""
     baslik: Optional[str] = None
@@ -86,6 +78,7 @@ class KampanyaOzet(BaseModel):
     bitis_tarihi: Optional[str] = None
     hedef_kitle: Optional[str] = None
 
+
 class KanitKaydi(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     alan_adi: str
@@ -93,6 +86,7 @@ class KanitKaydi(BaseModel):
     normalize_deger: Optional[str] = None
     yontem: str
     guven_skoru: float
+
 
 class KampanyaDetay(KampanyaOzet):
     ham_metin: str = ""
@@ -102,6 +96,101 @@ class KampanyaDetay(KampanyaOzet):
     masraf_bilgisi: Optional[str] = None
     cekilme_tarihi: Optional[datetime] = None
     kanitlar: List[KanitKaydi] = []
+
+
+# 🛠️ Liste ucu artık MongoDB'den YALNIZCA özet alanlarını çekiyor (projeksiyon).
+# Önceki hâlde tüm belge (ham_metin, kanitlar, kosullar dahil) çekiliyor,
+# response_model tarafından zaten atılacak alanlar boşuna ağ üzerinden taşınıyor
+# VE olduğu gibi Redis'e yazılıyordu. limit=500 varsayılanıyla tek bir önbellek
+# anahtarı megabaytlarca yer kaplayabiliyordu. Projeksiyon şemadan türetiliyor
+# ki model değişince elle güncellemek gerekmesin.
+_OZET_PROJEKSIYONU = {(alan.alias or ad): 1 for ad, alan in KampanyaOzet.model_fields.items()}
+
+
+# -----------------------------------------------------------------------------
+# YARDIMCILAR
+# -----------------------------------------------------------------------------
+
+def _cache_key(*parcalar) -> str:
+    """Çakışmaya dayanıklı önbellek anahtarı.
+
+    🛠️ Eski anahtar f"api:campaigns:{banka}:{tur}:{hedef}:{arama}:..." biçimindeydi;
+    parametrelerin kendisi iki nokta içerebildiği için farklı sorgular AYNI
+    anahtara düşebiliyordu (ör. tur="a:b" ile tur="a", hedef="b"). Parametreler
+    artık hash'leniyor.
+    """
+    ham = "\x00".join("" if p is None else str(p) for p in parcalar)
+    return f"{CACHE_ONEKI}campaigns:{hashlib.md5(ham.encode('utf-8')).hexdigest()}"
+
+
+async def _redisten_al(anahtar: str):
+    try:
+        redis_db = await get_redis()
+        veri = await redis_db.get(anahtar)
+        if veri:
+            return json.loads(veri)
+    except Exception as e:
+        # 🛠️ Eskiden burada `pass` vardı — Redis bozuksa hiçbir iz kalmıyordu.
+        logger.debug(f"Redis okuma atlandı ({anahtar}): {e}")
+    return None
+
+
+async def _redise_yaz(anahtar: str, veri, ttl: int = 3600) -> None:
+    try:
+        redis_db = await get_redis()
+        await redis_db.set(anahtar, json.dumps(veri), ex=ttl)
+    except Exception as e:
+        logger.debug(f"Redis yazma atlandı ({anahtar}): {e}")
+
+
+def _banka_alanlarini_duzelt(k: dict) -> dict:
+    k["_id"] = str(k["_id"])
+    if isinstance(k.get("banka"), dict):
+        k["banka_kodu"] = k["banka"].get("kod", k.get("banka_kodu", ""))
+        k["banka"] = k["banka"].get("kisa_ad", k.get("banka", ""))
+    return k
+
+
+def _listeyi_getir(query: dict, offset: int, limit: int) -> list:
+    """Senkron pymongo çağrısı — asyncio.to_thread ile sarmalanarak çağrılır."""
+    imlec = kampanyalar_col.find(query, _OZET_PROJEKSIYONU).skip(offset).limit(limit)
+    return [_banka_alanlarini_duzelt(k) for k in imlec]
+
+
+def _detayi_getir(kampanya_id: str):
+    """Senkron pymongo çağrısı — _id string / ObjectId / int olabilir."""
+    k = kampanyalar_col.find_one({"_id": kampanya_id})
+
+    if not k:
+        try:
+            k = kampanyalar_col.find_one({"_id": ObjectId(kampanya_id)})
+        except (InvalidId, TypeError):
+            # 🛠️ Eskiden çıplak `except:` vardı; KeyboardInterrupt/SystemExit
+            # gibi kritik sinyalleri de yutuyordu. Artık yalnızca geçersiz
+            # ObjectId hataları yakalanıyor.
+            k = None
+
+    if not k and kampanya_id.isdigit():
+        k = kampanyalar_col.find_one({"_id": int(kampanya_id)})
+
+    return k
+
+
+def indeksleri_kur() -> None:
+    """Sorgulanan alanlar için MongoDB indekslerini oluşturur.
+
+    Bu uç `banka_kodu`, `kampanya_turu`, `hedef_kitle` alanlarında filtreleme
+    yapıyor; indeks olmadan her istek tüm koleksiyonu tarar. Uygulama açılışında
+    bir kez çağrılabilir (main.py lifespan'inden) veya elle çalıştırılabilir.
+    """
+    try:
+        kampanyalar_col.create_index([("banka_kodu", ASCENDING)], background=True)
+        kampanyalar_col.create_index([("kampanya_turu", ASCENDING)], background=True)
+        kampanyalar_col.create_index([("hedef_kitle", ASCENDING)], background=True)
+        logger.info(f"✅ {DB_ADI}.{KOLEKSIYON_ADI} indeksleri hazır.")
+    except Exception as e:
+        logger.warning(f"MongoDB indeksleri oluşturulamadı: {e}")
+
 
 # -----------------------------------------------------------------------------
 # API ENDPOINTLERİ (Redis Önbellekli Asenkron Yapı)
@@ -113,88 +202,62 @@ async def kampanya_listesi(
     tur: Optional[str] = Query(None, description="Kampanya türü (ör. kart)"),
     hedef: Optional[str] = Query(None, description="Hedef kitle (ör. yeni_musteri)"),
     arama: Optional[str] = Query(None, description="Başlıkta geçen kelime"),
-    limit: int = Query(500, ge=1, le=1000),  
+    limit: int = Query(100, ge=1, le=1000, description="Sayfa başına kayıt"),
     offset: int = Query(0, ge=0),
 ):
-    redis_db = await get_redis()
-    cache_key = f"api:campaigns:{banka}:{tur}:{hedef}:{arama}:{limit}:{offset}"
-    
-    # 1. ÖNCE REDİS'E BAK
-    try:
-        cached_data = await redis_db.get(cache_key)
-        if cached_data:
-            logger.info(f"⚡ REDIS CACHE HIT: Kampanya listesi RAM'den çekildi! Key: {cache_key}")
-            return json.loads(cached_data)
-    except Exception as e:
-        pass # Artık uyarıyı gizledik, sessizce mongo'ya geçecek
+    cache_key = _cache_key("liste", banka, tur, hedef, arama, limit, offset)
 
-    # 2. REDİS'TE YOKSA MONGODB'Yİ YOR
+    onbellek = await _redisten_al(cache_key)
+    if onbellek is not None:
+        logger.info("⚡ REDIS CACHE HIT: Kampanya listesi RAM'den çekildi.")
+        return onbellek
+
     logger.info("🐢 CACHE MISS: Veriler MongoDB'den çekiliyor...")
     query = {}
-    if banka: query["banka_kodu"] = banka
-    if tur: query["kampanya_turu"] = tur
-    if hedef: query["hedef_kitle"] = hedef
-    if arama: query["baslik"] = {"$regex": re.escape(arama), "$options": "i"}
+    if banka:
+        query["banka_kodu"] = banka
+    if tur:
+        query["kampanya_turu"] = tur
+    if hedef:
+        query["hedef_kitle"] = hedef
+    if arama:
+        # re.escape: kullanıcı girdisinin regex olarak yorumlanmasını engeller.
+        query["baslik"] = {"$regex": re.escape(arama), "$options": "i"}
 
-    kampanyalar_cursor = kampanyalar_col.find(query).skip(offset).limit(limit)
-    
-    sonuclar = []
-    for k in kampanyalar_cursor:
-        k["_id"] = str(k["_id"])
-        if isinstance(k.get("banka"), dict):
-            k["banka_kodu"] = k["banka"].get("kod", k.get("banka_kodu", ""))
-            k["banka"] = k["banka"].get("kisa_ad", k.get("banka", ""))
-        sonuclar.append(k)
+    try:
+        # 🛠️ pymongo SENKRON bir kütüphane. Eski kod bu çağrıyı doğrudan
+        # `async def` içinden yapıyordu; bu, sorgu süresince TÜM olay
+        # döngüsünü (event loop) bloke ediyordu — yani bu endpoint'e gelen tek
+        # bir yavaş sorgu, aynı anda akan sohbet yanıtlarını (streaming) da
+        # dondurabiliyordu. Artık ayrı bir thread'e devrediliyor.
+        sonuclar = await asyncio.to_thread(_listeyi_getir, query, offset, limit)
+    except Exception as e:
+        logger.error(f"MongoDB liste sorgusu başarısız: {e}")
+        raise HTTPException(status_code=503, detail="Kampanya veritabanına erişilemiyor.")
 
     uyumlu_sonuclar = jsonable_encoder(sonuclar)
-
-    # 3. SONUCU 1 SAATLİĞİNE REDİS'E KAYDET
-    try:
-        await redis_db.set(cache_key, json.dumps(uyumlu_sonuclar), ex=3600)
-        logger.info(f"💾 REDIS CACHE SET: Veriler belleğe yazıldı. Key: {cache_key}")
-    except Exception as e:
-        pass
-
+    await _redise_yaz(cache_key, uyumlu_sonuclar)
     return uyumlu_sonuclar
+
 
 @router.get("/campaigns/{kampanya_id}", response_model=KampanyaDetay)
 async def kampanya_detay(kampanya_id: str):
-    redis_db = await get_redis()
-    cache_key = f"api:campaign_detail:{kampanya_id}"
-    
+    cache_key = f"{CACHE_ONEKI}campaign_detail:{hashlib.md5(kampanya_id.encode()).hexdigest()}"
+
+    onbellek = await _redisten_al(cache_key)
+    if onbellek is not None:
+        logger.info("⚡ REDIS CACHE HIT: Kampanya detayı RAM'den çekildi.")
+        return onbellek
+
     try:
-        cached_data = await redis_db.get(cache_key)
-        if cached_data:
-            logger.info(f"⚡ REDIS CACHE HIT: Kampanya detayı RAM'den çekildi! Key: {cache_key}")
-            return json.loads(cached_data)
-    except Exception:
-        pass
-
-    k = kampanyalar_col.find_one({"_id": kampanya_id})
-    
-    if not k:
-        from bson import ObjectId
-        try:
-            k = kampanyalar_col.find_one({"_id": ObjectId(kampanya_id)})
-        except:
-            pass
-
-    if not k and kampanya_id.isdigit():
-        k = kampanyalar_col.find_one({"_id": int(kampanya_id)})
+        k = await asyncio.to_thread(_detayi_getir, kampanya_id)
+    except Exception as e:
+        logger.error(f"MongoDB detay sorgusu başarısız: {e}")
+        raise HTTPException(status_code=503, detail="Kampanya veritabanına erişilemiyor.")
 
     if k is None:
         raise HTTPException(status_code=404, detail=f"Kampanya bulunamadı: id={kampanya_id}")
 
-    k["_id"] = str(k["_id"])
-    if isinstance(k.get("banka"), dict):
-        k["banka_kodu"] = k["banka"].get("kod", k.get("banka_kodu", ""))
-        k["banka"] = k["banka"].get("kisa_ad", k.get("banka", ""))
-        
-    uyumlu_sonuc = jsonable_encoder(k)
-
-    try:
-        await redis_db.set(cache_key, json.dumps(uyumlu_sonuc), ex=3600)
-    except Exception:
-        pass
-
+    uyumlu_sonuc = jsonable_encoder(_banka_alanlarini_duzelt(k))
+    await _redise_yaz(cache_key, uyumlu_sonuc)
     return uyumlu_sonuc
