@@ -22,12 +22,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List, Set
+
 
 from backend.nlp.normalizasyon.money import para_normalize
 from backend.nlp.normalizasyon.date import tarih_normalize
 from backend.nlp.normalizasyon.duration import vade_normalize
 from backend.nlp.normalizasyon.percentage import yuzde_normalize
+
+from backend.nlp.classification.campaign_classifier import siniflandir
 
 
 # =============================================================================
@@ -867,6 +870,61 @@ _HEDEF_KALIPLARI = [
         ),
     ),
     (
+        "özel",
+        re.compile(
+            r"\besnaf\b|\bçiftçi\b|\bşah[ıi]s\s+firma\w*"
+            r"|\bişletme\s+sahi\w*|\bişletmelere\b"
+            r"|\bişletmeniz\w*|\bKOBİ\b|\bemekli\b"
+            r"|\böğrenci\b|\bgenç(?:lere|ler)?\b"
+            r"|\bbireysel\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "yeni_musteri",
+        re.compile(
+            r"\byeni\s+müşteri\w*"
+            r"|\bmüşteri\s+ol(?:an|acak|up|mak)\b"
+            r"|\byeni\s+açılacak\w*"
+            r"|\byeni\s+açılan\w*"
+            r"|\bilk\s+kez\s+hesap\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "mevcut_musteri",
+        re.compile(
+            r"\bmevcut\s+müşteri\w*"
+            r"|\bmüşterilerimize\s+özel\b"
+            r"|\bmevcut\s+müşteriler\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "tum_musteriler",
+        re.compile(
+            r"\btüm\s+müşteri\w*"
+            r"|\bherkes\b"
+            r"|\btüm\s+kullanıcı\w*"
+            r"|\btüm\s+bireysel\s+müşteri\w*",
+            re.IGNORECASE,
+        ),
+    ),
+]
+
+
+import re
+
+_HEDEF_KALIPLARI = [
+    (
+        "maas_musterisi",
+        re.compile(
+            r"\bmaaş\s+müşteri\w*"
+            r"|\bmaaş[ıi]n[ıi]\s+taş[ıi]yan\w*",
+            re.IGNORECASE,
+        ),
+    ),
+    (
         "segment",
         re.compile(
             r"\besnaf\b|\bçiftçi\b|\bşah[ıi]s\s+firma\w*"
@@ -880,7 +938,13 @@ _HEDEF_KALIPLARI = [
         "yeni_musteri",
         re.compile(
             r"\byeni\s+müşteri\w*"
-            r"|\bmüşteri\s+ol(?:an|acak|up|mak)\b",
+            r"|\bmüşteri\s+ol(?:acak|up|mak)\b"
+            r"|\bdavet\s+edilen\b"
+            r"|\bilk\s+kez\s+müşteri\b"
+            r"|\byeni\s+açılacak\w*"
+            r"|\byeni\s+açılan\w*"
+            r"|\bilk\s+kez\s+hesap\b"
+            r"|\bhenüz\s+müşteri\s+değil\w*",
             re.IGNORECASE,
         ),
     ),
@@ -889,12 +953,15 @@ _HEDEF_KALIPLARI = [
         re.compile(
             r"\bmevcut\s+müşteri\w*"
             r"|\bmüşterilerimize\s+özel\b"
-            r"|\bmevcut\s+müşteriler\b",
+            r"|\bmüşterisiyseniz\b"
+            r"|\bmevcut\s+müşteriler\b"
+            r"|\bbireysel\s+müşteri\w*"  
+            r"|\btüm\s+müşteri\w*"        
+            r"|\bdavet\s+eden\b",
             re.IGNORECASE,
         ),
     ),
 ]
-
 
 _HEDEF_DISLAMA = re.compile(
     r"yararlanamaz|katılamaz|dahil\s+değil|yararlanamazlar|"
@@ -902,60 +969,35 @@ _HEDEF_DISLAMA = re.compile(
     re.IGNORECASE,
 )
 
+from typing import Dict, List, Set
 
-def hedef_kitle_cikar(metin: str) -> Dict[str, AlanBulgusu]:
-    """
-    Öncelik:
-        maaş müşterisi
-        segment
-        yeni müşteri
-        mevcut müşteri
-    """
-    bulgular: Dict[str, AlanBulgusu] = {}
+_GUVEN_SKORLARI = {
+    "maas_musterisi": 0.98,
+    "ozel": 0.95,
+    "yeni_musteri": 0.98,
+    "mevcut_musteri": 0.98,
+}
+
+
+def hedef_kitle_cikar(metin: str) -> Dict[str, List[str]]:
+    bulunan_kitleler: Set[str] = set()
 
     for etiket, desen in _HEDEF_KALIPLARI:
         for esles in desen.finditer(metin):
-            oncesi = metin[
-                max(0, esles.start() - 35):esles.start()
-            ].lower()
+            sonrasi = metin[esles.end() : min(len(metin), esles.end() + 150)].lower()
 
-            sonrasi = metin[
-                esles.end():min(len(metin), esles.end() + 150)
-            ].lower()
-
-            # "mevcut veya yeni müşteriler" gibi ifadelerde
-            # yalnızca "yeni müşteri" eşleşmesini engelle.
-            if etiket == "yeni_musteri" and (
-                "mevcut veya" in oncesi
-                or "mevcut ve" in oncesi
-                or "yeniden" in oncesi
-            ):
-                continue
-
+            # Dışlama kontrolü
             if _HEDEF_DISLAMA.search(sonrasi):
                 continue
 
-            guven = {
-                "maas_musterisi": 0.98,
-                "segment": 0.95,
-                "yeni_musteri": 0.98,
-                "mevcut_musteri": 0.98,
-            }[etiket]
+            bulunan_kitleler.add(etiket)
 
-            aday = _bulgu(
-                metin,
-                esles,
-                etiket,
-                f"hedef+{etiket}",
-                guven=guven,
-                birim="metin",
-            )
+    # DÜZELTME / NORMALİZASYON MANTIĞI:
+    # Metinde özel bir şart veya kitle bulunamadıysa varsayılan olarak 'mevcut_musteri' kabul edilir.
+    if not bulunan_kitleler:
+        bulunan_kitleler.add("mevcut_musteri")
 
-            bulgular["hedef_kitle"] = _ilk_yuksek_guvenli(
-                bulgular.get("hedef_kitle"), aday
-            )
-
-    return bulgular
+    return {"hedef_kitle": list(bulunan_kitleler)}
 
 
 # =============================================================================
@@ -996,127 +1038,36 @@ def mgm_cikar(metin: str) -> Dict[str, AlanBulgusu]:
 
 
 # =============================================================================
-# 8. KAMPANYA TÜRÜ
+# 8. KAMPANYA TÜRÜ (campain_classifier üzerinden)
 # =============================================================================
-
-_KAMPANYA_TURU: tuple[tuple[str, str, re.Pattern], ...] = (
-    # Ürün bazlı kampanyalar önce gelir.
-    (
-        "ihtiyac_finansmani_kampanyasi",
-        "hepsi",
-        re.compile(
-            r"\bihtiya[çc]\s+(?:finansman|finansmanı|kredi)\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "konut_finansmani_kampanyasi",
-        "hepsi",
-        re.compile(
-            r"\b(?:konut|ev)\s+(?:finansman|finansmanı|kredi)\b"
-            r"|\bmortgage\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "tasit_finansmani_kampanyasi",
-        "hepsi",
-        re.compile(
-            r"\b(?:ta[şs][ıi]t|ara[çc]|oto)\s+"
-            r"(?:finansman|finansmanı|kredi)\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "yatirim_urunleri_kampanyasi",
-        "baslik",
-        re.compile(
-            r"\bgünlük\s+hesap\b"
-            r"|\byatırım\s+hesab\w*\b"
-            r"|\bkatılma\s+hesab\w*\b"
-            r"|\bBES\b|\bemeklilik\s+plan\w*"
-            r"|\baltın\s+hesab\w*|\bgümüş\s+hesab\w*"
-            r"|\bdeğerli\s+maden\w*",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "kart_kampanyasi",
-        "hepsi",
-        re.compile(
-            r"\bkredi\s+kart\w*\b"
-            r"|\bbanka\s+kart\w*\b"
-            r"|\bdebit\b"
-            r"|\bTROY\b"
-            r"|\bMastercard\b"
-            r"|\bVisa\b"
-            r"|\bQR\s+(?:ile\s+)?öde\b"
-            r"|\bkart(?:la|lı|ınız|ınıza)\b"
-            r"|\bworldpuan\b|\bchip[- ]?para\b"
-            r"|\bparafpuan\b|\bbonus\b"
-            r"|\bharcama(?:ya|larda|larınız)?\s+"
-            r"(?:kazan|puan|iade)",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "yeni_musteri_kampanyasi",
-        "baslik",
-        re.compile(
-            r"\byeni\s+.*müşteri\b"
-            r"|\bmüşteri(?:si|miz)?\s+ol\b"
-            r"|\bho[şs]\s*geldin\b"
-            r"|\barkadaşını\s+(?:getir|davet)\b"
-            r"|\byakınını\s+davet\b"
-            r"|\bmüşteri\s+kazan\b"
-            r"|\bmüşteri\s+kazan(?:dır|dıran)\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "finansman_kampanyasi",
-        "erken",
-        re.compile(
-            r"\bfinansman\w*\b|\bfinansmanlı\b",
-            re.IGNORECASE,
-        ),
-    ),
-)
-
 
 def kategori_cikar(
     baslik: str,
     metin: str,
+    llm_aktif: bool = False,
 ) -> Dict[str, AlanBulgusu]:
     """
-    Kampanyanın temel ürün/aksiyon türünü çıkarır.
-
-    Hedef kitleyi kampanya türünden ayırıyoruz:
-        kampanya_turu = konut_finansmani_kampanyasi
-        hedef_kitle   = yeni_musteri
+    Kampanyanın temel ürün/aksiyon türünü campain_classifier.siniflandir
+    kullanarak çıkarır.
     """
-    birlesik = f"{baslik or ''} {metin or ''}"
+    cb: Optional[AlanBulgusu] = siniflandir(
+        baslik or "", metin or "", llm_aktif=llm_aktif
+    )
 
-    for kat_turu, kapsam, desen in _KAMPANYA_TURU:
-        aranacak = (
-            baslik if kapsam == "baslik" else birlesik
-        ) or ""
+    if cb is None:
+        return {}
 
-        esles = desen.search(aranacak)
-
-        if esles:
-            return {
-                "kampanya_turu": _bulgu(
-                    birlesik,
-                    esles,
-                    kat_turu,
-                    f"kampanya_turu_{kat_turu}",
-                    guven=0.94,
-                    birim="metin",
-                )
-            }
-
-    return {}
+    return {
+        "kampanya_turu": AlanBulgusu(
+            deger=cb.deger,
+            ham_metin=cb.ham,
+            kural=cb.kural,
+            yontem="regex",
+            guven=0.94,
+            kanit_metni=cb.ham,
+            birim="metin",
+        )
+    }
 
 
 # =============================================================================

@@ -81,7 +81,7 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
     odul_tutari_tl = _get_val(bulgular, ["odul_tutari", "odul_tutari_tl"])
 
     # Kampanya Türü için Çoklu Anahtar Kontrolü
-    kampanya_turu = _get_val(bulgular, ["tur", "kampanya_turu", "kampanya_tipi", "kategori"], default="Genel")
+    kampanya_turu = _get_val(bulgular, "kampanya_turu")
     alt_kategori = (
         doc.get("alt_kategori") or 
         doc.get("kategori") or 
@@ -121,7 +121,7 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
             "bitis_tarihi": bitis_tarihi,
             "sure_gun": _safe_int(sure_gun),
             "is_active": "aktif",
-            "hedef_kitle": _get_val(bulgular, "hedef_kitle", ["tum_musteriler"]),
+            "hedef_kitle": _get_val(bulgular, "hedef_kitle"),
             "kampanya_turu": kampanya_turu,
             "alt_kategori": alt_kategori,
             "metin": doc.get("ham_metin"),
@@ -158,7 +158,7 @@ def urun_semasina_donustur(doc: dict, bulgular: dict) -> dict:
     raw_id = str(doc["_id"])
     
     urun_adi = doc.get("baslik") or doc.get("kampanya_adi") or _get_val(bulgular, "baslik")
-    tur = _get_val(bulgular, ["tur", "kampanya_turu", "kampanya_tipi"], default="Diğer")
+    kampanya_turu = _get_val(bulgular, "kampanya_turu")
     
     # Scraper'dan (doc) veya NLP bulgularından alt kategori çekimi
     alt_kategori = doc.get("alt_kategori") or doc.get("kategori") or _get_val(bulgular, ["alt_kategori", "sektor"]) or "Genel"
@@ -168,7 +168,7 @@ def urun_semasina_donustur(doc: dict, bulgular: dict) -> dict:
         "banka_id": banka_id,
         "alt_kategori": alt_kategori,
         "urun_adı": urun_adi,
-        "tur": tur,
+        "tur": kampanya_turu,
         "max_vade_ay": _safe_int(_get_val(bulgular, ["max_vade_ay", "vade"])),
         "min_vade_ay": _safe_int(_get_val(bulgular, "min_vade_ay")),
         "min_finansman_tutari": _safe_float(_get_val(bulgular, ["min_finansman_tutar", "finansman_tutari"])),
