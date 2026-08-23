@@ -332,6 +332,21 @@ _ALAN_TO_HEDEF = {
     "taksit_sayisi": "vade",
 }
 
+# 🛠️ HATA DÜZELTMESİ: db_context'teki her kayıt satırı, hangi metrik (kâr payı/ödül/
+# vade) gösteriliyor olursa olsun HEP genel-geçer "Değer:" etiketiyle yazılıyordu.
+# Örnek: "...| Değer: 150000 TL | ...". Kullanıcı "ödül içeren kampanyaları
+# sırala" dediğinde, LLM'e giden TEK bağlam (db_context) hiçbir yerde "ödül"
+# kelimesini GEÇMİYORDU — sadece "Değer" diyordu. Küçük model, elindeki
+# rakamların aslında "ödül" olduğunu bu genel etiketten anlayamadı ve tablo 10
+# gerçek kayıt gösterirken metinde "ödül içeren kampanya kaydı bulunamadı" gibi
+# tabloyla ÇELİŞEN bir cevap üretti. Düzeltme: "Değer" yerine, gösterilen
+# metrikle eşleşen somut etiketi ("Kâr Payı Oranı" / "Ödül" / "Vade") kullan.
+_HEDEF_ETIKETLERI = {
+    "kar_payi": "Kâr Payı Oranı",
+    "odul": "Ödül",
+    "vade": "Vade",
+}
+
 
 def grafigi_hazirla_mongo_dinamik(
     user_query: str,
@@ -396,11 +411,24 @@ def grafigi_hazirla_mongo_dinamik(
     else:
         gecerli = temel_havuz
 
-    is_lowest = re.search(r'\b(düşük|az|minimum|küçük)\b', query_lower)
+    # 🛠️ HATA DÜZELTMESİ: "düşükten yükseğe sıralasana" dediğinizde sıralama
+    # TERSTEN (yüksekten düşüğe) çıkıyordu. Sebep: \bdüşük\b deseni, "düşük"ün
+    # SONUNDA da bir kelime sınırı arıyor — ama Türkçe'de "düşükTEN" gibi bir
+    # ek eklendiğinde kelime kaynaşık şekilde devam ettiği için o sınır hiç
+    # oluşmuyor, regex "düşükten" içindeki "düşük"ü YAKALAYAMIYOR. Sonuç:
+    # is_lowest = None (yanlış), hedef "odul" gibi kar_payi-dışı bir metrik
+    # olduğunda kod bunu "varsayılan olarak azalan sırala" sanıyor — yani tam
+    # tersini yapıyordu. Aynı sorun "yüksek/küçük/büyük" için de geçerli
+    # ("yüksekten düşüğe" gibi). Düzeltme: bu dört kelimenin SONUNA \w* eklenip
+    # ne tür bir ek gelirse gelsin kök hâlâ yakalanıyor. "az"/"minimum"/"çok"/
+    # "maksimum" BİLEREK dokunulmadı — "az" için aynısını yapmak "azAMİ" (=
+    # maksimum, yani TAM TERS bir anlam) gibi kelimeleri de yanlışlıkla
+    # eşleştirirdi.
+    is_lowest = re.search(r'\b(düşük\w*|az|minimum|küçük\w*)\b', query_lower)
 
     if is_specific:
         if hedef == "kar_payi":
-            reverse_sort = False if is_lowest else (False if not re.search(r'\b(yüksek|çok|büyük|maksimum)\b', query_lower) else True)
+            reverse_sort = False if is_lowest else (False if not re.search(r'\b(yüksek\w*|çok|büyük\w*|maksimum)\b', query_lower) else True)
         else:
             reverse_sort = False if is_lowest else True
         gecerli.sort(key=lambda x: x[hedef], reverse=reverse_sort)
@@ -437,15 +465,20 @@ def grafigi_hazirla_mongo_dinamik(
         gosterilen_deger = c[hedef] if is_specific else (c["odul"] if c["odul"] > 0 else (c["kar_payi"] if c["kar_payi"] > 0 else 0))
         g_prefix = prefix if is_specific else ("" if c["odul"] > 0 else "%")
         g_suffix = suffix if is_specific else (" TL" if c["odul"] > 0 else "")
+        # 🛠️ Bkz. yukarıdaki _HEDEF_ETIKETLERI notu: is_specific=True ise doğrudan
+        # sorgulanan hedefin etiketi kullanılıyor; değilse g_prefix/g_suffix'teki
+        # aynı "odul > 0 mı" mantığı tekrarlanarak (Ödül/Kâr Payı Oranı) tutarlılık
+        # korunuyor.
+        deger_etiketi = _HEDEF_ETIKETLERI[hedef] if is_specific else ("Ödül" if c["odul"] > 0 else "Kâr Payı Oranı")
 
         values.append(gosterilen_deger)
         source_indices.append(idx + 1)
         categories.append(c["kat"])
 
-        tam_metin = f"📌 KAMPANYA VERİTABANI KAYDI\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🏦 Banka/Kurum: {c['banka']}\n🏷️ Kampanya Adı: {c['kampanya_adi']}\n📦 Kategori: {c['kat']}\n⚖️ Değer: {g_prefix}{gosterilen_deger}{g_suffix}\n🎯 Hedef Kitle: {c['kitle']}\n⏳ Bitiş Tarihi: {c['bitis']}\n🔗 URL: {c['url']}\n\n📝 KAMPANYA DETAYLARI / KOŞULLAR:\n{c['metin']}\n"
+        tam_metin = f"📌 KAMPANYA VERİTABANI KAYDI\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🏦 Banka/Kurum: {c['banka']}\n🏷️ Kampanya Adı: {c['kampanya_adi']}\n📦 Kategori: {c['kat']}\n⚖️ {deger_etiketi}: {g_prefix}{gosterilen_deger}{g_suffix}\n🎯 Hedef Kitle: {c['kitle']}\n⏳ Bitiş Tarihi: {c['bitis']}\n🔗 URL: {c['url']}\n\n📝 KAMPANYA DETAYLARI / KOŞULLAR:\n{c['metin']}\n"
         full_texts.append(tam_metin)
 
-        db_context += f"- Banka: {c['banka']} | Kampanya: {c['kampanya_adi']} | Değer: {g_prefix}{gosterilen_deger}{g_suffix} | Kategori: {c['kat']}\n"
+        db_context += f"- Banka: {c['banka']} | Kampanya: {c['kampanya_adi']} | {deger_etiketi}: {g_prefix}{gosterilen_deger}{g_suffix} | Kategori: {c['kat']}\n"
 
     chart_str = ""
     if labels:
@@ -808,8 +841,21 @@ async def get_chatbot_response(
                 # koşullu bir takip sorusu kalıbına uyuyorsa VE açık bir yeni-liste isteği
                 # (sırala/karşılaştır/listele/tablo/grafik) YOKSA, yeni bir grafik/tablo
                 # üretilmiyor — model soruyu sadece sohbet geçmişinden yanıtlıyor.
+                # 🛠️ HATA DÜZELTMESİ: "hangi\s+koşul" ve "koşullarla" desenleri, SADECE o
+                # tam yazımı yakalıyordu. Bu ekranda raporlanan gerçek soru "...hangi
+                # KOŞULLARI karşılamam gerekiyor?" idi — "koşul" kökü "-ları" ekiyle
+                # kaynaşık devam ettiği için "koşul" sonundaki \b hiç oluşmuyordu (aynı
+                # bilinen Türkçe ek/\b sınırı sorunu — bkz. grafigi_hazirla_mongo_dinamik
+                # içindeki "düşük/yüksek" düzeltmesi). Sonuç: bu regex hiç eşleşmiyor,
+                # is_analyst YİNE False oluyordu (aşağıdaki geniş anahtar kelime taraması
+                # da "kampanyalara" gibi ekli kelimelerde tutmadığı için) AMA
+                # takip_sorusu_mongo_yeniden_kullan bayrağı hiç TETİKLENMİYORDU — yani az
+                # önce eklenen "önceki tabloyu sessizce yeniden kullan" düzeltmesi bile
+                # devreye giremiyordu. "koşul" kökünün SONUNA \w* eklenerek koşulu/koşulları/
+                # koşullarını gibi tüm ek almış hâller yakalanıyor; "koşullarla" artık
+                # gereksiz (genel "koşul\w*" onu da kapsıyor) olduğundan kaldırıldı.
                 _ACIKLAYICI_TAKIP_SORU = re.compile(
-                    r'\b(hangi\s+koşul|koşullarla|geçerli\s+m[iı]|geçerli\s+olur|kimler(e)?|kimin|kime|'
+                    r'\b(hangi\s+koşul\w*|koşul\w*|geçerli\s+m[iı]|geçerli\s+olur|kimler(e)?|kimin|kime|'
                     r'alabilir\s+m[iı]|uygulan[ıi]r\s+m[iı]|ne\s+zaman|neden|nas[ıi]l|niçin|niye)\b',
                     re.IGNORECASE,
                 )
@@ -835,6 +881,21 @@ async def get_chatbot_response(
                     r'kütüphane|kod\s*(yaz|örne(ği|k)i?|parças[ıi])|nas[ıi]l\s+(yazar[ıi]m|kodlar[ıi]m|programlar[ıi]m))\b',
                     re.IGNORECASE,
                 )
+                # 🛠️ HATA DÜZELTMESİ (bkz. altta "takip_sorusu_mongo_yeniden_kullan"):
+                # is_analyst=False olduğunda db_context BOŞ kalıyor, ve mongo_kesin_cevap_var
+                # da False olduğu için deep-RAG (Qdrant) devreye giriyordu — ama Qdrant'a
+                # giden sorgu SADECE bu takip mesajının kendisiydi ("Bu kampanyalara
+                # başvurmak için hangi koşulları karşılamam gerekiyor?" gibi), yani "bu
+                # kampanyalar"ın AZ ÖNCE gösterilen tablodaki hangi kayıtlar olduğuna dair
+                # HİÇBİR çapa/bağlam yoktu. Sonuç: kullanıcının bildirdiği tam olarak bu —
+                # cevap, üstteki tabloyla TAMAMEN ALAKASIZ bambaşka bir banka/kampanyadan
+                # bahsediyor, üstelik hangi kampanyadan bahsettiğini de söylemiyordu (çünkü
+                # modelin elindeki "kaynak" zaten yanlış/rastgele bir kampanyaydı). Bu
+                # bayrak, aşağıda (db_context atanırken) az önceki analist sorgusunu
+                # SESSİZCE yeniden çalıştırıp (yeni bir grafik/tablo GÖSTERMEDEN) doğru
+                # kampanya kayıtlarını db_context'e geri koymak için kullanılıyor.
+                takip_sorusu_mongo_yeniden_kullan = False
+
                 if (
                     gecmis_mesajlari
                     and niyet.tur not in ("karsilastirma", "banka_listesi")
@@ -842,6 +903,7 @@ async def get_chatbot_response(
                     and not _YENI_LISTE_ISTEGI.search(user_message.lower())
                 ):
                     is_analyst = False
+                    takip_sorusu_mongo_yeniden_kullan = True
                 elif (
                     niyet.tur not in ("karsilastirma", "banka_listesi")
                     and _KOD_YAZMA_ISTEGI.search(user_message.lower())
@@ -886,6 +948,37 @@ async def get_chatbot_response(
                     if grafik_kodu:
                         final_res += grafik_kodu
                         await q.put({"type": "token", "content": grafik_kodu})
+
+                elif takip_sorusu_mongo_yeniden_kullan:
+                    # 🛠️ HATA DÜZELTMESİ — devamı: "Bu kampanyalara başvurmak için hangi
+                    # koşulları karşılamam gerekiyor?" gibi bir takip sorusunda yeni bir
+                    # tablo ÇİZMİYORUZ (kasıtlı, kullanıcıyı aynı tabloyla boğmamak için),
+                    # ama modelin cevap vereceği bir kaynağı da YOK bırakmıyoruz. Sohbet
+                    # geçmişinde, gerçekten bir Mongo tablosu/grafiği ÜRETMİŞ OLMASI
+                    # muhtemel en yakın önceki kullanıcı mesajını buluyoruz (aynı geniş
+                    # anahtar kelime taraması: grafik/tablo/oran/ödül/tl/faiz/kampanya/
+                    # liste/vade/kar/detaylandır) ve grafigi_hazirla_mongo_dinamik()'i O
+                    # sorguyla SESSİZCE (grafik_kodu'nu ATARAK, kullanıcıya göstermeden)
+                    # yeniden çalıştırıyoruz. Böylece db_context, az önce EKRANDA GÖSTERİLEN
+                    # ile AYNI gerçek kampanya kayıtlarıyla doluyor; mongo_kesin_cevap_var
+                    # tekrar True olacağı için aşağıdaki blind Qdrant araması (deep-RAG)
+                    # devre dışı kalıyor ve model artık rastgele/alakasız bir kampanya
+                    # yerine gerçekten konuşulan kampanyalar hakkında, onları isimleriyle
+                    # anarak cevap verebiliyor.
+                    _ONCEKI_ANALIST_SORGU_REGEX = re.compile(
+                        r'\b(grafik|tablo|oran|ödül|tl|faiz|kampanya|liste|vade|kar|kâr|detaylandır)\b',
+                        re.IGNORECASE,
+                    )
+                    onceki_analist_sorgu = None
+                    for _m in reversed(gecmis_mesajlari):
+                        if _m.rol == "user" and _ONCEKI_ANALIST_SORGU_REGEX.search((_m.icerik or "").lower()):
+                            onceki_analist_sorgu = _m.icerik
+                            break
+                    if onceki_analist_sorgu:
+                        _, db_context, labels_found = grafigi_hazirla_mongo_dinamik(
+                            onceki_analist_sorgu, view_mode, zorla_hedef=None, zorla_baslik=None,
+                            banka_kodu=niyet.banka_kodu,
+                        )
 
                 # 🧠 Thinking-decider: kullanıcı zorunlu tutmadıysa (thinking="true"/"false"),
                 # sorunun derin RAG (HyDE + Step-Back + Multi-Query) gerektirip
@@ -1009,16 +1102,50 @@ async def get_chatbot_response(
                     "GİBİ ŞEYLER ASLA SÖYLEME ve ÖZÜR DİLEME. Grafik zaten hazır ve ekranda.\n"
                     "- Bunun yerine ekrandaki grafiği/tabloyu SÖZLÜ OLARAK YORUMLA: neyi "
                     "gösterdiğini, öne çıkan kampanyaları ve dikkat çeken farkları anlat.\n"
-                    "Sen uzman bir Finansal Analistsin! Yukarıdaki 'MONGODB KESİN VERİLERİ' "
-                    "TEK ve YETERLİ kaynağındır — bunun dışında bir veri YOK, aramaya veya "
-                    "başka bir kampanyayı hatırlamaya çalışma.\n"
-                    "ÖNEMLİ KURAL — UZUNLUK VE NET CEVAP: Önce SORUNUN CEVABINI (hangi banka/"
-                    "kampanya, hangi rakam) TEK CÜMLEYLE ve KESİN olarak ver — 'muhtemelen', "
-                    "'gibi görünüyor', 'olabilir' gibi belirsiz ifadeler KULLANMA, MONGODB "
-                    "KESİN VERİLERİ'ndeki rakamı OLDUĞU GİBİ AKTAR. Aynı sonucu birden fazla "
-                    "kez farklı şekillerde yeniden türetmeye ÇALIŞMA — bir kez söyle, tekrar "
-                    "etme. Cevabı en fazla 2-3 kısa paragrafla sınırla; gereksiz uzatma."
                 )
+
+                # 🛠️ HATA DÜZELTMESİ: Bu bloktaki "Yukarıdaki 'MONGODB KESİN VERİLERİ' TEK ve
+                # YETERLİ kaynağındır" cümlesi ESKİDEN KOŞULSUZ ekleniyordu — db_context BOŞ
+                # olsa (yani yukarıda hiç "MONGODB KESİN VERİLERİ" bloğu OLMASA) bile model
+                # buna sanki gerçekmiş gibi yönlendiriliyordu. Bu, "bu kampanya hakkında bilgi
+                # ver" gibi bir takip sorusunda db_context boşken (deep-RAG'den gelen alakasız
+                # context_text tek kaynak olduğunda) modelin ya var olmayan bir "kesin veri"ye
+                # atıfta bulunmaya çalışmasına ya da hangi kampanyadan bahsettiğini hiç
+                # belirtmemesine katkıda bulunuyordu (bkz. az önceki takip_sorusu_mongo_yeniden_
+                # kullan düzeltmesi — asıl kök neden odur, bu ise ikinci bir güvenlik katmanı).
+                # Artık talimat, o turda GERÇEKTEN hangi kaynağın dolu olduğuna göre değişiyor.
+                if db_context:
+                    kural_ext += (
+                        "Sen uzman bir Finansal Analistsin! Yukarıdaki 'MONGODB KESİN VERİLERİ' "
+                        "TEK ve YETERLİ kaynağındır — bunun dışında bir veri YOK, aramaya veya "
+                        "başka bir kampanyayı hatırlamaya çalışma.\n"
+                        "ÖNEMLİ KURAL — UZUNLUK VE NET CEVAP: Önce SORUNUN CEVABINI (hangi banka/"
+                        "kampanya, hangi rakam) TEK CÜMLEYLE ve KESİN olarak ver — 'muhtemelen', "
+                        "'gibi görünüyor', 'olabilir' gibi belirsiz ifadeler KULLANMA, MONGODB "
+                        "KESİN VERİLERİ'ndeki rakamı OLDUĞU GİBİ AKTAR. Aynı sonucu birden fazla "
+                        "kez farklı şekillerde yeniden türetmeye ÇALIŞMA — bir kez söyle, tekrar "
+                        "etme. Cevabı en fazla 2-3 kısa paragrafla sınırla; gereksiz uzatma."
+                    )
+                elif context_text:
+                    kural_ext += (
+                        "ÖNEMLİ KURAL — KAYNAK GÜVENİLİRLİĞİ: Yukarıdaki 'İNTERNET/METİN "
+                        "VERİLERİ' bloğu bir MongoDB kesin sorgusu DEĞİL, anlamsal (vektör) "
+                        "aramadan gelen sonuçlardır — kullanıcının sorduğu/bahsettiği kampanyayla "
+                        "BİREBİR eşleşmeyebilir. Cevap verirken HANGİ bankanın HANGİ kampanyasından "
+                        "bahsettiğini İSMEN ve AÇIKÇA belirt. Eğer elindeki kayıtlar kullanıcının "
+                        "sözünü ettiği kampanyayla açıkça örtüşmüyorsa bunu GİZLEME — 'elimdeki "
+                        "kayıtlar bu kampanyayla tam eşleşmiyor, bulabildiğim en yakın kayıt X "
+                        "bankasının Y kampanyası' gibi açıkça söyle; alakasız bir kampanyayı "
+                        "sanki doğrudan sorulan kampanyaymış gibi SUNMA.\n"
+                        "Cevabı en fazla 2-3 kısa paragrafla sınırla; gereksiz uzatma."
+                    )
+                else:
+                    kural_ext += (
+                        "ÖNEMLİ KURAL — KAYNAK YOK: Bu soruyla ilgili elinde somut bir kampanya "
+                        "kaydı YOK. Tahmin etme, kampanya adı/rakam UYDURMA — 'elimdeki kampanya "
+                        "verilerinde bu bilgi yok' de ve kullanıcıdan hangi kampanyadan/bankadan "
+                        "bahsettiğini netleştirmesini iste."
+                    )
 
                 # 🛠️ HATA DÜZELTMESİ — sayı/para birimi kayması:
                 # Eski prompt'ta "rakamları TELAFFUZ EDEREK ... yaz" talimatı vardı
