@@ -183,12 +183,12 @@ def urun_semasina_donustur(doc: dict, bulgular: dict) -> dict:
         "baslik": urun_adi,  # <-- Ürün başlığı buraya eklendi
         
         "urun_kategori": urun_kategori,
-        "max_vade_ay": _safe_int(_get_val(bulgular, ["max_vade_ay", "vade"])),
-        "min_vade_ay": _safe_int(_get_val(bulgular, "min_vade_ay")),
-        "min_finansman_tutari": _safe_float(_get_val(bulgular, ["min_finansman_tutar", "finansman_tutari"])),
-        "max_finansman_tutari": _safe_float(_get_val(bulgular, "max_finansman_tutar")),
-        "standart_masraf_tutari": _safe_float(_get_val(bulgular, ["masraf_tl", "masraf"])),
-        "standart_masraf_bilgisi": _get_val(bulgular, ["masraf_bilgisi", "masraf_bilgi"]),
+        #"max_vade_ay": _safe_int(_get_val(bulgular, ["max_vade_ay", "vade"])),
+        #"min_vade_ay": _safe_int(_get_val(bulgular, "min_vade_ay")),
+        #"min_finansman_tutari": _safe_float(_get_val(bulgular, ["min_finansman_tutar", "finansman_tutari"])),
+        #"max_finansman_tutari": _safe_float(_get_val(bulgular, "max_finansman_tutar")),
+        #"standart_masraf_tutari": _safe_float(_get_val(bulgular, ["masraf_tl", "masraf"])),
+        #"standart_masraf_bilgisi": _get_val(bulgular, ["masraf_bilgisi", "masraf_bilgi"]),
         "durum": "aktif",
         "olusturma_tarihi": simdi,
         "kaynak_url": doc.get("url"),

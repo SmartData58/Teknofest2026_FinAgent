@@ -21,7 +21,6 @@ from backend.nlp.extraction.rule_based import tarihleri_cikar
 PROJE_KOK = Path(__file__).resolve().parent.parent
 
 
-
 def bson_uyumlu_hale_getir(veri):
     """
     Dictionary veya liste içindeki datetime.date objelerini MongoDB/BSON ile 
@@ -67,16 +66,21 @@ def spider_sinifini_bul(spider_adi: str) -> type[TabanScraper]:
     raise RuntimeError(f"'{spider_adi}' modülünde TabanScraper alt sınıfı bulunamadı.")
 
 
-def ham_verileri_temizle_in_memory(raw_kayitlar: list[dict], banka_id: str | None = None) -> list[dict]:
+def ham_verileri_temizle_in_memory(
+    raw_kayitlar: list[dict], 
+    banka_id: str | None = None, 
+    veri_tipi: str = "kampanya"
+) -> list[dict]:
     """
     Spider'dan toplanan ham sözlük verilerini hafızada temizler.
     Metin alanlarını temizler, tarih ve kategori bilgilerini rule-based NLP ile çıkarır.
+    veri_tipi='urun' ise 'tarih_metni' alanını temizlenmiş çıktıdan siler.
     """
     if not raw_kayitlar:
         return []
 
     temiz_kayitlar = []
-    print(f"🧹 Toplam {len(raw_kayitlar)} adet ham veri temizleniyor...")
+    print(f"🧹 Toplam {len(raw_kayitlar)} adet ham {veri_tipi} verisi temizleniyor...")
 
     for doc in raw_kayitlar:
         clean_doc = doc.copy()
@@ -116,18 +120,11 @@ def ham_verileri_temizle_in_memory(raw_kayitlar: list[dict], banka_id: str | Non
         if "sure_gun" in tarih_bulgulari:
             clean_doc["sure_gun"] = tarih_bulgulari["sure_gun"].deger
 
-        # 3. KATEGORİ TESPİTİ (Scraper bypass edilmiştir)
-        #clean_doc.pop("kategori", None)  # Scraper'dan gelmiş olabilecek ham 'kategori' alanını temizle
-
-        #tur_bulgusu = kategori_cikar(
-            #baslik or "",
-            #ham_metin or "",
-        #)
-
-        #if isinstance(tur_bulgusu, dict):
-            #clean_doc["kampanya_turu"] = tur_bulgusu.get("tur", "genel")
-        #else:
-            #clean_doc["kampanya_turu"] = getattr(tur_bulgusu, "deger", "genel") 
+        # 3. ÜRÜN İÇİN ÖZEL MANTIKSAL ADIM:
+        # Tarih çıkarma işlemi tamamlandıktan sonra, eğer veri tipi 'urun' ise
+        # DB'ye yazılmasını istemediğimiz 'tarih_metni' alanını siliyoruz.
+        if veri_tipi == "urun":
+            clean_doc.pop("tarih_metni", None)
 
         # 4. İşleme zamanı ve LLM aşaması için bayrak ekleme
         clean_doc["temizlenme_tarihi"] = datetime.now(timezone.utc)
@@ -135,7 +132,7 @@ def ham_verileri_temizle_in_memory(raw_kayitlar: list[dict], banka_id: str | Non
 
         temiz_kayitlar.append(clean_doc)
 
-    print(f"✅ {len(temiz_kayitlar)} adet kayıt başarıyla temizlendi, tarih ve kategorileri işlendi.")
+    print(f"✅ {len(temiz_kayitlar)} adet {veri_tipi} kaydı başarıyla temizlendi.")
     return temiz_kayitlar
 
 
@@ -158,7 +155,10 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
 
         # ---------------- KAMPANYALAR (ham_kampanya) ----------------
         raw_kayitlar = list(spider.kampanyalari_topla())
-        temizlenmis_kayitlar = ham_verileri_temizle_in_memory(raw_kayitlar, banka_id=banka_id)
+        # Kampanyalarda tarih_metni KALIYOR (varsayılan: veri_tipi="kampanya")
+        temizlenmis_kayitlar = ham_verileri_temizle_in_memory(
+            raw_kayitlar, banka_id=banka_id, veri_tipi="kampanya"
+        )
         bson_uyumlu_kayitlar = bson_uyumlu_hale_getir(temizlenmis_kayitlar)
 
         ham_kampanyalari_kaydet(
@@ -174,7 +174,10 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
             raw_urunler = list(spider.urunleri_topla())
 
             if raw_urunler:
-                temiz_urunler = ham_verileri_temizle_in_memory(raw_urunler, banka_id=banka_id)
+                # Ürünlerde tarih_metni DB'ye YAZILMIYOR (veri_tipi="urun")
+                temiz_urunler = ham_verileri_temizle_in_memory(
+                    raw_urunler, banka_id=banka_id, veri_tipi="urun"
+                )
                 bson_urunler = bson_uyumlu_hale_getir(temiz_urunler)
 
                 urun_koleksiyonu = db["ham_urun"]
@@ -189,7 +192,7 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
                         upsert=True,
                     )
                     eklenen += 1
-                print(f"  ✅ {eklenen} adet ürün 'ham_urun' koleksiyonuna kaydedildi (extractor.py bu koleksiyonu işleyip 'islenmis_urunler'e yazacak).")
+                print(f"  ✅ {eklenen} adet ürün 'ham_urun' koleksiyonuna kaydedildi.")
             else:
                 print("  ℹ️ Ürün bulunamadı.")
         else:
