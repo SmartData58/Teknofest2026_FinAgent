@@ -19,6 +19,14 @@ from api.campaing import router as campaign_router
 from chatbot.generate_response import get_chatbot_response
 from chatbot.indexing import qdrant_durumu, auto_init_qdrant
 
+# 🚀 Yarışma çıkarım servisi istemcisi (yerel Ollama/embedding/reranker yerine).
+try:
+    from evren_client import (isit, isitmayi_surdur, kapat as evren_kapat,
+                              durum as evren_durum, gorsel_mi, gorsel_parcasi, MAKS_GORSEL)
+except ModuleNotFoundError:              # evren_client.py chatbot/ içine konmuşsa
+    from chatbot.evren_client import (isit, isitmayi_surdur, kapat as evren_kapat,
+                                      durum as evren_durum, gorsel_mi, gorsel_parcasi, MAKS_GORSEL)
+
 # ⚠️ document_processor.parser BİLEREK en üstte import EDİLMİYOR — bkz. _belge_isleyici_al().
 
 # -----------------------------------------------------------------------------
@@ -101,10 +109,39 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("ℹ️ Başlangıç önbellek temizliği kapalı (STARTUP_CACHE_FLUSH=0).")
 
+    # 🔥 MODEL ISITMA — ölçümle gerekli olduğu görüldü:
+    # Yarışma servisinde her modelin İLK isteği ~15 saniye (model sunucuda o an
+    # yükleniyor), sonrakiler <1 saniye. Isıtma yapılmazsa uygulama açıldıktan
+    # sonra ilk soruyu soran kişi bu 15 saniyeyi bekler — jüri karşısında tam da
+    # istemeyeceğimiz şey.
+    #
+    # create_task ile yapılıyor: açılışı BLOKLAMIYOR, uygulama hemen ayağa
+    # kalkıyor, ısınma arka planda tamamlanıyor.
+    try:
+        isitma_gorevi = asyncio.create_task(isit())
+        _arka_plan_gorevleri.add(isitma_gorevi)
+        isitma_gorevi.add_done_callback(_arka_plan_gorevleri.discard)
+
+        # Periyodik ısıtma: uzun süre kullanılmayan model sunucuda bellekten
+        # atılabilir; o zaman bedel yeniden ödenir. EVREN_ISITMA_ARALIGI=0 ile kapalı.
+        sicak_tut = asyncio.create_task(isitmayi_surdur())
+        _arka_plan_gorevleri.add(sicak_tut)
+        sicak_tut.add_done_callback(_arka_plan_gorevleri.discard)
+    except Exception as e:
+        logger.warning(f"Model ısıtma başlatılamadı (uygulama yine de çalışır): {e}")
+
     yield
 
     for g in list(_arka_plan_gorevleri):
         g.cancel()
+
+    # 🛠️ Paylaşılan HTTP bağlantılarını düzgün kapat. Kapatılmazsa uvicorn
+    # yeniden başlatmalarında (--reload) soketler sızar ve "Unclosed client
+    # session" uyarıları birikir.
+    try:
+        await evren_kapat()
+    except Exception as e:
+        logger.debug(f"Evren istemcisi kapatılırken: {e}")
 
 
 app = FastAPI(title="SmartData API", lifespan=lifespan)
@@ -133,7 +170,9 @@ async def health():
     payload sözleşmesi bozuksa ('belge' / 'banka_kodu' alanları) uyarır.
     """
     qdrant = await asyncio.to_thread(qdrant_durumu)
-    return {"status": "ok", "qdrant": qdrant}
+    # 🚀 Yarışma servisinin yapılandırması ve modellerin ısınıp ısınmadığı da
+    # burada görünüyor (ağ çağrısı yapmaz, sadece son durumu raporlar).
+    return {"status": "ok", "qdrant": qdrant, "evren": evren_durum()}
 
 
 @app.post("/api/kaziyiciyi-baslat")
@@ -235,14 +274,25 @@ async def _belgeyi_ayristir(file_path: str) -> str:
     return await parse_document(file_path)
 
 
-async def _yuklenen_dosyalari_isle(files: List[UploadFile]) -> str:
-    """Yüklenen dosyaları geçici bir dizine yazar, metnini çıkarır ve LLM'e
-    verilecek bağlam metnini üretir."""
+async def _yuklenen_dosyalari_isle(files: List[UploadFile]) -> tuple[str, list]:
+    """Yüklenen dosyaları işler.
+
+    Döner: (metin_baglami, gorsel_parcalari)
+
+    🖼️ YENİ: GÖRSELLER ARTIK OCR'DAN GEÇMİYOR. Yarışma modeli (llm-large)
+    görüntüyü doğrudan okuyabiliyor (docs 7. bölüm), üstelik yerel OCR'dan daha
+    iyi sonuç veriyor — özellikle kampanya ekran görüntülerinde (tablo, logo,
+    renkli arka plan OCR'ı zorlar). Bu sayede ağır `document_processor` yalnızca
+    PDF/DOCX gibi gerçek belgeler için yükleniyor.
+    ⚠️ İstek başına EN FAZLA 2 görsel gönderilebilir (üçüncüsü HTTP 400).
+    """
     if not files:
-        return ""
+        return "", []
 
     file_names: list[str] = []
     dosya_icerikleri: list[str] = []
+    gorsel_parcalari: list = []
+    gorsel_adlari: list[str] = []
 
     # 🛠️ İki güvenlik/doğruluk sorunu birden çözülüyor:
     #  1) Yol sızması (path traversal): eski kod kullanıcıdan gelen
@@ -269,6 +319,21 @@ async def _yuklenen_dosyalari_isle(files: List[UploadFile]) -> str:
                 with open(file_path, "wb") as buffer:
                     shutil.copyfileobj(file.file, buffer)
 
+                # 🖼️ Görsel mi, belge mi?
+                if gorsel_mi(guvenli_ad):
+                    if len(gorsel_parcalari) >= MAKS_GORSEL:
+                        logger.warning(
+                            f"'{guvenli_ad}' atlandı: istek başına en fazla {MAKS_GORSEL} görsel."
+                        )
+                        continue
+                    with open(file_path, "rb") as gf:
+                        ham = gf.read()
+                    mime = "image/png" if guvenli_ad.lower().endswith(".png") else "image/jpeg"
+                    gorsel_parcalari.append(gorsel_parcasi(ham, mime))
+                    gorsel_adlari.append(guvenli_ad)
+                    file_names.append(guvenli_ad)
+                    continue
+
                 extracted_text = await _belgeyi_ayristir(file_path)
 
                 file_names.append(guvenli_ad)
@@ -285,21 +350,29 @@ async def _yuklenen_dosyalari_isle(files: List[UploadFile]) -> str:
         logger.info(f"🗑️ Geçici yükleme dizini silindi: {istek_dizini}")
 
     if not file_names:
-        return ""
+        return "", []
 
     isimler_str = ", ".join(file_names)
-    tum_icerik = "\n\n".join(dosya_icerikleri)
-    return (
-        f"\n\n[KULLANICI SİSTEME {len(file_names)} ADET DOSYA YÜKLEDİ. "
-        f"Dosya adları: {isimler_str}]\n\n"
-        f"AŞAĞIDA BU DOSYALARIN İÇERİĞİ BULUNMAKTADIR:\n{tum_icerik}"
-    )
+    parcalar = [f"\n\n[KULLANICI SİSTEME {len(file_names)} ADET DOSYA YÜKLEDİ. "
+                f"Dosya adları: {isimler_str}]"]
+    if gorsel_adlari:
+        parcalar.append(
+            f"[BUNLARDAN {len(gorsel_adlari)} TANESİ GÖRSELDİR ({', '.join(gorsel_adlari)}) "
+            f"ve BU MESAJA EKLENMİŞTİR — görselleri doğrudan inceleyip yorumla.]"
+        )
+    if dosya_icerikleri:
+        parcalar.append("AŞAĞIDA BELGE İÇERİKLERİ BULUNMAKTADIR:\n" + "\n\n".join(dosya_icerikleri))
+    return "\n\n".join(parcalar), gorsel_parcalari
 
 
 @app.post("/api/chat")
 async def chat_endpoint(
     prompt: str = Form(""),
-    model: str = Form("qwen3.5:4b"),
+    # 🚀 Varsayılan artık boş: model seçimi evren_client'ta (EVREN_MODEL /
+    # EVREN_MODEL_HIZLI) yapılıyor. Frontend hâlâ eski "qwen3.5:4b" etiketini
+    # gönderiyor olabilir; generate_response bunu görmezden gelip yapılandırılmış
+    # modeli kullanır (yalnızca "llm-" ile başlayan değerler dikkate alınır).
+    model: str = Form(""),
     # 🛠️ Varsayılan "false" -> "auto". Frontend zaten "auto" gönderiyor ama
     # varsayılanın "false" olması, parametreyi göndermeyen her istemcide derin
     # RAG akışını (HyDE + Step-Back + Multi-Query) tamamen devre dışı bırakıyordu.
@@ -318,7 +391,9 @@ async def chat_endpoint(
     except Exception:
         parsed_history = []
 
-    file_context = await _yuklenen_dosyalari_isle(files)
+    file_context, gorseller = await _yuklenen_dosyalari_isle(files)
+    if gorseller:
+        logger.info(f"🖼️ {len(gorseller)} görsel doğrudan modele gönderiliyor (OCR atlandı).")
 
     try:
         return await get_chatbot_response(
@@ -329,6 +404,7 @@ async def chat_endpoint(
             file_context=file_context,
             view_mode=view_mode,
             language=language,
+            gorseller=gorseller,
         )
     except Exception as e:
         logger.error(f"Chatbot işlem hatası: {e}")

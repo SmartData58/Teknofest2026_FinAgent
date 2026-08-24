@@ -56,10 +56,21 @@ def run_step_3_extraction():
 
 
 def _vektorleme_sonucunu_raporla(adet: int):
+    """⚠️ adet==0 ARTIK SADECE 'MongoDB boştu' anlamına gelir.
+
+    Eskiden auto_init_qdrant() her hatayı yutup 0 döndüğü için, embedding
+    servisi çöktüğünde ya da Qdrant'a yazılamadığında da bu mesaj basılıyor ve
+    pipeline "🎉 TÜM PIPELINE BAŞARIYLA TAMAMLANDI" diyerek çıkış kodu 0
+    veriyordu. Üstelik mesajın "Qdrant koleksiyonu değiştirilmedi" kısmı da
+    yanlıştı: force_recreate=True koleksiyonu EN BAŞTA siler (kütüphane
+    kaynağından doğrulandı), dolayısıyla yarıda kalan bir çalıştırma boş/yarım
+    bir koleksiyon bırakabiliyordu. indexing.py artık hatayı yükseltiyor.
+    """
     if adet == 0:
         print(
-            "⚠️ Vektörlenecek kampanya bulunamadı; Qdrant koleksiyonu değiştirilmedi.\n"
-            "   MongoDB'de veri var mı diye kontrol edin: python mongo_durum.py"
+            "⚠️ MongoDB'de vektörlenecek kampanya bulunamadı; Qdrant koleksiyonuna\n"
+            "   hiç dokunulmadı (silme de yapılmadı).\n"
+            "   Kontrol: python mongo_durum.py"
         )
     else:
         print(f"✅ {adet} kampanya Qdrant'a vektörlendi.")
@@ -111,6 +122,10 @@ def _adim4_http_ile_calistir():
         headers["X-Admin-Token"] = token
 
     istek = urllib.request.Request(url, method="POST", headers=headers, data=b"{}")
+    # 🛠️ HTTPError, URLError'ın ALT SINIFIDIR. Aşağıdaki `except URLError` bloğu
+    # bu yüzden 500'ü de yakalayıp "adrese ulaşılamadı" diyordu — oysa adrese
+    # ULAŞILMIŞTI, sunucu tarafında vektörleme patlamıştı. Sunucunun gövdesini
+    # okuyup gerçek sebebi göstermek için HTTPError ayrı yakalanıyor.
 
     # 🛠️ Proxy'yi BİLEREK devre dışı bırakıyoruz. Windows'ta urllib.request,
     # varsayılan olarak sistem proxy ayarlarını (kayıt defterinden/WinINet)
@@ -125,6 +140,19 @@ def _adim4_http_ile_calistir():
     try:
         with acici.open(istek, timeout=900) as yanit:
             gövde = json.loads(yanit.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            detay = e.read().decode("utf-8", errors="replace")[:1000]
+        except Exception:
+            detay = "(gövde okunamadı)"
+        print(
+            f"❌ Vektörleme (Qdrant) hatası: {url} adresine ULAŞILDI ama sunucu "
+            f"HTTP {e.code} döndü.\n"
+            f"   Sunucu yanıtı: {detay}\n"
+            "   Bu, ağ değil VEKTÖRLEME hatasıdır — sohbet servisinin loglarına bakın\n"
+            "   (embedding API'si, Qdrant anahtarı/adresi ya da MongoDB erişimi)."
+        )
+        sys.exit(1)
     except urllib.error.URLError as e:
         print(
             f"❌ Vektörleme (Qdrant) hatası: 'chatbot' paketi yerel olarak import "
@@ -182,7 +210,17 @@ def run_step_4_embedding():
         # (embedding_client üzerinden; LLM/sohbet yığınını import etmez).
         adet = asyncio.run(auto_init_qdrant())
     except Exception as e:
-        print(f"❌ Vektörleme (Qdrant) hatası: {e}")
+        # 🛠️ Artık gerçek hata tipi ve izi de basılıyor. indexing.py hatayı
+        # yutmayı bıraktığı için buraya ANLAMLI bir istisna geliyor; eskiden
+        # sessizce 0 dönüp pipeline yeşil bitiyordu.
+        import traceback
+        print(f"❌ Vektörleme (Qdrant) hatası: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        print(
+            "   ⚠️ DİKKAT: force_recreate=True koleksiyonu EN BAŞTA sildiği için,\n"
+            "   koleksiyon şu an BOŞ ya da YARIM olabilir. Sorunu giderip bu adımı\n"
+            "   tekrar çalıştırın:  python -m chatbot.indexing"
+        )
         sys.exit(1)
 
     _vektorleme_sonucunu_raporla(adet)

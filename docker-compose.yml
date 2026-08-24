@@ -1,6 +1,35 @@
-# ============================================================
-# SmartData — TEMEL (base) compose dosyası
-# ============================================================
+# =============================================================================
+# SmartData — TEMEL (base) compose dosyası   [YARIŞMA API'SİNE GÖRE GÜNCELLENDİ]
+#
+# NE DEĞİŞTİ ve NEDEN:
+#
+# 1) ❌ embedding / reranker / llm servisleri KALDIRILDI.
+#    Çıkarım artık yarışma API'sinden geliyor (evren_client.py -> llm-large,
+#    llm-fast, router, bge-m3-embed, guard). Bu üç konteyner GPU ve RAM tüketip
+#    hiçbir işe yaramıyordu. Silinmediler, git geçmişinde duruyorlar.
+#
+# 2) 🚨 env_file EKLENDİ — EN KRİTİK DÜZELTME.
+#    Eskiden backend'e SADECE şu üç değişken veriliyordu:
+#       EMBEDDING_API_URL / RERANKER_API_URL / LLM_API_URL
+#    EVREN_API_KEY, EVREN_QDRANT_KEY, MONGO_URI gibi HİÇBİR anahtar
+#    konteynere GİRMİYORDU. evren_client'ın kendi .env arayıcısı da onu
+#    bulamaz, çünkü override yalnızca ./backend dizinini /app'e bağlıyor —
+#    repo kökündeki .env konteynerin İÇİNDE YOK. Yani migrasyonlu kod deploy
+#    edilse bile anahtarsız açılırdı.
+#
+# 3) 🚨 redis AĞ HATASI DÜZELTİLDİ.
+#    redis servisinde `networks:` YOKTU. Compose'da bir servis ağ belirtmezse
+#    `default` ağına düşer; backend ise smartdata-net'te. İkisi AYRI AĞDAYDI,
+#    yani backend "redis" adını hiç çözemiyordu. Kod bu yüzden
+#    host.docker.internal'a sarılmıştı (canlı logda görünüyor) — bu Docker
+#    Desktop'a özel bir kaçış yolu, Linux sunucuda çalışmaz. Artık redis de
+#    smartdata-net'te ve backend'e REDIS_HOST=redis veriliyor.
+#
+# 4) backend artık mongodb'nin SAĞLIKLI olmasını bekliyor ve kendi
+#    healthcheck'i var (/health). Eskiden mongo'dan önce açılabiliyordu.
+#
+# 5) qdrant YEDEK olarak profile arkasına alındı (aşağıda açıklaması var).
+# =============================================================================
 
 services:
   # 1. Kullanıcı Arayüzü (Nuxt/Vue)
@@ -14,67 +43,52 @@ services:
   # 2. Ana API ve İş Mantığı (FastAPI)
   backend:
     build: ./backend
+    # 🚨 Yarışma anahtarlarını konteynere sokan satır budur. Olmazsa
+    # evren_client API_KEY'i boş görür ve her çağrı 401 döner.
+    env_file:
+      - .env
     environment:
-      # AI Servis Bağlantıları
-      - EMBEDDING_API_URL=http://embedding:8001
-      - RERANKER_API_URL=http://reranker:8002
-      - LLM_API_URL=http://llm:8000
+      # Konteyner-içi adresler. .env'de aynı isimler varsa env_file'dan
+      # gelen değeri BURASI EZER (compose'da `environment` > `env_file`),
+      # bu yüzden yalnızca ağa özgü olanları burada tutuyoruz.
+      - MONGO_URI=mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-admin123}@mongodb:27017/?authSource=admin
+      # ⚠️ Değişken adını chatbot/redis_cache.py'den DOĞRULAYIN. Kod hangisini
+      # okuyorsa o kalsın, diğerini silin — ikisi de zararsız ama kafa karıştırır.
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_URL=redis://redis:6379/0
+      - SCRAPER_URL=http://scraper:8002/scrape
     depends_on:
-      embedding:
-        condition: service_started
-      reranker:
-        condition: service_started
-      llm:
+      mongodb:
+        condition: service_healthy
+      redis:
         condition: service_started
     networks:
       - smartdata-net
+    healthcheck:
+      # /health hem Qdrant hem evren durumunu döner; konteyner "sağlıklı"
+      # görünmeden önce gerçekten cevap verebiliyor olması gerekir.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=5).status==200 else 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
-  # 3. AI: Embedding Modeli
-  # 3. AI: Embedding Modeli
-  embedding:
-    build: ./models/embedding
-    networks:
-      - smartdata-net
-    environment:
-      - HF_TOKEN=${HF_TOKEN}
-    volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
-      # Daha önce konuştuğumuz kod eşleştirmesi varsa onu da alt satıra ekleyebilirsin:
-      # - ./models/embedding:/app
-
-  # 4. AI: Reranker Modeli
-  reranker:
-    build: ./models/reranker
-    networks:
-      - smartdata-net
-    environment:
-      - HF_TOKEN=${HF_TOKEN}
-    volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
-      # - ./models/reranker:/app
-
-  # 5. AI: LLM Modeli (vLLM)
-  llm:
-    # İmaj (image) ve donanım (devices/deploy) ayarları 
-    # nvidia/intel override dosyalarından otomatik gelecek!
-    
-    volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
-      - ollama_data:/root/.ollama
-    environment:
-      - HF_TOKEN=${HF_TOKEN}
-    networks:
-      - smartdata-net
-
-  # 6. Veri Kazıma Örümcekleri (Scrapy)
+  # 3. Veri Kazıma Örümcekleri (Scrapy) + pipeline.py buradan çalışıyor
   scraper:
     build: ./scraper
+    # pipeline.py ADIM 4, chatbot paketini import edemezse HTTP'ye düşüyor.
+    # CHATBOT_SERVICE_URL olmadan varsayılan http://backend:8000 kullanılır;
+    # yine de açıkça yazmak, servis adı değişirse tek yerden düzeltmeyi sağlar.
+    env_file:
+      - .env
     environment:
-      # --- MONGODB BAĞLANTI AYARLARI EKLENDİ ---
       - MONGO_HOST=mongodb
       - MONGO_USER=${MONGO_USER:-admin}
       - MONGO_PASSWORD=${MONGO_PASSWORD:-admin123}
       - MONGO_DB_NAME=${MONGO_DB_NAME:-smartdata}
+      - MONGO_URI=mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-admin123}@mongodb:27017/?authSource=admin
+      - CHATBOT_SERVICE_URL=http://backend:8000
     depends_on:
       mongodb:
         condition: service_healthy
@@ -82,13 +96,11 @@ services:
       - smartdata-net
 
   # ---- Veritabanları ----
-      
+
   mongodb:
     image: mongo:latest
     container_name: smartdata-mongodb
     environment:
-      # Güvenlik için kullanıcı adı ve şifre tanımlıyoruz.
-      # .env dosyasından çekebilir veya varsayılan bırakabilirsin.
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-admin123}
     volumes:
@@ -104,13 +116,31 @@ services:
   redis:
     image: redis:alpine
     container_name: smartdata-redis
-    ports:
-      - "6379:6379"
+    # 🚨 EKLENDİ — bkz. dosya başındaki 3. madde. Bu satır olmadan backend
+    # redis'i AĞ SEVİYESİNDE göremiyordu.
+    networks:
+      - smartdata-net
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
+  # ---- YEDEK: yerel Qdrant ----
+  # Normalde ÇALIŞMAZ. Yarışma Qdrant'ı (evren-vektor.ssyz.org.tr) kullanılıyor.
+  # Yarışma sırasında o sunucu düşerse yerel yedeğe geçmek için:
+  #     docker compose --profile yerel-vektor up -d qdrant
+  #     .env'de:  EVREN_QDRANT_URL=http://qdrant:6333
+  #               EVREN_QDRANT_KEY=      (boş bırak)
+  #               EVREN_TEAM=            (boş bırak — prefix kullanılmaz)
+  #     sonra:    python -m chatbot.indexing
+  # (evren_client zaten EVREN_QDRANT_URL yoksa QDRANT_HOST'a, o da yoksa
+  #  http://qdrant:6333'e düşüyor — yani kod değişikliği GEREKMİYOR.)
   qdrant:
     image: qdrant/qdrant:latest
     container_name: smartdata-qdrant
+    profiles: ["yerel-vektor"]
     volumes:
       - qdrant_data:/qdrant/storage
     networks:
@@ -123,4 +153,4 @@ networks:
 volumes:
   mongo_data:
   qdrant_data:
-  ollama_data:
+  # ollama_data KALDIRILDI — llm servisi yok.

@@ -1,50 +1,30 @@
+# =============================================================================
+# NVIDIA override — GPU'YU BACKEND İÇİN GERİ VERİR
+#
+# 🛠️ ÖNCEKİ ÖNERİMİ DÜZELTİYORUM. "Bu dosya artık gereksiz, sil" demiştim;
+# gerekçem "çıkarımın tamamı uzak sunucuda, GPU'ya ihtiyaç kalmadı" idi.
+# EKSİK OLAN ŞUYDU: OCR hâlâ YERELDE çalışıyor ve CUDA kullanıyor
+# (bagimlilik_denetimi.py: torch -> ocr/unlimited.py). Yani backend'in GPU
+# rezervasyonu gereksiz değildi — dosya yükleme yolunun hızı ona bağlı.
+#
+# ARTIK YALNIZCA BACKEND VAR. embedding / reranker / llm servisleri gerçekten
+# kaldırıldı (hepsi yarışma API'sinde), o yüzden onların GPU blokları da gitti.
+#
+# KULLANIM (dev):
+#     docker compose -f docker-compose.yml \
+#                    -f docker-compose.override.yml \
+#                    -f docker-compose.nvidia.yml up -d --build
+#
+# ⚠️ -f verdiğin anda override.yml OTOMATİK yüklenmez, yukarıdaki gibi
+# ONU DA açıkça yazman gerekir.
+#
+# GPU gerçekten görünüyor mu, doğrula:
+#     docker compose exec backend python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+# False dönerse OCR sessizce CPU'ya düşer ve yavaşlar — hata vermez, sadece
+# yavaşlar. Bu yüzden bu kontrolü her kurulumdan sonra bir kez yap.
+# =============================================================================
+
 services:
-  embedding:
-    build:
-      context: ./models/embedding
-      args:
-        BASE_IMAGE: nvidia/cuda:12.1.0-runtime-ubuntu22.04
-        HARDWARE: nvidia
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-              
-  reranker:
-    build:
-      context: ./models/reranker
-      args:
-        HARDWARE: nvidia
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
-  llm:
-    image: ollama/ollama:latest
-    command: serve
-    environment:
-      - OLLAMA_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,*
-      - OLLAMA_KEEP_ALIVE=-1  # Modeli VRAM'de sonsuza kadar tutar
-    ports:
-      - "11434:11434"
-    volumes:
-      - ./ollama_cache:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
-  # İŞTE EKSİK OLAN VE EKLEDİĞİMİZ KISIM BURASI:
   backend:
     deploy:
       resources:

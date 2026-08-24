@@ -16,9 +16,13 @@
 # 📌 KENDİ VEKTÖRLEME PIPELINE'INIZ İÇİN SÖZLEŞME:
 # Qdrant'a yazarken aşağıdakileri KORUMAK ZORUNDASINIZ, yoksa sohbet tarafı bozulur:
 #   • content_payload_key = "belge"  -> yoksa arama sonuçları BOŞ İÇERİK döner
-#   • payload["banka_kodu"]          -> yoksa bankaya göre filtreli arama hiç eşleşmez
-#     (chatbot/generate_response.py::_banka_filtresi bu alana bakar; değeri
-#      chatbot.intent.banka_bul() ile üretilmeli, ör. "Kuveyt Türk" -> "kuveytturk")
+#   • payload["metadata"]["banka_kodu"] -> yoksa bankaya göre filtreli arama hiç
+#     eşleşmez. ⚠️ ÜST SEVİYEDE DEĞİL: LangChain metadata'yı "metadata" anahtarının
+#     ALTINA yazar; Qdrant filtresi bu yüzden "metadata.banka_kodu" yolunu kullanır
+#     (bkz. aşağıdaki BANKA_KODU_YOLU sabiti). Değer chatbot.intent.banka_bul() /
+#     banka_kodu_coz() ile üretilmeli, ör. "Kuveyt Türk" -> "kuveytturk".
+#     Qdrant'a KENDİ kodunuzla (LangChain'siz) yazacaksanız ya aynı iç içe yapıyı
+#     kurun ya da BANKA_KODU_YOLU'nu ona göre değiştirin.
 #   • payload["kampanya_id"]         -> kaynak gösterimi için kullanılır
 # Durumu doğrulamak için: GET /health  (qdrant bölümü uyarı verirse hizalayın)
 #
@@ -44,10 +48,53 @@ from qdrant_client import QdrantClient
 from chatbot.intent import banka_bul, banka_adi_getir, banka_kodu_coz
 
 # 🚀 Qdrant artık yarışma sunucusunda (url + port=443 + prefix=<takım> + api_key)
-from evren_client import qdrant_ayarlari, embed_batch as evren_embed_batch
+try:
+    from evren_client import qdrant_ayarlari, embed_batch as evren_embed_batch
+except ModuleNotFoundError:              # evren_client.py chatbot/ içine konmuşsa
+    from chatbot.evren_client import qdrant_ayarlari, embed_batch as evren_embed_batch
 QDRANT_URL = os.getenv("QDRANT_HOST", "http://qdrant:6333")  # (yalnız geriye dönük)
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:admin123@mongodb:27017/?authSource=admin")
 COLLECTION_NAME = "banka_kampanyalari"
+
+# =============================================================================
+# 🚨 KRİTİK DÜZELTME — "payload'da banka_kodu YOK" uyarısının GERÇEK sebebi
+#
+# Yazma tarafı (bu dosya) DOĞRUYDU: metadata'ya banka_kodu ekleniyor. Sorun,
+# LangChain'in payload'ı nasıl KURDUĞUNU hem /health kontrolünün hem de vektör
+# arama filtresinin yanlış varsaymasıydı.
+#
+# langchain_qdrant/qdrant.py::_build_payloads (kütüphane kaynağından doğrulandı):
+#     payload = {content_payload_key: metin, metadata_payload_key: metadata}
+# ve metadata_payload_key'in VARSAYILANI "metadata". Yani Qdrant'a giden payload:
+#
+#     {"belge": "Banka: Kuveyt Türk\n...",
+#      "metadata": {"kampanya_id": "...", "banka_kodu": "kuveytturk", ...}}
+#
+# banka_kodu ÜST SEVİYEDE DEĞİL, "metadata" ALTINDA. Bunun iki sonucu vardı:
+#   1) qdrant_durumu() `payload["banka_kodu"]`e bakıyordu -> hep boş -> /health
+#      MÜKEMMEL bir indekslemeden SONRA BİLE "banka_kodu YOK" uyarısı veriyordu.
+#      (Aylardır kovalanan uyarı buydu; veri aslında oradaydı.)
+#   2) generate_response._banka_filtresi FieldCondition(key="banka_kodu")
+#      kuruyordu -> Qdrant HİÇBİR noktayla eşleştiremiyordu -> bankaya göre
+#      filtreli her vektör araması BOŞ dönüyordu.
+#
+# Qdrant iç içe alanlara NOKTA ile erişir. Doğru yol aşağıdaki sabittir; hem
+# /health hem arama filtresi ARTIK BU TEK KAYNAĞI kullanıyor ki bir daha
+# ayrışamasınlar (bu dosyanın başındaki "tek gerçek kaynak" notuyla aynı gerekçe).
+# =============================================================================
+METADATA_ANAHTARI = "metadata"          # langchain_qdrant metadata_payload_key varsayılanı
+BANKA_KODU_YOLU = f"{METADATA_ANAHTARI}.banka_kodu"
+
+
+def payload_alani(payload: dict, ad: str):
+    """payload'dan bir metadata alanını, iç içe ya da düz yazılmış olmasına
+    BAKMAKSIZIN okur. (Eski indekslemeler alanı üst seviyeye yazmış olabilir.)"""
+    if not isinstance(payload, dict):
+        return None
+    ic = payload.get(METADATA_ANAHTARI)
+    if isinstance(ic, dict) and ic.get(ad) is not None:
+        return ic.get(ad)
+    return payload.get(ad)
 
 
 def _kampanya_belgesi_olustur(k: dict) -> Document:
@@ -313,14 +360,23 @@ async def auto_init_qdrant(embeddings=None) -> int:
         docs = [_kampanya_belgesi_olustur(k) for k in kampanyalar]
         logger.info(f"⏳ {len(docs)} kampanya vektörleniyor ve Qdrant'a yükleniyor...")
 
-        # 🛠️ Koleksiyon ARTIK ÖNCEDEN SİLİNMİYOR. Eski kodda koleksiyon en başta
-        # delete_collection() ile siliniyor, sonra Mongo okunuyor ve vektörleme
-        # (dakikalarca sürebilen bir işlem) yapılıyordu. Bu arada gelen sohbet
-        # istekleri BOŞ bir koleksiyonda arama yapıyordu; Mongo boşsa veya
-        # embedding servisi hata verirse koleksiyon kalıcı olarak boş kalıyordu.
-        # from_documents(force_recreate=True) zaten koleksiyonu atomik biçimde
-        # yeniden kurar — yani silme işlemi, yerine koyacak veri hazır olduğunda
-        # ve tek adımda gerçekleşir.
+        # ⚠️ DÜZELTİLMİŞ NOT — burada eskiden "from_documents(force_recreate=True)
+        # koleksiyonu ATOMİK olarak yeniden kurar, silme ancak veri hazır olunca
+        # olur" yazıyordu. Bu YANLIŞTI; kütüphane kaynağından doğrulandı
+        # (langchain_qdrant/qdrant.py::construct_instance):
+        #
+        #     if collection_exists and force_recreate:
+        #         client.delete_collection(collection_name)   # <-- ÖNCE SİLER
+        #     ...
+        #     client.create_collection(...)                   # sonra boş kurar
+        #     ...                                             # sonra 64'lük
+        #                                                     # partiler hâlinde upsert
+        #
+        # Yani silme İLK adımdır. 3. partide embedding servisi düşerse elde
+        # YARIM DOLU bir koleksiyon kalır ve eski veri geri gelmez. Bu yüzden
+        # aşağıda hata artık YUTULMUYOR (eskiden `return 0` ile sessizce
+        # "veri bulunamadı"ya dönüşüyordu ve pipeline "BAŞARIYLA TAMAMLANDI"
+        # diyerek çıkış kodu 0 veriyordu).
         _q = qdrant_ayarlari()
         QdrantVectorStore.from_documents(
             docs,
@@ -330,11 +386,31 @@ async def auto_init_qdrant(embeddings=None) -> int:
             force_recreate=True,
             **{k: v for k, v in _q.items() if k in ("url", "port", "prefix", "api_key", "timeout")},
         )
+
+        # 🆕 banka_kodu için payload indeksi. Qdrant indekssiz alanda da filtre
+        # uygular ama tüm koleksiyonu tarar; keyword indeksi bunu O(1)'e indirir.
+        # Hata olursa vazgeçilir — filtre indekssiz de çalışır, sadece yavaştır.
+        try:
+            from qdrant_client import models as _qm
+            QdrantClient(**qdrant_ayarlari()).create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name=BANKA_KODU_YOLU,
+                field_schema=_qm.PayloadSchemaType.KEYWORD,
+            )
+            logger.info(f"🔎 Payload indeksi kuruldu: {BANKA_KODU_YOLU}")
+        except Exception as e:
+            logger.warning(f"Payload indeksi kurulamadı (filtre yine çalışır, yavaş): {e}")
+
         logger.info(f"✅ Qdrant vektör veritabanı {len(docs)} kampanya ile oluşturuldu!")
         return len(docs)
     except Exception as e:
-        logger.error(f"Qdrant otomatik kurulum hatası: {e}")
-        return 0
+        # 🛠️ ARTIK YUTULMUYOR. Eski davranış: log'a yazıp `return 0`. Çağıranlar
+        # 0'ı "MongoDB boştu, koleksiyona dokunulmadı" diye yorumluyordu — oysa
+        # yukarıdaki nota göre koleksiyon o noktada zaten SİLİNMİŞ olabilir.
+        # Sessiz başarısızlık, yanlış veriden daha tehlikelidir: pipeline yeşil
+        # görünürken arama tarafı boş bir indeksle çalışmaya devam ediyordu.
+        logger.error(f"Qdrant kurulum hatası: {type(e).__name__}: {e}")
+        raise
 
 
 def qdrant_durumu() -> dict:
@@ -371,11 +447,18 @@ def qdrant_durumu() -> dict:
                         "payload'da 'belge' alanı YOK -> arama sonuçları boş içerik döner. "
                         "Yazarken content_payload_key='belge' kullanın."
                     )
-                if not p.get("banka_kodu"):
+                # 🛠️ Artık İÇ İÇE de bakılıyor (bkz. modül başındaki BANKA_KODU_YOLU
+                # notu). Eski hâli yalnızca üst seviyeye baktığı için, alan
+                # payload["metadata"]["banka_kodu"] içinde DOLU olmasına rağmen
+                # bu uyarı sürekli veriliyordu.
+                if not payload_alani(p, "banka_kodu"):
                     uyarilar.append(
                         "payload'da 'banka_kodu' YOK -> bankaya göre filtreli arama hiç eşleşmez. "
                         "chatbot.intent.banka_bul() ile üretip payload'a ekleyin."
                     )
+                elif isinstance(p.get(METADATA_ANAHTARI), dict):
+                    # Bilgi amaçlı: filtrenin hangi yolu kullanması gerektiğini yaz.
+                    uyarilar.append(f"ℹ️ banka_kodu iç içe yazılmış; filtre yolu: {BANKA_KODU_YOLU}")
 
         return {
             "koleksiyon": COLLECTION_NAME,

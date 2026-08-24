@@ -37,6 +37,38 @@ except ImportError:
 
 VARSAYILAN_URL = "http://localhost:8003/api/chat"
 
+
+# =============================================================================
+# PAYLAŞILAN HTTP OTURUMU — iki ayrı sorunu birden kapatır
+#
+# 1) WinError 10053'ün İKİNCİ olası sebebi: PROXY.
+#    requests varsayılan olarak HTTP_PROXY/HTTPS_PROXY ortam değişkenlerine ve
+#    Windows'ta sistem proxy ayarına UYAR. Kurumsal ağ/VPN/antivirüs bunu
+#    doldurmuşsa "localhost" isteği bile proxy'ye yönlenir ve proxy yerel adresi
+#    çözemeyip bağlantıyı koparır. Ayırt edici belirti: `curl.exe` çalışır ama
+#    Python aynı adreste 10053 verir. Aynı tuzağa pipeline.py'de de düşmüştük
+#    (orada urllib için ProxyHandler({}) ile çözülmüştü); requests karşılığı
+#    trust_env=False.
+#    ⚠️ 10053'ün BİRİNCİ ve daha sık sebebi sunucunun çökmesidir — uvicorn
+#    worker'ı import hatasıyla ölürse dinleyen soket bağlantıyı aynı şekilde
+#    koparır. Yani bu ayar tek başına teşhis değil, sadece bir değişkeni eler.
+#
+# 2) Keep-alive: 200 senaryoluk koşuda her istekte yeni TCP kurmanın maliyeti
+#    ortadan kalkar.
+# =============================================================================
+_OTURUM = requests.Session()
+_OTURUM.trust_env = False          # ortam/sistem proxy'sini YOK SAY
+_OTURUM.proxies = {}
+
+
+def oturum():
+    """Testlerin kullandığı paylaşılan, proxy'siz HTTP oturumu.
+
+    Ayrıca bağlantıyı yeniden kullanır (keep-alive): 200 senaryoluk koşuda her
+    istekte yeni TCP+handshake kurmanın maliyetini ortadan kaldırır.
+    """
+    return _OTURUM
+
 # =============================================================================
 # SENARYOLAR
 #
@@ -515,7 +547,7 @@ def istek_gonder(url, prompt, gecmis, dil, gorunum, zaman_asimi, model="qwen3.5:
     ilk_token = None
     ilk_gorsel = None
 
-    with requests.post(url, files=multipart, stream=True, timeout=zaman_asimi) as cevap:
+    with _OTURUM.post(url, files=multipart, stream=True, timeout=zaman_asimi) as cevap:
         cevap.raise_for_status()
         for parca in cevap.iter_content(chunk_size=None):
             if not parca:

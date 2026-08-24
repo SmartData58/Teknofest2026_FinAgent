@@ -1,6 +1,14 @@
-# ============================================================
+# =============================================================================
 # PROD override
-# ============================================================
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# ⚠️ Bu dosyayı -f ile AÇIKÇA verdiğinizde docker-compose.override.yml
+# YÜKLENMEZ (override sadece hiç -f verilmediğinde otomatik gelir). Yani
+# prod'da 8003 portu da açılmaz; ters vekil (nginx vb.) kullanacaksanız
+# backend'e ports eklemeyin, aynı ağdan http://backend:8000 ile konuşun.
+#
+# NE DEĞİŞTİ: embedding / reranker / llm blokları kaldırıldı — o servisler yok.
+# =============================================================================
 
 services:
   frontend:
@@ -11,20 +19,14 @@ services:
   backend:
     restart: always
 
-  embedding:
-    restart: always
-
-  reranker:
-    restart: always
-
-  llm:
-    restart: always
-
   scraper:
+    # Kazıma tek seferlik bir iş; başarıyla bitince yeniden başlatılmamalı.
     restart: on-failure
 
-
   mongodb:
+    restart: always
+
+  redis:
     restart: always
 
   qdrant:

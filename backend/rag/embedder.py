@@ -9,7 +9,10 @@
 # koleksiyon sıfırdan kurulmalıdır: python -m chatbot.indexing
 # =============================================================================
 
-from evren_client import embed_batch, embed_hazir_mi
+try:
+    from evren_client import embed_batch, embed_hazir_mi
+except ModuleNotFoundError:
+    from chatbot.evren_client import embed_batch, embed_hazir_mi
 
 def vektorle(metinler: list[str], ilerleme: bool = False):
     return embed_batch(metinler, normalize=True, ilerleme=ilerleme)

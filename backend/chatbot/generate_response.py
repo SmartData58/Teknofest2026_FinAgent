@@ -36,19 +36,29 @@ from chatbot.agents import (
     persona_belirle,
     gorsel_niyeti_sor,
     TIMEOUT_ONERI,
+    _hata_metni,
 )
+# 🧭 Banka filtresinin Qdrant payload yolu — yazan taraf (indexing.py) ile aynı
+# sabit. Ayrı ayrı yazılırsa yine ayrışırlar; bu projede daha önce tam olarak
+# bu yüzden bozulmuştu.
+from chatbot.indexing import BANKA_KODU_YOLU
 from chatbot.redis_cache import get_cached_full_response, set_cached_full_response
 from chatbot.tools import gercek_finansman_hesapla
 # 🚀 Embedding artık yarışma API'sinden (bge-m3-embed, 1024 boyut).
 # ⚠️ Bu değişiklikten sonra Qdrant koleksiyonu SIFIRDAN kurulmalı:
 #     python -m chatbot.indexing
-from evren_client import (
-    embed_batch,
-    sohbet_akisi as evren_sohbet_akisi,
-    rerank as evren_rerank,
-    qdrant_ayarlari,
-    MAX_TOKENS as EVREN_MAX_TOKENS,
-)
+try:
+    from evren_client import (
+        embed_batch, sohbet_akisi as evren_sohbet_akisi, rerank as evren_rerank,
+        qdrant_ayarlari, MAX_TOKENS as EVREN_MAX_TOKENS,
+        guard_kontrol, cok_kipli_mesaj, GUARD_ENGELLE,
+    )
+except ModuleNotFoundError:              # evren_client.py chatbot/ içine konmuşsa
+    from chatbot.evren_client import (
+        embed_batch, sohbet_akisi as evren_sohbet_akisi, rerank as evren_rerank,
+        qdrant_ayarlari, MAX_TOKENS as EVREN_MAX_TOKENS,
+        guard_kontrol, cok_kipli_mesaj, GUARD_ENGELLE,
+    )
 
 TEMP_DIR = "./temp"
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -195,7 +205,7 @@ class OzelQwenEmbedder(Embeddings):
             matris = embed_batch(texts, normalize=False, url=self.api_url)
             return matris.tolist()
         except Exception as e:
-            logger.error(f"Embedding servisi (embed_documents) hatası: {e}")
+            logger.error(f"Embedding servisi (embed_documents) hatası: {_hata_metni(e)}")
             return []
 
     def embed_query(self, text: str) -> List[float]:
@@ -239,7 +249,7 @@ async def rerank_documents(query: str, docs: List, top_n: int = NIHAI_BAGLAM_BEL
         if sira:
             return [docs[i] for i in sira if i < len(docs)][:top_n]
     except Exception as e:
-        logger.warning(f"Rerank başarısız, sırasız ilk {top_n} belge kullanılıyor: {e}")
+        logger.warning(f"Rerank başarısız, sırasız ilk {top_n} belge kullanılıyor: {_hata_metni(e)}")
     return docs[:top_n]
 
 
@@ -864,7 +874,7 @@ def _temsili_oran_bul(banka_kodu: Optional[str]) -> Optional[float]:
             return None
         return round(sum(adaylar) / len(adaylar), 2)
     except Exception as e:
-        logger.warning(f"Temsili oran bulma hatası: {e}")
+        logger.warning(f"Temsili oran bulma hatası: {_hata_metni(e)}")
         return None
 
 
@@ -873,13 +883,21 @@ def _banka_filtresi(banka_kodu, banka_kodlari: Optional[list] = None) -> Optiona
 
     🛠️ Eskiden yalnızca tek bir kod alıyordu; çok bankalı kıyaslama sorularında
     vektör araması da tek bankaya kilitleniyordu.
+
+    🚨 DÜZELTME — filtre YOLU yanlıştı. LangChain payload'ı
+    {"belge": metin, "metadata": {...}} olarak yazıyor (kütüphane kaynağından
+    doğrulandı), yani banka_kodu ÜST SEVİYEDE DEĞİL. key="banka_kodu" diyen
+    eski filtre Qdrant'ta HİÇBİR noktayla eşleşmiyordu: bankaya göre filtreli
+    her arama boş dönüyor, kod filtresiz yedeğe düşüyordu. Doğru yol
+    chatbot.indexing.BANKA_KODU_YOLU ("metadata.banka_kodu") — yazan ve okuyan
+    taraf artık aynı sabiti kullanıyor.
     """
     kodlar = [k for k in (banka_kodlari or []) if k]
     if not kodlar and banka_kodu:
         kodlar = [banka_kodu]
     if not kodlar:
         return None
-    kosullar = [FieldCondition(key="banka_kodu", match=MatchValue(value=k)) for k in kodlar]
+    kosullar = [FieldCondition(key=BANKA_KODU_YOLU, match=MatchValue(value=k)) for k in kodlar]
     if len(kosullar) == 1:
         return Filter(must=kosullar)
     return Filter(should=kosullar)
@@ -893,7 +911,7 @@ async def _tek_vektor_arama(vs, sorgu: str, banka_filtre: Optional[Filter], k: i
             )
         return await asyncio.wait_for(asyncio.to_thread(vs.similarity_search, sorgu, k=k), timeout=10.0)
     except Exception as e:
-        logger.warning(f"Vektör arama başarısız ('{sorgu[:50]}...'): {e}")
+        logger.warning(f"Vektör arama başarısız ('{sorgu[:50]}...'): {_hata_metni(e)}")
         return []
 
 
@@ -973,6 +991,7 @@ async def get_chatbot_response(
     files: List = None,
     view_mode: str = "musteri",
     language: str = "tr",
+    gorseller: Optional[List[dict]] = None,
 ):
     history = history or []
     gecmis_mesajlari = [Mesaj(rol=m.get("role", "user"), icerik=m.get("content", "")) for m in history]
@@ -986,6 +1005,27 @@ async def get_chatbot_response(
     # mesajını VE yüklenen dosya içeriğini (file_context) tarıyoruz çünkü ikisi
     # de aynı derecede saldırı yüzeyi — bir PDF'in içine gizlenmiş bir talimat da
     # en az kullanıcının yazdığı bir talimat kadar tehlikeli.
+    # 🛡️ GUARD (4B içerik güvenliği modeli) — regex taramasının üstüne gerçek
+    # bir sınıflandırıcı. Varsayılan davranış: yalnızca işaretle ve logla.
+    # Engellemesi için GUARD_ENGELLE=true (yanlış pozitifin bedeli, meşru bir
+    # kampanya sorusunu reddetmek olduğu için varsayılan bilinçli olarak kapalı).
+    guard_sonuc = {"guvenli": None, "kategori": None, "calisti": False}
+    try:
+        guard_sonuc = await guard_kontrol(f"{user_message}\n\n{(file_context or '')[:2000]}")
+        if guard_sonuc.get("calisti"):
+            logger.info(f"🛡️ Guard: guvenli={guard_sonuc['guvenli']} kategori={guard_sonuc['kategori']}")
+    except Exception as e:
+        logger.warning(f"Guard atlandı: {_hata_metni(e)}")
+
+    if GUARD_ENGELLE and guard_sonuc.get("guvenli") is False:
+        logger.warning(f"🛡️ Guard ENGELLEDİ: kategori={guard_sonuc['kategori']} | {user_message[:100]!r}")
+        async def guard_stream():
+            yield "[STATUS]Güvenlik denetimi...[/STATUS]\n\n"
+            yield ("Bu isteği güvenlik politikamız gereği yanıtlayamıyorum. "
+                   "Banka kampanyaları, kâr payı oranları ve taksit hesapları hakkında "
+                   "sorularınızı memnuniyetle yanıtlarım.")
+        return StreamingResponse(guard_stream(), media_type="text/plain")
+
     _injection_bulgu = _injection_belirtisi_tara(user_message, file_context)
     if _injection_bulgu:
         logger.warning(
@@ -1713,8 +1753,10 @@ async def get_chatbot_response(
                     # token, yani "cevap yarıda kesiliyor" sorununun kaynağı olan
                     # Modelfile varsayılanı artık yok. İçerik de message.content
                     # yerine choices[].delta.content'ten geliyor (bkz. evren_client).
+                    # 🖼️ Görsel yüklendiyse mesaj çok kipli gönderiliyor
+                    # (metin + en fazla 2 görsel). Görsel yoksa davranış aynı.
                     async for tk in evren_sohbet_akisi(
-                        [{"role": "user", "content": prompt}],
+                        cok_kipli_mesaj(prompt, gorseller),
                         model=model if model and model.startswith("llm-") else None,
                         max_tokens=EVREN_MAX_TOKENS,
                         temperature=0.3,
@@ -1794,7 +1836,11 @@ async def get_chatbot_response(
                             return bulunan
                         logger.warning("Öneri motoru ayrıştırılabilir öneri üretmedi, yedek liste kullanılıyor.")
                     except Exception as e:
-                        logger.warning(f"Öneri motoru başarısız: {e}")
+                        # 🛠️ Eskiden `{e}` yazılıyordu. asyncio.TimeoutError'ın str()'i
+                        # BOŞ olduğu için loglar "Öneri motoru başarısız: " diye
+                        # bitiyordu — hatanın ne olduğu anlaşılmıyordu. _hata_metni
+                        # boş kalırsa sınıf adını yazar (TimeoutError vb.).
+                        logger.warning(f"Öneri motoru başarısız: {_hata_metni(e)}")
 
                     ilk = labels_found[0] if labels_found else ""
                     if language == "en":

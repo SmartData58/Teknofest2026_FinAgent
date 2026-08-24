@@ -10,10 +10,30 @@ Buradaki sahte kayıtlar mongo_kontrol.py çıktısından BİREBİR alındı:
 """
 import sys, os, types
 
-_BURASI = os.path.dirname(os.path.abspath(__file__))
-for _yol in (_BURASI, os.path.dirname(_BURASI)):
-    if _yol not in sys.path:
-        sys.path.insert(0, _yol)
+# 🛠️ `chatbot` paketini nerede olursa olsun bul: bu dosyanın klasörü, üst
+# klasörleri ve her birinin altındaki "backend" klasörü denenir.
+def _paketi_bul():
+    burasi = os.path.dirname(os.path.abspath(__file__))
+    adaylar = []
+    for ust in range(4):
+        kok = burasi
+        for _ in range(ust):
+            kok = os.path.dirname(kok)
+        adaylar.append(kok)
+        adaylar.append(os.path.join(kok, "backend"))
+    for aday in adaylar:
+        if os.path.isfile(os.path.join(aday, "chatbot", "intent.py")):
+            return aday
+    return None
+
+_KOK = _paketi_bul()
+if _KOK and _KOK not in sys.path:
+    sys.path.insert(0, _KOK)
+elif not _KOK:
+    raise SystemExit(
+        "HATA: 'chatbot' paketi bulunamadi. Bu dosyayi projenin backend klasorune "
+        "(ya da backend\\chatbot icine) koyup tekrar calistir."
+    )
 
 
 def sahte_modul(ad, **icerik):
@@ -35,7 +55,15 @@ class _Logger:
 
 
 sahte_modul("loguru", logger=_Logger())
-sahte_modul("httpx", AsyncClient=_Any)
+# httpx sahtesi: evren_client modül seviyesinde Limits/Timeout/Client kullanıyor
+sahte_modul("httpx", AsyncClient=_Any, Client=_Any, Limits=_Any, Timeout=_Any)
+sahte_modul("evren_client", embed_batch=lambda *a, **k: [], sohbet_akisi=_Any(),
+            rerank=_Any(), qdrant_ayarlari=lambda: {"url": "http://x"},
+            MAX_TOKENS=2048, BASE_URL="http://x/v1", API_KEY="k",
+            MODEL_ANA="llm-large", MODEL_HIZLI="llm-fast", MODEL_ROUTER="router",
+            guard_kontrol=_Any(), cok_kipli_mesaj=lambda m, g=None: [{"role":"user","content":m}],
+            GUARD_ENGELLE=False, gorsel_mi=lambda a: False, gorsel_parcasi=_Any(),
+            MAKS_GORSEL=2, isit=_Any(), isitmayi_surdur=_Any(), kapat=_Any(), durum=lambda: {})
 sahte_modul("fastapi", responses=None)
 sahte_modul("fastapi.responses", StreamingResponse=_Any)
 sahte_modul("langchain_core")

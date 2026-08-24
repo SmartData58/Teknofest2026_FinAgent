@@ -1,6 +1,17 @@
-# ============================================================
+# =============================================================================
 # DEV override — 'docker compose up' ile OTOMATİK yüklenir.
-# ============================================================
+#
+# NE DEĞİŞTİ:
+#  • embedding / reranker / llm blokları KALDIRILDI (servisler artık yok;
+#    olmayan bir servise override yazmak compose'da hata verir).
+#  • backend'in hf_cache bağlaması KALDIRILDI — HuggingFace modeli indirmiyoruz.
+#  • ⚠️ backend'e ./backend:/app bağlandığı için repo kökündeki .env konteynerin
+#    İÇİNDE GÖRÜNMEZ. Bu yüzden base dosyada `env_file: .env` şart (oradan
+#    okunup ortam değişkeni olarak enjekte ediliyor). Aşağıdaki salt-okunur
+#    bağlama, .env'i konteyner içinden de görünür kılar; evren_client elle
+#    çalıştırıldığında (docker compose exec backend python evren_client.py)
+#    dosyayı bulabilsin diye.
+# =============================================================================
 
 services:
   frontend:
@@ -15,26 +26,15 @@ services:
       - "8003:8000" # Vue buradan istek atacak
     volumes:
       - ./backend:/app
-      - ./hf_cache:/root/.cache/huggingface  # <-- Modelleri bilgisayarına mühürleyecek satır
-  embedding:
-    ports:
-      - "8001:8001"
-    volumes:
-      - ./models/embedding:/app
-
-  reranker:
-    ports:
-      - "8002:8002"
-    volumes:
-      - ./models/reranker:/app
-
-  llm:
-    ports:
-      - "11434:11434" # Ollama'nın varsayılan portu
+      # 🆕 .env'i konteyner içinde de görünür yap (SALT OKUNUR).
+      # Not: uygulamanın çalışması buna bağlı DEĞİL — asıl yol base dosyadaki
+      # env_file. Bu sadece "docker compose exec" ile elle script çalıştırmayı
+      # kolaylaştırır.
+      - ./.env:/app/.env:ro
 
   scraper:
     ports:
-      - "8004:8002" # Sol taraf (8004) host bilgisayarın, sağ taraf (8002) konteynerin portu
+      - "8004:8002" # sol: host portu, sağ: konteyner portu
     volumes:
       - .:/app
 
@@ -42,7 +42,13 @@ services:
     ports:
       - "27017:27017"
 
-      
+  redis:
+    # 🆕 Eskiden bu port base dosyada açılıyordu. Dev'e taşındı: prod'da
+    # redis'in host'a açık olması gereksiz bir saldırı yüzeyidir.
+    ports:
+      - "6379:6379"
+
+  # Yalnızca --profile yerel-vektor ile ayağa kalkar.
   qdrant:
     ports:
       - "6333:6333"

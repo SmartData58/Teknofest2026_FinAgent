@@ -1,33 +1,105 @@
+# =============================================================================
+# backend/requirements.txt — DENETİM ÇIKTISIYLA DÜZELTİLDİ
+#
+# 🛠️ ÖNCEKİ ÖNERİMİ GERİ ALIYORUM: "torch'u sil" demiştim, YANLIŞTI.
+# Denetim gerçek kaynak ağacında şunu gösterdi:
+#       ✅ KULLANILIYOR  torch          -> ocr/unlimited.py
+#       ✅ KULLANILIYOR  transformers   -> nlp/ner/ner.py, ocr/unlimited.py
+# Yani yerel OCR ve NER hâlâ torch tabanlı. Silinirse backend çöker.
+#
+# 🛠️ İKİNCİ DÜZELTME: "CPU wheel'e geç" de dedim, o da erken bir öneriydi —
+# OCR CUDA kullanıyor. torch CUDA'lı kalıyor. Build'i patlatan 526 MB'lık
+# indirmenin çözümü boyutu küçültmek DEĞİL, o katmanı ÖNBELLEKLEMEK: torch
+# artık Dockerfile'da requirements'tan ÖNCE, ayrı bir katmanda kuruluyor.
+# Böylece bu dosyaya her dokunduğunda torch yeniden inmez.
+# =============================================================================
+
+# --- Web katmanı -------------------------------------------------------------
 fastapi
-uvicorn
-httpx
-psycopg2-binary
-qdrant-client
-llama-index-core
-llama-index-vector-stores-qdrant
+uvicorn[standard]
+# ⚠️ SİLME: denetim "import edilmiyor" diyor ama FastAPI'nin File()/Form()
+# desteği buna bağlıdır ve doğrudan import edilmez. Silersen dosya yükleme
+# ucu 500 döner. (Denetimin uyardığı "dolaylı bağımlılık" örneği tam da bu.)
 python-multipart
-loguru
-pandas
-openpyxl
-accelerate
-PyMuPDF
-python-docx
-psutil
-torch>=2.5.0 --extra-index-url https://download.pytorch.org/whl/cu121
-torchvision==0.25.0
-transformers==4.57.1
-safetensors>=0.4.3
-matplotlib>=3.7.0
-einops>=0.8.0
-addict>=2.4.0
-easydict>=1.13
-pymupdf>=1.27.0
-psutil>=5.9.0
-Pillow>=10.0.0
-langchain
-langchain-ollama
-langchain-qdrant
-qdrant-client
-pydantic
+
+# --- Veri --------------------------------------------------------------------
 pymongo
-redis>=5.0.0
+redis
+qdrant-client
+
+# --- LangChain ---------------------------------------------------------------
+# ⚠️ langchain-core denetimde "eksik" göründü ama çökme yaratmadı: `langchain`
+# meta paketi onu dolaylı çekiyor. Dolaylı bağımlılığa güvenmek kırılgandır —
+# `langchain` bir gün çıkarılırsa backend import hatasıyla ölür. Açıkça yazıldı.
+langchain-core
+langchain-openai          # 🚨 ÇÖKMENİN SEBEBİ BUYDU (agents.py::ChatOpenAI)
+langchain-qdrant
+# langchain               # meta paket; hiçbir modül `import langchain` yapmıyor.
+#                         # langchain-core açıkça yazıldığı için artık gereksiz.
+#                         # ⚠️ En son sil ve build'den sonra /health'i doğrula.
+# langchain-ollama        # ❌ yerel Ollama yok
+
+# --- Yerel ML (OCR + NER) ----------------------------------------------------
+# ⚠️ torch / torchvision BU DOSYADA YOK — Dockerfile'da AYRI bir katmanda,
+# PyTorch'un CUDA indeksinden kuruluyor (torchvision==0.25.0 sabit, torch onunla
+# uyumlu sürümde geliyor). Buraya `torch` satırı EKLEME: pip onu PyPI'dan
+# yeniden çözer, farklı sürüm kurar ve Dockerfile'daki kurulumu ezer.
+transformers              # nlp/ner/ner.py, ocr/unlimited.py
+safetensors               # transformers model yükleme biçimi
+einops                    # görü modellerinde yaygın; ocr yığını isteyebilir
+addict                    # aynı şekilde (OCR yapılandırma sözlükleri)
+easydict
+
+# --- HTTP / yapılandırma -----------------------------------------------------
+httpx                     # evren_client akış istemcisi
+requests                  # ⚠️ EKSİKTİ: embedding_client.py kullanıyor
+python-dotenv             # ⚠️ EKSİKTİ: evren_client._env_yukle()
+numpy                     # ⚠️ EKSİKTİ: evren_client, ner.py, embedding_client
+loguru
+
+# --- Belge işleme ------------------------------------------------------------
+PyMuPDF                   # ⚠️ requirements'ta İKİ KEZ vardı: "PyMuPDF" ve
+                          # "pymupdf>=1.27.0". Aynı paket, tek satır yeter.
+python-docx
+openpyxl                  # ⚠️ SİLME: doğrudan import edilmiyor ama pandas'ın
+                          # .xlsx okuma motoru bu.
+pandas
+matplotlib                # denetimde import görünmedi; grafik üreten bir yol
+                          # varsa gerekir. Silmeden önce ara:
+                          #   findstr /S /I "matplotlib pyplot" backend\*.py
+
+psutil                    # ⚠️ requirements'ta İKİ KEZ vardı ("psutil" ve
+                          # "psutil>=5.9.0"). Tek satıra indirildi.
+
+# =============================================================================
+# ❌ ÇIKARILANLAR — hepsi denetimde "import YOK" çıktı
+#
+# llama-index-core
+# llama-index-vector-stores-qdrant
+#     Kod baştan sona LangChain. llama_index hiçbir yerde import edilmiyor.
+#     ~120 MB. Silmesi güvenli.
+#
+# psycopg2-binary
+#     docker-compose.yml'de PostgreSQL servisi yok.
+#
+# accelerate
+#     Import edilmiyor. ⚠️ AMA EN SON SİL: transformers, modeli
+#     `from_pretrained(..., device_map=...)` ile yüklüyorsa accelerate'i
+#     ÇALIŞMA ANINDA arar ve import hatası değil, RuntimeError verir —
+#     yani denetim bunu göremez. Kontrol:
+#         findstr /S /I "device_map low_cpu_mem_usage" backend\ocr\*.py backend\nlp\*.py
+#     Çıktı boşsa sil; doluysa bırak.
+#
+# ⚠️ TEK SEFERDE SİLME. Sıra:
+#   1) langchain-openai + numpy + python-dotenv + requests EKLE, torch'u
+#      Dockerfile'a taşı  -> build -> /health cevap veriyor mu?
+#   2) llama-index-* ve psycopg2-binary çıkar -> build -> /health?
+#   3) accelerate'i (yukarıdaki kontrolden sonra) çıkar -> build -> /health?
+# Her adımda tek değişiklik: bozulursa hangi satırın yaptığını bilirsin.
+#
+# 📌 pillow ve reportlab BİLEREK EKLENMEDİ. Denetim onları "eksik" gösteriyor
+# ama tek kullanan chatbot/karma_belge_uret.py — bir TEST dosyası. Test
+# dosyaları backend/ içinde durduğu için denetime karıştılar. Onları /app
+# dışına taşıyınca bu satırlar da kendiliğinden gider; test bağımlılıkları
+# üretim imajına girmemeli.
+# =============================================================================

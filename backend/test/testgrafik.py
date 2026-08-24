@@ -56,7 +56,15 @@ class _Logger:
 
 
 sahte_modul("loguru", logger=_Logger())
-sahte_modul("httpx", AsyncClient=_Any)
+# httpx sahtesi: evren_client modül seviyesinde Limits/Timeout/Client kullanıyor
+sahte_modul("httpx", AsyncClient=_Any, Client=_Any, Limits=_Any, Timeout=_Any)
+sahte_modul("evren_client", embed_batch=lambda *a, **k: [], sohbet_akisi=_Any(),
+            rerank=_Any(), qdrant_ayarlari=lambda: {"url": "http://x"},
+            MAX_TOKENS=2048, BASE_URL="http://x/v1", API_KEY="k",
+            MODEL_ANA="llm-large", MODEL_HIZLI="llm-fast", MODEL_ROUTER="router",
+            guard_kontrol=_Any(), cok_kipli_mesaj=lambda m, g=None: [{"role":"user","content":m}],
+            GUARD_ENGELLE=False, gorsel_mi=lambda a: False, gorsel_parcasi=_Any(),
+            MAKS_GORSEL=2, isit=_Any(), isitmayi_surdur=_Any(), kapat=_Any(), durum=lambda: {})
 sahte_modul("fastapi", responses=None)
 sahte_modul("fastapi.responses", StreamingResponse=_Any)
 sahte_modul("langchain_core")

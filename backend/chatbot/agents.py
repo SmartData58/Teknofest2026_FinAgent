@@ -9,8 +9,14 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-from evren_client import BASE_URL as EVREN_BASE_URL, API_KEY as EVREN_API_KEY, \
-    MODEL_ANA, MODEL_HIZLI
+# 🛠️ evren_client.py'nin yeri: ÖNERİLEN backend/ (chatbot/ ile yan yana).
+# chatbot/ içine konulduğunda da çalışsın diye ikinci bir yol deneniyor.
+try:
+    from evren_client import (BASE_URL as EVREN_BASE_URL, API_KEY as EVREN_API_KEY,
+                              MODEL_ANA, MODEL_HIZLI, MODEL_ROUTER)
+except ModuleNotFoundError:
+    from chatbot.evren_client import (BASE_URL as EVREN_BASE_URL, API_KEY as EVREN_API_KEY,
+                                      MODEL_ANA, MODEL_HIZLI, MODEL_ROUTER)
 
 # 🚀 MODEL SEÇİMİ
 #   • Ana cevap (llm_text)  -> llm-large : TR-MMLU %79,6, Türkçe kalitesi yüksek
@@ -32,6 +38,9 @@ def _llm(model: str, temperature: float, max_tokens: int = 2048, timeout: float 
 # SQL/JSON çıktı gerektiren ajanlar için temperature 0 (Net), serbest üretim için 0.3
 llm_json = _llm(MODEL_HIZLI, 0)
 llm_text = _llm(MODEL_ANA, 0.3)
+# 🚦 İKİ SATIRLIK KARARLAR İÇİN router (8B): görsel-niyet ve derin-arama kararı.
+# İkisi de tek kelimelik sınıflandırma; büyük modeli meşgul etmelerine gerek yok.
+llm_router = _llm(MODEL_ROUTER, 0, max_tokens=24, timeout=30.0)
 
 # 🧭 MELEZ NİYET — hızlı sınıflandırıcı LLM'i.
 # Bu ajan HER MESAJDA çalışmaz; yalnızca deterministik (regex) karar motoru
@@ -39,7 +48,7 @@ llm_text = _llm(MODEL_ANA, 0.3)
 # Bu yüzden tek şey önemli: HIZLI olması. num_predict=24 ile üretim tek satırlık
 # JSON'la sınırlanıyor — model uzun bir açıklamaya girişemiyor, dolayısıyla asıl
 # maliyet üretim değil prompt değerlendirmesi kadar kalıyor.
-llm_gorsel = _llm(MODEL_HIZLI, 0, max_tokens=24, timeout=30.0)
+llm_gorsel = llm_router          # aynı hafif model (bkz. yukarıdaki not)
 
 # =============================================================================
 # 1. ROUTING (Thinking Decider) — Sorgu derin RAG (HyDE+Step-Back+Multi-Query)
@@ -52,7 +61,7 @@ thinking_decider_prompt = PromptTemplate(
     """,
     input_variables=["question"]
 )
-thinking_decider_chain = thinking_decider_prompt | llm_json | StrOutputParser()
+thinking_decider_chain = thinking_decider_prompt | llm_router | StrOutputParser()
 
 # =============================================================================
 # 2. HyDE (Hypothetical Document Embeddings — Varsayımsal Belge)

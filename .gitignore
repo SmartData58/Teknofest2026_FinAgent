@@ -39,6 +39,8 @@ hf_cache/
 venv/
 .venv/
 env/
+ls1-env/
+ls-env/
 .env_python/
 pip-log.txt
 pip-delete-this-directory.txt
@@ -46,7 +48,8 @@ pip-delete-this-directory.txt
 # Scrapy / Veri Kazıma Çıktıları (Örnek)
 *.csv
 *.xml
-
+ls1-env/
+ls-env/
 # =========================
 # FRONTEND (Node.js, Vue, Nuxt, React vb.)
 # =========================
