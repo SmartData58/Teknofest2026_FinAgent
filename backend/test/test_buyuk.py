@@ -56,7 +56,7 @@ def _kokü_bul():
 
 KOK = _kokü_bul()
 try:
-    from testapi import (istek_gonder, senaryo_calistir, degerlendir,
+    from backend.test.testapi import (istek_gonder, senaryo_calistir, degerlendir,
                          VARSAYILAN_URL, ingilizce_mi)
 except ModuleNotFoundError:
     try:
@@ -679,7 +679,7 @@ def _baglanti_hatasi_mi(mesaj: str) -> bool:
 def ucus_oncesi(url: str, zaman_asimi: float = 20.0) -> bool:
     """Sohbet ucunun ayakta olduğunu doğrular. False dönerse koşu başlamamalı."""
     from urllib.parse import urlsplit
-    from testapi import oturum
+    from backend.test.testapi import oturum
 
     p = urlsplit(url)
     saglik = f"{p.scheme}://{p.netloc}/health"

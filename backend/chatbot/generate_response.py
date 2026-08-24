@@ -308,7 +308,7 @@ def extract_campaign_data(doc):
         doc.get("banka_adi") or doc.get("banka") or genel.get("banka_id"),
     )
     kampanya_adi = genel.get("kampanya_adi") or doc.get("kampanya_adi") or doc.get("baslik") or "Kampanya"
-    kat = genel.get("kampanya_turu") or doc.get("kampanya_turu") or doc.get("kategori") or doc.get("kampanya_kategorisi") or genel.get("kategori") or "Genel"
+    kat = genel.get("kampanya_turu") or doc.get("kampanya_turu") or doc.get("kategori") or doc.get("kampanya_kategorisi") or genel.get("alt_kategori") or "Genel"
     url = genel.get("kaynak_url") or doc.get("url") or doc.get("kampanya_url") or "-"
 
     kitle_raw = genel.get("hedef_kitle") or doc.get("hedef_kitle") or "-"
@@ -1768,17 +1768,68 @@ async def get_chatbot_response(
                             await q.put({"type": "token", "content": tk})
 
                     if not cevap_uretildi:
-                        logger.warning("LLM akışı hatasız tamamlandı ama hiç içerik üretmedi (boş yanıt).")
-                        bos_yanit_msg = (
-                            "Bu soru için elimdeki kampanya verilerinde doğrudan bir bilgi bulamadım. "
-                            "Size sadece güncel banka kampanyaları hakkında bilgi verebilirim; "
-                            "genel yatırım tavsiyesi konusunda yardımcı olamam."
+                        # 🚨 HATA DÜZELTMESİ — BU MESAJ EKRANDAKİ VERİYLE ÇELİŞİYORDU.
+                        # Bildirilen sorun: kullanıcı "ödüllü kampanyaları listele"
+                        # dedi, EKRANDA 150 SATIRLIK TABLO çıktı, altında da
+                        # "elimdeki kampanya verilerinde bilgi bulamadım" yazdı.
+                        # İkisi aynı anda doğru olamaz. Sebep: bu metin, LLM akışı
+                        # boş döndüğünde KOŞULSUZ basılıyordu — tablo üretilip
+                        # üretilmediğine hiç bakmadan.
+                        #
+                        # Bir bankacılık asistanında bu, sadece çirkin değil
+                        # YANILTICI: veri varken "veri yok" demek, jüri önünde
+                        # sistemin kendi verisine güvenmediği izlenimi verir.
+                        #
+                        # Artık iki durum ayrılıyor:
+                        #   • Tablo/grafik ÜRETİLDİYSE -> "yorum üretilemedi,
+                        #     tabloyu inceleyin" (veriyi inkâr etmez)
+                        #   • Hiç veri yoksa -> eski mesaj (o zaman doğru)
+                        logger.warning(
+                            "LLM akışı hatasız tamamlandı ama hiç içerik üretmedi. "
+                            f"mongo_kesin_cevap_var={mongo_kesin_cevap_var} "
+                            f"satır={len(labels_found or [])} db_context={len(db_context or '')} krktr. "
+                            "Sebep için evren_client'ın finish_reason logu."
                         )
+                        veri_ekranda = bool(labels_found) or bool(db_context)
+                        if veri_ekranda:
+                            bos_yanit_msg = (
+                                "\n\n*(Yapay zekâ yorumu bu sefer üretilemedi. Yukarıdaki "
+                                "tablo doğrudan kampanya kayıtlarından geldiği için "
+                                "geçerlidir — inceleyebilirsiniz.)*"
+                                if language != "en" else
+                                "\n\n*(The AI commentary could not be generated this time. "
+                                "The table above comes straight from the campaign records "
+                                "and is valid — you can review it.)*"
+                            )
+                        else:
+                            bos_yanit_msg = (
+                                "Bu soru için elimdeki kampanya verilerinde doğrudan bir bilgi bulamadım. "
+                                "Size sadece güncel banka kampanyaları hakkında bilgi verebilirim; "
+                                "genel yatırım tavsiyesi konusunda yardımcı olamam."
+                                if language != "en" else
+                                "I could not find information on this in the campaign records available "
+                                "to me. I can only provide information about current bank campaigns; "
+                                "I cannot give general investment advice."
+                            )
                         final_res += bos_yanit_msg
                         await q.put({"type": "token", "content": bos_yanit_msg})
                 except Exception as llm_err:
-                    logger.error(f"LLM (Ollama) akış hatası: {llm_err}")
-                    err_msg = "\n\n*(Sistem yoğunluğundan dolayı yapay zeka detaylı yorumu eklenemedi, tablodaki sonuçları inceleyebilirsiniz.)*"
+                    # 🛠️ "(Ollama)" etiketi kaldırıldı — artık yarışma API'si.
+                    # Eski etiket, loglara bakan kişiyi yanlış servise yönlendiriyordu.
+                    # 🛠️ Log artık TAM izi de yazıyor. "Sistem yoğunluğu" bir
+                    # TAHMİNDİ; gerçek sebep zaman aşımı, 4xx, boş yanıt ya da
+                    # ağ hatası olabilir ve log satırı bunu ayırt edemiyordu.
+                    logger.error(
+                        f"LLM akış hatası: {_hata_metni(llm_err)}\n{traceback.format_exc()}"
+                    )
+                    # Kullanıcıya giden metin: sebep uydurmuyor, veriyi de inkâr etmiyor.
+                    err_msg = (
+                        "\n\n*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo "
+                        "doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*"
+                        if language != "en" else
+                        "\n\n*(The AI commentary could not be added this time. The table "
+                        "above comes straight from the campaign records and is valid.)*"
+                    )
                     final_res += err_msg
                     await q.put({"type": "token", "content": err_msg})
 
