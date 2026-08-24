@@ -9,7 +9,7 @@ from langchain_core.embeddings import Embeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
-from embedding_client import embed_batch
+from backend.test.embedding_client import embed_batch
 
 # --- 1. ÖZEL QWEN EMBEDDER (LangChain Uyumluluğu) ---
 # 🛠️ Bu üçüncü (chatbot/generate_response.py ve rag/embedder.py'den sonra) neredeyse

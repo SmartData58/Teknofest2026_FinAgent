@@ -36,7 +36,7 @@ def _paketi_bul():
 _paketi_bul()
 
 try:
-    from evren_client import qdrant_ayarlari
+    from backend.evren_client import qdrant_ayarlari
 except ModuleNotFoundError:
     from chatbot.evren_client import qdrant_ayarlari
 from chatbot.indexing import COLLECTION_NAME, BANKA_KODU_YOLU, METADATA_ANAHTARI, payload_alani

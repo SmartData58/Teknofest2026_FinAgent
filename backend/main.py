@@ -21,7 +21,7 @@ from chatbot.indexing import qdrant_durumu, auto_init_qdrant
 
 # 🚀 Yarışma çıkarım servisi istemcisi (yerel Ollama/embedding/reranker yerine).
 try:
-    from evren_client import (isit, isitmayi_surdur, kapat as evren_kapat,
+    from backend.evren_client import (isit, isitmayi_surdur, kapat as evren_kapat,
                               durum as evren_durum, gorsel_mi, gorsel_parcasi, MAKS_GORSEL)
 except ModuleNotFoundError:              # evren_client.py chatbot/ içine konmuşsa
     from chatbot.evren_client import (isit, isitmayi_surdur, kapat as evren_kapat,
