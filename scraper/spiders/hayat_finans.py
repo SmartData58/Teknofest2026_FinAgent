@@ -1272,7 +1272,7 @@ class HayatFinansSpider(
             # KATEGORİ
             # ------------------------------------------------
 
-            kategori = "Krediler"
+            #kategori = "Krediler"
 
 
             if "bana-bunu-al-is-ortagim" in url:
@@ -1319,7 +1319,7 @@ class HayatFinansSpider(
                     "url": url,
                     "baslik": baslik,
                     "ham_metin": ham_metin,
-                    "kategori": kategori,
+                    #"kategori": kategori,
                     "tarih_metni": tarih_metni,
                 }
             )
@@ -1328,7 +1328,7 @@ class HayatFinansSpider(
             print(
                 f"    OK: "
                 f"{baslik[:55]} "
-                f"| Kategori: {kategori} "
+                #f"| Kategori: {kategori} "
                 f"| Tarih: "
                 f"{tarih_metni or 'Bulunamadı'}"
             )

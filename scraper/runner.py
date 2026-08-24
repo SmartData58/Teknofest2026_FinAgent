@@ -70,10 +70,7 @@ def spider_sinifini_bul(spider_adi: str) -> type[TabanScraper]:
 def ham_verileri_temizle_in_memory(raw_kayitlar: list[dict], banka_id: str | None = None) -> list[dict]:
     """
     Spider'dan toplanan ham sözlük verilerini hafızada temizler.
-    Metin alanlarını temizler, önce 'tarih_metni' sonra 'ham_metin' üzerinden tarihleri çıkarır.
-
-    banka_id verilirse, kaydın kendi içinde 'banka' alanı yoksa/boşsa bile
-    clean_doc'a tutarlı biçimde yazılır (özellikle ürün kayıtları için).
+    Metin alanlarını temizler, tarih ve kategori bilgilerini rule-based NLP ile çıkarır.
     """
     if not raw_kayitlar:
         return []
@@ -109,7 +106,7 @@ def ham_verileri_temizle_in_memory(raw_kayitlar: list[dict], banka_id: str | Non
         if not tarih_bulgulari.get("baslangic_tarihi") and not tarih_bulgulari.get("bitis_tarihi"):
             tarih_bulgulari = tarihleri_cikar(ham_metin)
 
-        # Çıkarılan bulguları MongoDB dokümanına ekle
+        # Çıkarılan tarih bulgularını dokümana ekle
         if "baslangic_tarihi" in tarih_bulgulari:
             clean_doc["baslangic_tarihi"] = tarih_bulgulari["baslangic_tarihi"].deger
 
@@ -118,33 +115,27 @@ def ham_verileri_temizle_in_memory(raw_kayitlar: list[dict], banka_id: str | Non
 
         if "sure_gun" in tarih_bulgulari:
             clean_doc["sure_gun"] = tarih_bulgulari["sure_gun"].deger
-            
-        # Spider'ın web sitesinden çektiği kategori alanını öncelikli olarak al
-        siteden_gelen_kategori = clean_doc.get("kategori")
 
-        # Değerin gerçekten var ve anlamlı bir string olup olmadığını kontrol et
-        if siteden_gelen_kategori and str(siteden_gelen_kategori).strip().lower() not in ["none", "null", ""]:
-            clean_doc["kampanya_turu"] = siteden_gelen_kategori
-        else:
-            # Siteden geçerli bir kategori gelmediyse başlık ve metinden tespit et
-            tur_bulgusu = kategori_cikar(
-                        baslik or "",
-                        ham_metin or "",
-                    )
+        # 3. KATEGORİ TESPİTİ (Scraper bypass edilmiştir)
+        #clean_doc.pop("kategori", None)  # Scraper'dan gelmiş olabilecek ham 'kategori' alanını temizle
 
-            # kategori_cikar'dan dönen veri yapısına uygun atama yapın:
-            if isinstance(tur_bulgusu, dict):
-                clean_doc["kampanya_turu"] = tur_bulgusu.get("tur", "genel")
-            else:
-                clean_doc["kampanya_turu"] = getattr(tur_bulgusu, "deger", "genel") 
+        #tur_bulgusu = kategori_cikar(
+            #baslik or "",
+            #ham_metin or "",
+        #)
 
-        # 3. İşleme zamanı ve LLM aşaması için bayrak ekleme
+        #if isinstance(tur_bulgusu, dict):
+            #clean_doc["kampanya_turu"] = tur_bulgusu.get("tur", "genel")
+        #else:
+            #clean_doc["kampanya_turu"] = getattr(tur_bulgusu, "deger", "genel") 
+
+        # 4. İşleme zamanı ve LLM aşaması için bayrak ekleme
         clean_doc["temizlenme_tarihi"] = datetime.now(timezone.utc)
         clean_doc["is_extracted"] = False  # LLM aşaması için hazır işareti
 
         temiz_kayitlar.append(clean_doc)
 
-    print(f"✅ {len(temiz_kayitlar)} adet kayıt başarıyla temizlendi ve tarihleri işlendi.")
+    print(f"✅ {len(temiz_kayitlar)} adet kayıt başarıyla temizlendi, tarih ve kategorileri işlendi.")
     return temiz_kayitlar
 
 

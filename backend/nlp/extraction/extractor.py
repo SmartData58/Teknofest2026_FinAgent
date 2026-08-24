@@ -171,17 +171,17 @@ def urun_semasina_donustur(doc: dict, bulgular: dict) -> dict:
     raw_id = str(doc["_id"])
     
     urun_adi = doc.get("baslik") or doc.get("kampanya_adi") or _get_val(bulgular, "baslik")
-    kampanya_turu = _get_val(bulgular, "kampanya_turu")
+    tur = _get_val(bulgular, "kampanya_turu")
     
     # Scraper'dan (doc) veya NLP bulgularından alt kategori çekimi
-    kategori = doc.get("kategori") or doc.get("kategori") or _get_val(bulgular, ["kategori", "sektor"]) or "Genel"
+    #kategori = doc.get("kategori") or doc.get("kategori") or _get_val(bulgular, ["kategori", "sektor"]) or "Genel"
 
     return {
         "_id": f"fin_{banka_id}_{raw_id}",
         "banka_id": banka_id,
-        "kategori": kategori,
+        #"kategori": kategori,
         "urun_adı": urun_adi,
-        "tur": kampanya_turu,
+        "tur": tur,
         "max_vade_ay": _safe_int(_get_val(bulgular, ["max_vade_ay", "vade"])),
         "min_vade_ay": _safe_int(_get_val(bulgular, "min_vade_ay")),
         "min_finansman_tutari": _safe_float(_get_val(bulgular, ["min_finansman_tutar", "finansman_tutari"])),
