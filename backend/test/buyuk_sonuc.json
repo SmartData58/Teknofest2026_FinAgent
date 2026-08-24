@@ -1,0 +1,39 @@
+{
+  "url": "http://localhost:8003/api/chat",
+  "kayitlar": [
+    {
+      "anahtar": "liste::liste — düz",
+      "kat": "liste",
+      "ad": "liste — düz",
+      "siki": true,
+      "soru": "ödüllü kampanyaları listele",
+      "gecti": true,
+      "sorunlar": [],
+      "sure": 0.2,
+      "ilk_token": 0.2,
+      "gorsel": "table",
+      "satir": 50,
+      "metin": "Bu soru için elimdeki kampanya verilerinde doğrudan bir bilgi bulamadım. Size sadece güncel banka kampanyaları hakkında bilgi verebilirim; genel yatırım tavsiyesi konusunda yardımcı olamam.",
+      "oneri_sayisi": 3,
+      "kaynak_sayisi": 0,
+      "hata": null
+    },
+    {
+      "anahtar": "liste::liste — nazik ek",
+      "kat": "liste",
+      "ad": "liste — nazik ek",
+      "siki": true,
+      "soru": "bana para ödülü olan tüm kampanyaları listeler misin",
+      "gecti": true,
+      "sorunlar": [],
+      "sure": 0.2,
+      "ilk_token": 0.2,
+      "gorsel": "table",
+      "satir": 77,
+      "metin": "Bu soru için elimdeki kampanya verilerinde doğrudan bir bilgi bulamadım. Size sadece güncel banka kampanyaları hakkında bilgi verebilirim; genel yatırım tavsiyesi konusunda yardımcı olamam.",
+      "oneri_sayisi": 3,
+      "kaynak_sayisi": 0,
+      "hata": null
+    }
+  ]
+}
