@@ -27,7 +27,7 @@ const showToast = (msg) => {
   }, 3000)
 }
 
-// 🚀 TOKAT 5: TABLOYA TIKLANDIĞINDA KAYIT BULUNAMADI DEMEYECEK!
+// TOKAT 5: TABLOYA TIKLANDIĞINDA KAYIT BULUNAMADI DEMEYECEK!
 // Direkt Python'un hazırladığı metni (full_texts) basacak.
 const openModalFromText = (text) => {
     activeSource.value = { icerik: text || 'Detay bulunamadı.' }
@@ -59,7 +59,7 @@ const toggleStatus = (msg) => {
   }
 }
 
-// 🛠️ YENİ: Kaynak bölümü artık native <details>/<summary> DEĞİL — tarayıcı
+// YENİ: Kaynak bölümü artık native <details>/<summary> DEĞİL — tarayıcı
 // bunu animasyonsuz, anında açıp kapatıyordu (CSS transition <details>'ın
 // açık/kapalı durumları arasında çalışmaz). Bunun yerine msg üzerinde tutulan
 // bu bayrakla elle kontrol ediliyor; şablonda CSS grid-rows (0fr/1fr) tekniğiyle
@@ -149,7 +149,7 @@ const kismiEtiketMi = (buf) => {
   });
 };
 
-// 🛠️ Bar genişliği güvenli hesap. Şablonda doğrudan
+// Bar genişliği güvenli hesap. Şablonda doğrudan
 //   msg.chart.values[i] / (stats ? stats.max : Math.max(...values)) * 100
 // yazıyordu. values[i] eksikse NaN%, max 0 ise Infinity% üretiyordu
 // (tarayıcı bunları sessizce yok sayıp barı hiç çizmiyordu).
@@ -176,7 +176,7 @@ const isExportingPNG = ref({})
 // =============================================================================
 // DIŞA AKTARMA ORTAK YARDIMCILARI
 //
-// 🛠️ GRAFİK / ÇIKTI AYRIMI — buradaki en büyük hata buydu:
+// GRAFİK / ÇIKTI AYRIMI — buradaki en büyük hata buydu:
 // Şablonda dışa aktarma butonları İKİ AYRI YERDE duruyor:
 //   1) Grafik kartının üstünde (v-if="msg.chart")      -> bağlam: GRAFİK
 //   2) Cevap metninin altında (v-if="msg.content...")  -> bağlam: METİN
@@ -197,7 +197,7 @@ const escapeHtml = (s) => String(s ?? '')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;');
 
-// 🛠️ Betik yükleyici: eski kod `await new Promise(resolve => script.onload = resolve)`
+// Betik yükleyici: eski kod `await new Promise(resolve => script.onload = resolve)`
 // kullanıyordu — onerror YOKTU. CDN engelliyse/çevrimdışıysa promise ASLA
 // çözülmüyor, fonksiyon sonsuza kadar asılı kalıyor ve `isExporting[index]`
 // true kaldığı için buton kalıcı olarak devre dışı kalıyordu. Artık hata
@@ -222,7 +222,7 @@ const betigiYukle = (src, globalAd) => {
   return _betekOnbellek[src];
 };
 
-// 🛠️ Cevap metnini düz metne çevirir. Ham içerikte arayüz etiketleri
+// Cevap metnini düz metne çevirir. Ham içerikte arayüz etiketleri
 // ([CHART], [SOURCES], [SUGGESTIONS], [STATUS]) ve markdown işaretleri kalmış
 // olabiliyor; bunlar rapora sızmasın diye temizleniyor.
 const cevabiDuzMetneCevir = (ham) => {
@@ -246,7 +246,7 @@ const cevabiDuzMetneCevir = (ham) => {
     .trim();
 };
 
-// 🛠️ Değer biçimlendirme: `chart.prefix || ''` yerine `?? ''`.
+// Değer biçimlendirme: `chart.prefix || ''` yerine `?? ''`.
 // PDF'te `chart.prefix || '%'` yazıyordu; prefix BOŞ STRING olduğunda ("" falsy)
 // bu ifade '%' üretiyordu. Ödül grafiklerinde backend prefix="" / suffix=" TL"
 // gönderdiği için PDF'te değerler "%500 TL" diye çıkıyordu (arayüz ve Excel
@@ -256,7 +256,7 @@ const degeriBicimlendir = (chart, v) =>
     ? '-'
     : `${chart.prefix ?? ''}${v}${chart.suffix ?? ''}`;
 
-// 🛠️ Grafik dizilerini güvenli satırlara çevirir. Eski kod chart.labels
+// Grafik dizilerini güvenli satırlara çevirir. Eski kod chart.labels
 // üzerinde dönüp chart.values[i] okuyordu; diziler farklı uzunluktaysa
 // `undefined` değerler "undefined" metni olarak çıktıya yazılıyordu.
 const grafikSatirlari = (chart) => {
@@ -277,12 +277,189 @@ const grafikSatirlari = (chart) => {
 const birimEtiketi = (chart) =>
   `${chart?.prefix ?? ''}${chart?.suffix ?? ''}`.trim() || '-';
 
+// ---------------------------------------------------------------------------
+// YENİ ÖZELLİK — "Detaylı Kampanya Kıyaslaması" için banka filtresi.
+//
+// Kart başlığının (ör. "Kampanya Verileri") sağında, o sonuç kümesinde GEÇEN
+// bankaların isimleri çip olarak listelenir. Bir veya BİRDEN FAZLA banka
+// seçilebilir (çoklu seçim); seçim yapıldığında yalnızca sağdaki "Detaylı
+// Kampanya Kıyaslaması" bölümü daralır. Pasta grafik, ortalama/en düşük/en
+// yüksek kutuları ve alttaki "Eksiksiz Veri Tablosu" BİLEREK filtrelenmez —
+// istenen davranış "grafik değişmesin" idi; grafik hep tüm sonuç kümesini
+// göstermeye devam eder, filtre sadece kıyaslama listesinin odağını değiştirir.
+// ---------------------------------------------------------------------------
+
+// Sonuç kümesindeki benzersiz banka adları (ilk görülme sırasını korur).
+const bankaSecenekleri = (chart) => {
+  if (!chart || !Array.isArray(chart.labels)) return [];
+  const gorulen = new Set();
+  const liste = [];
+  chart.labels.forEach((label) => {
+    const ad = (label ?? '').toString().trim();
+    if (ad && !gorulen.has(ad)) {
+      gorulen.add(ad);
+      liste.push(ad);
+    }
+  });
+  return liste;
+};
+
+const bankaSecili = (msg, banka) =>
+  Array.isArray(msg?.selectedBanks) && msg.selectedBanks.includes(banka);
+
+const bankaFiltresiDegistir = (msg, banka) => {
+  if (!msg) return;
+  if (!Array.isArray(msg.selectedBanks)) msg.selectedBanks = [];
+  const yer = msg.selectedBanks.indexOf(banka);
+  if (yer === -1) msg.selectedBanks.push(banka);
+  else msg.selectedBanks.splice(yer, 1);
+};
+
+const bankaFiltresiTemizle = (msg) => {
+  if (msg) msg.selectedBanks = [];
+};
+
+// Kıyaslama bölümünde gösterilecek satır indeksleri. Hiçbir banka seçili
+// değilse TÜM satırlar döner (filtre yok) — böylece varsayılan görünüm
+// eskisiyle birebir aynı kalır.
+const filtreliIndeksler = (msg) => {
+  const etiketler = Array.isArray(msg?.chart?.labels) ? msg.chart.labels : [];
+  const secili = Array.isArray(msg?.selectedBanks) ? msg.selectedBanks : [];
+  const tumu = etiketler.map((_, i) => i);
+  if (secili.length === 0) return tumu;
+  const filtreli = tumu.filter(
+    (i) => secili.includes((etiketler[i] ?? '').toString().trim())
+  );
+  // Güvenlik ağı: filtre hiçbir şeyle eşleşmezse boş bir liste göstermek
+  // yerine tümüne geri dön (kullanıcı asla boş bir panelle karşılaşmasın).
+  return filtreli.length ? filtreli : tumu;
+};
+
 // Mesajda dışa aktarılabilir ne var? (grafik / metin / ikisi / hiçbiri)
 const mesajIcerigi = (index) => {
   const msg = chatHistory.value[index] || {};
   const chart = msg.chart || null;
   const metin = cevabiDuzMetneCevir(msg.content);
   return { msg, chart, metin, bosMu: !chart && !metin };
+};
+
+// =============================================================================
+// PNG DIŞA AKTARMA — SAYDAM ÇIKTI DÜZELTMESİ
+//
+// 🛠️ Bildirilen sorun: kaydedilen PNG'ler saydam (arka planı yok) çıkıyordu.
+// İki ayrı sebebi vardı, ikisi de aşağıda çözüldü:
+//
+// 1) MODERN RENK FONKSİYONLARI (oklch/oklab/lab/lch/color-mix)
+//    Tailwind'in güncel renk paleti `oklch()` üretiyor. html2canvas 1.4.1 bu
+//    fonksiyonları AYRIŞTIRAMIYOR; ayrıştıramadığı her rengi "transparent"
+//    sayıyor. Sonuç: kartın `bg-white` zemini, kenarlıklar ve çubukların
+//    gradyanları tuvale HİÇ çizilmiyor — yani görüntünün gövdesi saydam
+//    kalıyor. Çözüm: yakalamadan hemen önce (onclone) klonlanan ağaçtaki her
+//    elemanın hesaplanmış renkleri okunup, modern renk fonksiyonları tarayıcının
+//    KENDİ canvas ayrıştırıcısıyla rgb/hex'e çevrilerek satır içi stil olarak
+//    yazılıyor. Böylece html2canvas'ın eline yalnızca anlayabildiği renkler
+//    geçiyor. Gradyanlar da (bar dolguları) tek tek renk durakları çevrilerek
+//    korunuyor.
+//
+// 2) TUVALİN KENDİSİNDE ALFA KANALI KALMASI
+//    `backgroundColor` seçeneği yalnızca html2canvas'ın kendi zeminini boyar;
+//    ayrıştırılamayan bir üst katman ya da yuvarlatılmış köşeler yüzünden
+//    çıktıda yine saydam pikseller kalabiliyor. Çözüm: yakalanan tuval, ikinci
+//    bir OPAK tuvale (önce düz renkle doldurulmuş) çizilerek düzleştiriliyor.
+//    Bu adım tek başına "saydam PNG" ihtimalini tamamen ortadan kaldırır.
+//
+// Ayrıca: dışa aktarma butonlarının kendisi de görüntüye giriyordu (Excel/PDF/
+// PNG ikonları). Artık `data-png-gizle` işaretli elemanlar yakalamadan
+// çıkarılıyor.
+// =============================================================================
+
+// Tarayıcının kendi renk ayrıştırıcısı: canvas 2D bağlamı oklch/lab/color()
+// dahil modern renkleri anlayıp bize rgb/hex olarak geri verir.
+let _renkOlcer = null;
+const _renkOlcerGetir = () => {
+    if (_renkOlcer === null && typeof document !== 'undefined') {
+        _renkOlcer = document.createElement('canvas').getContext('2d');
+    }
+    return _renkOlcer;
+};
+
+const MODERN_RENK_DESENI = /(oklch|oklab|color-mix|\blch\(|\blab\(|\bcolor\()/i;
+
+/** Modern bir renk ifadesini rgb/hex'e çevirir; çeviremezse null döner. */
+const renkiCevir = (deger) => {
+    const olcer = _renkOlcerGetir();
+    if (!olcer || typeof deger !== 'string' || !MODERN_RENK_DESENI.test(deger)) return null;
+    try {
+        // Nöbetçi değer: ayrıştırma başarısız olursa fillStyle DEĞİŞMEZ,
+        // böylece başarısızlığı güvenle tespit edebiliyoruz.
+        const nobetci = '#010203';
+        olcer.fillStyle = nobetci;
+        olcer.fillStyle = deger;
+        const sonuc = olcer.fillStyle;
+        return sonuc === nobetci ? null : sonuc;
+    } catch (e) {
+        return null;
+    }
+};
+
+/** Gradyan/gölge gibi bileşik değerlerin İÇİNDEKİ modern renkleri tek tek çevirir. */
+const bilesikDegeriCevir = (deger) => {
+    if (typeof deger !== 'string' || !MODERN_RENK_DESENI.test(deger)) return null;
+    const cevrilmis = deger.replace(/(oklch|oklab|lch|lab|color)\([^()]*\)/gi,
+        (parca) => renkiCevir(parca) || 'rgba(0,0,0,0)');
+    return cevrilmis === deger ? null : cevrilmis;
+};
+
+// Klonda düzeltilecek renk özellikleri.
+const _DUZ_RENK_OZELLIKLERI = [
+    'color', 'backgroundColor', 'borderTopColor', 'borderRightColor',
+    'borderBottomColor', 'borderLeftColor', 'outlineColor', 'textDecorationColor',
+    'fill', 'stroke', 'caretColor', 'columnRuleColor',
+];
+const _BILESIK_OZELLIKLER = ['backgroundImage', 'boxShadow', 'textShadow'];
+
+/**
+ * Klonlanan ağaçtaki modern renkleri html2canvas'ın anlayacağı biçime çevirir.
+ * Orijinal elemanlardan hesaplanmış stiller okunur (klon henüz sayfada
+ * yerleşmemiş olabilir), klona satır içi stil olarak yazılır.
+ */
+const klonRenkleriniDuzelt = (orijinalKok, klonKok) => {
+    if (!orijinalKok || !klonKok || typeof window === 'undefined') return;
+    const orijinaller = [orijinalKok, ...orijinalKok.querySelectorAll('*')];
+    const klonlar = [klonKok, ...klonKok.querySelectorAll('*')];
+    const adet = Math.min(orijinaller.length, klonlar.length);
+
+    for (let i = 0; i < adet; i++) {
+        let hesaplanan;
+        try {
+            hesaplanan = window.getComputedStyle(orijinaller[i]);
+        } catch (e) {
+            continue;
+        }
+        const klon = klonlar[i];
+        if (!klon || !klon.style) continue;
+
+        for (const ozellik of _DUZ_RENK_OZELLIKLERI) {
+            const cevrilmis = renkiCevir(hesaplanan[ozellik]);
+            if (cevrilmis) klon.style[ozellik] = cevrilmis;
+        }
+        for (const ozellik of _BILESIK_OZELLIKLER) {
+            const cevrilmis = bilesikDegeriCevir(hesaplanan[ozellik]);
+            if (cevrilmis) klon.style[ozellik] = cevrilmis;
+        }
+    }
+};
+
+/** Yakalanan tuvali OPAK bir zemine düzleştirir — saydam piksel bırakmaz. */
+const tuvaliDuzlestir = (tuval, arkaPlan) => {
+    const nihai = document.createElement('canvas');
+    nihai.width = tuval.width;
+    nihai.height = tuval.height;
+    const ctx = nihai.getContext('2d');
+    ctx.fillStyle = arkaPlan;
+    ctx.fillRect(0, 0, nihai.width, nihai.height);
+    ctx.drawImage(tuval, 0, 0);
+    return nihai;
 };
 
 const exportToPNG = async (index) => {
@@ -302,14 +479,41 @@ const exportToPNG = async (index) => {
     try {
         await betigiYukle('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'html2canvas');
 
+        const karanlik = document.documentElement.classList.contains('dark');
+        const arkaPlan = karanlik ? '#171717' : '#ffffff';
+
         const canvas = await window.html2canvas(el, {
             scale: 2,
-            backgroundColor: document.documentElement.classList.contains('dark') ? '#171717' : '#ffffff'
+            backgroundColor: arkaPlan,
+            useCORS: true,
+            logging: false,
+            // Dışa aktarma butonları görüntüye girmesin.
+            ignoreElements: (eleman) => eleman?.hasAttribute?.('data-png-gizle'),
+            // 🛠️ Asıl düzeltme: oklch/lab renkleri html2canvas'a verilmeden önce
+            // rgb'ye çevriliyor (bkz. yukarıdaki uzun not).
+            onclone: (klonDoc, klonEleman) => {
+                try {
+                    const kok = klonEleman || klonDoc.getElementById('chart-container-' + index);
+                    klonRenkleriniDuzelt(el, kok);
+                    if (kok && kok.style) {
+                        // Konteynerin kendi zemini yoktu; kartın etrafındaki boşluk
+                        // bu yüzden saydam kalıyordu.
+                        kok.style.backgroundColor = arkaPlan;
+                        kok.style.padding = '16px';
+                        kok.style.maxWidth = 'none';
+                    }
+                } catch (hata) {
+                    console.warn('PNG renk normalizasyonu atlandı:', hata);
+                }
+            },
         });
 
-        // 🛠️ toDataURL bazı tarayıcılarda büyük tuvallerde boş string döndürebiliyor;
+        // Alfa kanalını tamamen ortadan kaldır (saydamlığa karşı ikinci savunma).
+        const duzTuval = tuvaliDuzlestir(canvas, arkaPlan);
+
+        // toDataURL bazı tarayıcılarda büyük tuvallerde boş string döndürebiliyor;
         // sessizce bozuk dosya indirmek yerine hata veriyoruz.
-        const dataUrl = canvas.toDataURL('image/png');
+        const dataUrl = duzTuval.toDataURL('image/png');
         if (!dataUrl || dataUrl === 'data:,') throw new Error('Görüntü oluşturulamadı (tuval çok büyük olabilir)');
 
         const link = document.createElement('a');
@@ -352,7 +556,7 @@ const exportToExcel = async (index) => {
               t('chat.unit', 'Birim'),
           ]];
 
-          // 🛠️ Değerler artık METİN değil SAYI olarak yazılıyor.
+          // Değerler artık METİN değil SAYI olarak yazılıyor.
           // Eskiden "%2.99" / "500 TL" gibi birleştirilmiş metinler yazılıyordu;
           // Excel bunları metin sayıp toplayamıyor, sıralayamıyor, grafik
           // çizemiyordu — yani tablo Excel'de işe yaramıyordu. Birim ayrı sütuna
@@ -377,7 +581,7 @@ const exportToExcel = async (index) => {
       }
 
       // --- SAYFA 2: Analiz metni (yalnızca metin varsa) ---
-      // 🛠️ Bu sayfa TAMAMEN YENİ. Kullanıcı cevabın altındaki "Excel İndir"e
+      // Bu sayfa TAMAMEN YENİ. Kullanıcı cevabın altındaki "Excel İndir"e
       // bastığında okuduğu analiz metni dosyaya hiç girmiyordu.
       if (metin) {
           const metinData = [[t('chat.analysis', 'Analiz')]];
@@ -404,7 +608,7 @@ const exportToPDF = async (index) => {
 
   const { chart, metin, bosMu } = mesajIcerigi(index);
   if (bosMu) {
-      // 🛠️ Eskiden bu kontrol, ağır html2pdf kütüphanesi İNDİRİLDİKTEN SONRA
+      // Eskiden bu kontrol, ağır html2pdf kütüphanesi İNDİRİLDİKTEN SONRA
       // `throw new Error("Veri Yok")` ile yapılıyordu ve kullanıcıya genel bir
       // "Rapor oluşturulurken hata" mesajı gösteriliyordu. Artık en başta,
       // anlaşılır bir mesajla duruyor.
@@ -428,7 +632,7 @@ const exportToPDF = async (index) => {
             </div>`;
 
       // --- BÖLÜM 1: Analiz metni ---
-      // 🛠️ TAMAMEN YENİ. Rapor eskiden sadece grafik tablosundan ibaretti;
+      // TAMAMEN YENİ. Rapor eskiden sadece grafik tablosundan ibaretti;
       // kullanıcının ekranda okuduğu analiz metni PDF'e hiç girmiyordu.
       if (metin) {
           html += `<h2 style="font-size: 16px; margin: 0 0 8px 0;">Analiz</h2>`;
@@ -487,7 +691,7 @@ const exportToPDF = async (index) => {
           image:        { type: 'jpeg', quality: 0.98 },
           html2canvas:  { scale: 2 },
           jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' },
-          // 🛠️ Uzun analiz metni + tablo birden fazla sayfaya taşabiliyor;
+          // Uzun analiz metni + tablo birden fazla sayfaya taşabiliyor;
           // satırların sayfa ortasından bölünmemesi için sayfa sonu kuralı.
           pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] },
       }).from(tempDiv).save();
@@ -514,7 +718,7 @@ const getObjectUrl = (file) => {
   catch (e) { return ''; }
 }
 
-// 🛠️ HATA DÜZELTMESİ (gerçek chatStore.js görülünce doğrulandı): Bu onMounted
+// HATA DÜZELTMESİ (gerçek chatStore.js görülünce doğrulandı): Bu onMounted
 // önceden useState('sharedPrompt')/useState('sharedFiles')'ı okuyordu — ama
 // ChatPrompt.vue verileri Pinia store'un `initialPrompt`/`initialFiles`
 // alanlarına yazıyor (bkz. chatStore.js: setChatData(prompt, files) bunları
@@ -625,7 +829,7 @@ const formatMessage = (text, hasChart = false) => {
   html = html.replace(/```(?:mermaid|pie)[\s\S]*?```/gi, ''); 
   html = html.replace(/pie chart title[\s\S]*?(?=\n\n|\n[A-Z])/gi, ''); 
 
-  // 🚀 TOKAT 6: EĞER CHART GELDİYSE LLM'İN ÇİZİM YAPMASINI (Markdown Tablo) ENGELLİYORUZ
+  // TOKAT 6: EĞER CHART GELDİYSE LLM'İN ÇİZİM YAPMASINI (Markdown Tablo) ENGELLİYORUZ
   if (hasChart) {
       html = html.replace(/(?:^[ \t]*\|.*(?:\n|$))+/gm, '');
   } else {
@@ -706,13 +910,18 @@ const sendMessage = async () => {
   selectedFiles.value.forEach(file => formData.append('files', file))
 
   chatHistory.value.push({
-    role: 'assistant', content: '', sources: null, chart: null, statuses: [], 
+    role: 'assistant', content: '', sources: null, chart: null, statuses: [],
     currentStatus: null, activeTimer: '0.0', isStatusExpanded: false, isFinished: false,
-    isSourcesExpanded: false, suggestions: []
+    isSourcesExpanded: false, suggestions: [],
+    // YENİ: "Detaylı Kampanya Kıyaslaması" bölümü için banka filtresi.
+    // Boş dizi = filtre yok (hepsi görünür). Bu alan SADECE o bölümü etkiler;
+    // pasta grafik, istatistik kutuları ve alttaki tam veri tablosu
+    // kasıtlı olarak filtreden ETKİLENMEZ (kullanıcı isteği: "grafik değişmesin").
+    selectedBanks: []
   });
   const aIdx = chatHistory.value.length - 1;
 
-  // 🛠️ DÜRÜST STATUS: Buradaki etiketler istek GÖNDERİLMEDEN ÖNCE basılıyor,
+  // DÜRÜST STATUS: Buradaki etiketler istek GÖNDERİLMEDEN ÖNCE basılıyor,
   // yani gerçek bir işin süresini ölçmüyorlar.
   //   - "Sohbet geçmişi taranıyor" KALDIRILDI: sadece historyToSend.length > 0
   //     kontrolüydü, arkasında hiçbir iş yoktu; bu yüzden hep 0.0s görünüyordu.
@@ -767,7 +976,7 @@ const sendMessage = async () => {
       clearInterval(statusInterval);
   };
 
-  if (activeTasks.length > 0) updateStatus(activeTasks.join(" ➔ ") + " " + t('chat.starting', 'başlatılıyor...'));
+  if (activeTasks.length > 0) updateStatus(activeTasks.join(" > ") + " " + t('chat.starting', 'başlatılıyor...'));
   else updateStatus(t('chat.process_starting', "İşlem başlatılıyor..."));
 
   let buffer = '';
@@ -827,7 +1036,7 @@ const sendMessage = async () => {
       let pSugIdx = buffer.lastIndexOf('[SUGGESTION');
       if (pSugIdx !== -1 && buffer.indexOf('[/SUGGESTION', pSugIdx) === -1) continue;
 
-      // 🛠️ Elle yazılmış kısmi etiket listesi EKSİKTİ: "[SO", "[SOU", "[SOUR",
+      // Elle yazılmış kısmi etiket listesi EKSİKTİ: "[SO", "[SOU", "[SOUR",
       // "[SOURC", "[SOURCE", "[SOURCES", "[SOURCES]" ve "[SUGGESTIONS]" listede
       // yoktu. Akış parçası tam o noktalarda bölünürse yarım etiket cevabın
       // içine yazılıyordu (ekranda "...oluyor?[SOURCES" gibi artıklar).
@@ -863,7 +1072,7 @@ const sendMessage = async () => {
        @dragleave.prevent="handleDragLeave" 
        @drop.prevent="handleDrop">
 
-    <!-- 🛠️ EKSİK ÖZELLİK: isDragging/handleDragEnter/handleDragLeave/handleDrop
+    <!-- EKSİK ÖZELLİK: isDragging/handleDragEnter/handleDragLeave/handleDrop
          script'te zaten vardı ve dış div'e bağlıydı (sürükleme TEKNİK OLARAK
          çalışıyordu) ama hiçbir GÖRSEL geri bildirimi yoktu — kullanıcı bir dosyayı
          sayfanın üzerine sürüklediğinde hiçbir şey olmuyormuş gibi görünüyordu
@@ -1037,7 +1246,7 @@ const sendMessage = async () => {
                     <Transition enter-active-class="transition-all duration-700 ease-out" enter-from-class="opacity-0 scale-95 translate-y-4" enter-to-class="opacity-100 scale-100 translate-y-0">
                         <div v-if="msg.chart" :id="'chart-container-' + index" class="w-full max-w-[98%] 2xl:max-w-[1600px] mx-auto relative z-20 mb-6">
                             
-                            <div class="flex justify-end gap-2 mb-2 w-full">
+                            <div data-png-gizle class="flex justify-end gap-2 mb-2 w-full">
                                 <button @click="exportToExcel(index)" :title="t('chat.download_excel_title', 'Excel Olarak İndir')" class="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-all shadow-sm hover:shadow active:scale-95 disabled:opacity-50 group">
                                     <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                                 </button>
@@ -1061,7 +1270,35 @@ const sendMessage = async () => {
                                             <p class="text-xs text-neutral-500 mt-0.5">{{ msg.chart.subtitle || t('chat.bank_comparison', 'Bankalar Arası Veri Kıyaslaması') }}</p>
                                         </div>
                                     </div>
-                                    
+
+                                    <!-- YENİ: Banka filtresi çipleri. Başlığın SAĞINDA durur; bir veya
+                                         birden fazla banka seçilebilir. Seçim SADECE "Detaylı Kampanya
+                                         Kıyaslaması" bölümünü daraltır — pasta grafik, istatistik
+                                         kutuları ve alttaki tam veri tablosu değişmez. -->
+                                    <div v-if="bankaSecenekleri(msg.chart).length > 1" class="flex flex-wrap items-center gap-1.5 flex-1 min-w-0 sm:px-2 order-3 sm:order-none">
+                                        <span class="text-[9px] font-bold uppercase tracking-wider text-neutral-400 shrink-0">{{ t('chat.filter_banks', 'Bankalar') }}</span>
+                                        <button
+                                            v-for="bankaAdi in bankaSecenekleri(msg.chart)"
+                                            :key="'bankfilter-' + index + '-' + bankaAdi"
+                                            type="button"
+                                            @click="bankaFiltresiDegistir(msg, bankaAdi)"
+                                            :aria-pressed="bankaSecili(msg, bankaAdi) ? 'true' : 'false'"
+                                            :title="bankaAdi"
+                                            :class="bankaSecili(msg, bankaAdi)
+                                                ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                                                : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'"
+                                            class="px-2.5 py-1 rounded-full border text-[10px] font-bold whitespace-nowrap transition-all active:scale-95">
+                                            {{ bankaAdi }}
+                                        </button>
+                                        <button
+                                            v-if="(msg.selectedBanks || []).length > 0"
+                                            type="button"
+                                            @click="bankaFiltresiTemizle(msg)"
+                                            class="px-2 py-1 rounded-full border border-transparent text-[10px] font-bold text-neutral-400 hover:text-red-500 transition-colors whitespace-nowrap">
+                                            {{ t('chat.filter_clear', 'Temizle') }}
+                                        </button>
+                                    </div>
+
                                     <div class="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
                                         <div v-if="msg.chart.stats" class="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
                                             <div :style="gecikme(0, 90)" class="anim-tile flex-1 sm:flex-none bg-white dark:bg-neutral-800 px-4 py-2 rounded-xl border border-blue-100 dark:border-blue-900/50 shadow-sm text-center transform transition-transform hover:-translate-y-0.5">
@@ -1120,17 +1357,21 @@ const sendMessage = async () => {
                                         <h4 class="text-xs font-bold text-neutral-800 dark:text-neutral-200 mb-4 flex items-center gap-2 sticky top-0 bg-white dark:bg-neutral-800/90 z-10 py-1.5">
                                             <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
                                             {{ t('chat.detailed_comparison', 'Detaylı Kampanya Kıyaslaması') }}
+                                            <!-- Filtre etkinken kaç kampanyanın gösterildiğini belirt -->
+                                            <span v-if="(msg.selectedBanks || []).length > 0" class="ml-1 px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800/50 text-[9px] font-bold text-blue-600 dark:text-blue-400 normal-case">
+                                                {{ filtreliIndeksler(msg).length }} / {{ msg.chart.labels.length }}
+                                            </span>
                                         </h4>
-                                        
+
                                         <div class="space-y-4 pb-2">
-                                            <div v-for="(label, i) in msg.chart.labels" :key="'bar-'+i" class="relative group" :title="`${label} - ${msg.chart.sub_labels ? msg.chart.sub_labels[i] : ''} : ${msg.chart.prefix || ''}${msg.chart.values[i]}${msg.chart.suffix || ''}`">
+                                            <div v-for="i in filtreliIndeksler(msg)" :key="'bar-'+i" class="relative group" :title="`${msg.chart.labels[i]} - ${msg.chart.sub_labels ? msg.chart.sub_labels[i] : ''} : ${msg.chart.prefix || ''}${msg.chart.values[i]}${msg.chart.suffix || ''}`">
                                                 <div class="flex justify-between items-end mb-1.5">
                                                     <div class="flex flex-col min-w-0 pr-2">
                                                         <button 
                                                             @click="openModalFromText(msg.chart.full_texts[i])"
                                                             class="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left"
                                                             :title="t('chat.view_db_source', 'Veritabanı kaynağını görüntüle')">
-                                                            <span class="truncate">{{ label }}</span>
+                                                            <span class="truncate">{{ msg.chart.labels[i] }}</span>
                                                             <svg class="w-3 h-3 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                                                         </button>
                                                         <span class="text-[9px] text-neutral-400 font-medium truncate">{{ msg.chart.sub_labels ? msg.chart.sub_labels[i] : '' }}</span>
@@ -1196,11 +1437,11 @@ const sendMessage = async () => {
                                 </button>
                               </div>
 
-                              <!-- 🛠️ HATA DÜZELTMESİ: native <details>/<summary> tarayıcının kendi
+                              <!-- HATA DÜZELTMESİ: native <details>/<summary> tarayıcının kendi
                                    açık/kapalı geçişini kullanıyordu — bu geçiş animasyonsuzdur
                                    (CSS transition <details> için çalışmaz), yani açılıp kapanma
                                    sert ve anlıktı. Artık msg.isSourcesExpanded ile elle kontrol
-                                   ediliyor ve CSS grid-rows (0fr ⇄ 1fr) tekniğiyle, içerik kısa da
+                                   ediliyor ve CSS grid-rows (0fr <-> 1fr) tekniğiyle, içerik kısa da
                                    uzun da olsa yüksekliğe göre DİNAMİK, yumuşak bir açılış/kapanış
                                    animasyonu uygulanıyor. Ayrıca "MongoDB (NoSQL)" etiketi artık
                                    kaynağı teknik olarak isimlendirmek yerine sade "Kaynak" diyor. -->
@@ -1251,7 +1492,7 @@ const sendMessage = async () => {
           
           <form @submit.prevent="sendMessage" class="flex flex-col w-full p-2 rounded-2xl border transition-all duration-300 relative bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 shadow-sm focus-within:shadow-lg focus-within:border-blue-400 dark:focus-within:border-blue-600 focus-within:ring-4 focus-within:ring-blue-500/10 dark:focus-within:ring-blue-500/20 focus-within:-translate-y-1">
 
-            <!-- 🛠️ EKSİK ÖZELLİK: selectedFiles seçim/sürükle-bırak/yapıştırma ile
+            <!-- EKSİK ÖZELLİK: selectedFiles seçim/sürükle-bırak/yapıştırma ile
                  zaten doluyordu (script'te tüm mantık vardı) ama ŞABLONDA hiçbir
                  yerde gösterilmiyordu — kullanıcı gönder'e basana kadar bir dosyanın
                  eklendiğine dair hiçbir görsel geri bildirim yoktu. Bu tam olarak
@@ -1298,7 +1539,7 @@ const sendMessage = async () => {
                 <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> {{ activeFile?.isUserFile ? t('chat.file_preview', 'Dosya Önizleme') : t('chat.report_preview', 'Rapor Önizleme') }}
               </template>
               <template v-else>
-                <!-- 🛠️ Yukarıdaki kaynak bölümünün etiketiyle tutarlı olsun diye
+                <!-- Yukarıdaki kaynak bölümünün etiketiyle tutarlı olsun diye
                      ("Kaynak" düğmesine basınca burası hâlâ "MongoDB (NoSQL)" derse
                      kafa karıştırır) burası da aynı şekilde sadeleştirildi. -->
                 <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg> Kaynak Kaydı
@@ -1336,7 +1577,7 @@ const sendMessage = async () => {
 .dark .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #404040; }
 .markdown-body p, .markdown-body li { word-break: break-word; }
 
-/* 🛠️ HATA DÜZELTMESİ: Durum metni (currentStatus.text) için <Transition name="fade-text">
+/* HATA DÜZELTMESİ: Durum metni (currentStatus.text) için <Transition name="fade-text">
    kullanılıyordu ama karşılık gelen .fade-text-* sınıfları hiçbir yerde tanımlı değildi.
    Vue, tanımsız transition sınıflarında sessizce hiçbir şey yapmaz — yani "HyDE: ...",
    "Step-Back: ...", "MongoDB Ajanı Sorgulanıyor..." gibi durum metinleri birbirinin üstüne
@@ -1357,7 +1598,7 @@ const sendMessage = async () => {
   position: absolute;
 }
 
-/* 🛠️ HATA DÜZELTMESİ: Şablonda kullanılan animate-[shimmer_1.5s_infinite],
+/* HATA DÜZELTMESİ: Şablonda kullanılan animate-[shimmer_1.5s_infinite],
    animate-gradient-x ve ease-out-back sınıfları Tailwind'in varsayılan
    yardımcı sınıfları DEĞİL — projenin tailwind.config'inde tanımlı olmalıydı.
    Burada tanımlı değilse (veya config'te unutulduysa) animasyonlar sessizce
@@ -1386,7 +1627,7 @@ const sendMessage = async () => {
    (kademeli gecikme) sırasında titreme/atlama olmaz.
    ========================================================================= */
 
-/* 🛠️ Bar grafik: şablonda `transition-all duration-1000` yazıyordu ama CSS
+/* Bar grafik: şablonda `transition-all duration-1000` yazıyordu ama CSS
    geçişleri ÖNCEKİ bir değer olmadan çalışmaz — eleman doğrudan son
    genişliğinde doğduğu için o "1 saniyelik animasyon" hiç görünmüyordu.
    Genişlik inline kalıp scaleX animasyonu uygulanarak gerçek bir dolum
@@ -1412,7 +1653,7 @@ const sendMessage = async () => {
 @keyframes cardIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 .anim-card { animation: cardIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
-/* ♿ ERİŞİLEBİLİRLİK: İşletim sisteminde "hareketi azalt" seçili kullanıcılar
+/* ERİŞİLEBİLİRLİK: İşletim sisteminde "hareketi azalt" seçili kullanıcılar
    için tüm giriş animasyonları kapatılır. Vestibüler rahatsızlığı olan
    kullanıcılarda kademeli/zıplayan animasyonlar baş dönmesi yapabiliyor;
    içerik yine tam görünür kalır, sadece hareket olmaz. */

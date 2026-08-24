@@ -41,9 +41,11 @@ from langchain_core.documents import Document
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 
-from chatbot.intent import banka_bul
+from chatbot.intent import banka_bul, banka_adi_getir, banka_kodu_coz
 
-QDRANT_URL = os.getenv("QDRANT_HOST", "http://qdrant:6333")
+# 🚀 Qdrant artık yarışma sunucusunda (url + port=443 + prefix=<takım> + api_key)
+from evren_client import qdrant_ayarlari, embed_batch as evren_embed_batch
+QDRANT_URL = os.getenv("QDRANT_HOST", "http://qdrant:6333")  # (yalnız geriye dönük)
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:admin123@mongodb:27017/?authSource=admin")
 COLLECTION_NAME = "banka_kampanyalari"
 
@@ -78,7 +80,14 @@ def _kampanya_belgesi_olustur(k: dict) -> Document:
     bağlanacak — yanlış yol tahmin edip sessizce hatalı veri üretmemek için
     şimdilik BİLEREK eklenmedi.
     """
-    ust_banka_kodu = k.get("banka_kodu")
+    # 🛠️ HATA DÜZELTMESİ (gerçek veriyle doğrulandı — mongo_kontrol.py):
+    # Üst seviye `banka_kodu` bu koleksiyonda 344 kaydın HİÇBİRİNDE yok; kod
+    # `genel_bilgi.banka_id` içinde ("kuveytturk", "albaraka", ...). Eski kod
+    # bu yüzden HER kayıtta banka'yı "Bilinmeyen Banka" olarak yazıyordu —
+    # sohbette "Kaynak" bölümünde aynen böyle görünüyordu — ve payload'daki
+    # banka_kodu None kalıyordu, yani /health uyarısı ve "bankaya göre filtreli
+    # vektör araması hiç eşleşmiyor" sorunu tam olarak buradan geliyordu.
+    ust_banka_kodu = banka_kodu_coz(k)
 
     # 🛠️ ŞEMA GÜNCELLEMESİ #2 (Compass'ta bu kez ŞEMA AĞACI paylaşıldı, ham
     # doküman değil — bu yüzden yollar aşağıda AĞAÇTA GÖRÜNEN gerçek alan
@@ -99,14 +108,17 @@ def _kampanya_belgesi_olustur(k: dict) -> Document:
     finansman_detay = k.get("finansman_detay") or {}
     promosyon_detay = k.get("promosyon_detay") or {}
 
-    banka = (
-        k.get("banka_adi")
-        or k.get("banka")
-        or ust_banka_kodu
-        or "Bilinmeyen Banka"
-    )
-    if isinstance(banka, dict):
-        banka = banka.get("kisa_ad", "Bilinmeyen Banka")
+    # 🛠️ HATA DÜZELTMESİ: Bu zincir, banka_adi/banka alanları bu koleksiyonda
+    # BULUNMADIĞI için neredeyse her kayıtta ya ham koda ya da doğrudan
+    # "Bilinmeyen Banka"ya düşüyordu — ve bu metin Qdrant'a yazılan belgenin
+    # İÇERİĞİNE ("Banka: Bilinmeyen Banka") gömüldüğü için, sohbette "Kaynak"
+    # bölümünde kullanıcıya AYNEN böyle görünüyordu (bildirilen sorun tam
+    # olarak buydu). Artık ortak chatbot.intent.banka_adi_getir() kullanılıyor:
+    # üst seviyedeki banka_kodu'ndan düzgün görünen ad üretiliyor.
+    ham_banka = k.get("banka_adi") or k.get("banka")
+    if isinstance(ham_banka, dict):
+        ham_banka = ham_banka.get("kisa_ad")
+    banka = banka_adi_getir(ust_banka_kodu, ham_banka)
 
     kampanya_adi = (
         genel_bilgi.get("kampanya_adi")
@@ -117,13 +129,15 @@ def _kampanya_belgesi_olustur(k: dict) -> Document:
     kar_payi = finansman_detay.get("kar_payi_orani")
     if kar_payi is None:
         kar_payi = k.get("kar_payi", k.get("kar_payi_orani", 0))
-    vade = (
-        (finansman_detay.get("taksit") or {}).get("vade_ay")
-        if isinstance(finansman_detay.get("taksit"), dict)
-        else None
-    )
+    # 🛠️ `finansman_detay.taksit` bir ALT BELGE DEĞİL, düz bir sayı (ör. 9.0).
+    # Eski kod dict varsayıp atlıyordu; 110 kayıttaki taksit bilgisi boşa
+    # gidiyordu (bkz. generate_response.py'deki aynı düzeltme).
+    taksit_ham = finansman_detay.get("taksit")
+    vade = (taksit_ham or {}).get("vade_ay") if isinstance(taksit_ham, dict) else None
     if vade is None:
         vade = finansman_detay.get("vade_ay")
+    if vade is None and isinstance(taksit_ham, (int, float)):
+        vade = taksit_ham
     if vade is None:
         vade = k.get("vade", k.get("vade_ay", 0))
     odul = promosyon_detay.get("odul_tutari")
@@ -132,7 +146,13 @@ def _kampanya_belgesi_olustur(k: dict) -> Document:
     odul_metni = promosyon_detay.get("odul_metni")
 
     kampanya_turu = k.get("kampanya_turu") or genel_bilgi.get("kampanya_turu") or ""
+    # 🛠️ hedef_kitle bazı kayıtlarda LİSTE (['tum_musteriler']), bazılarında düz
+    # metin ("segment") olarak geliyor. Liste hâli str()'e verilince belgeye
+    # "['tum_musteriler']" diye köşeli parantezli, çirkin ve arama için işe
+    # yaramaz bir metin gömülüyordu.
     hedef_kitle = k.get("hedef_kitle") or genel_bilgi.get("hedef_kitle") or ""
+    if isinstance(hedef_kitle, (list, tuple)):
+        hedef_kitle = ", ".join(str(x).replace("_", " ") for x in hedef_kitle)
     aciklama = genel_bilgi.get("metin") or k.get("ham_metin")
 
     icerik = (
@@ -157,7 +177,7 @@ def _kampanya_belgesi_olustur(k: dict) -> Document:
         "kampanya_id": str(k.get("_id", "")),
         # 🧭 Vektör aramada banka filtresi bu alana bakar (bkz. modül başındaki
         # not). Üst seviyedeki hazır banka_kodu ÖNCELİKLİ; yoksa tahmine düş.
-        "banka_kodu": ust_banka_kodu or banka_bul(str(banka)),
+        "banka_kodu": ust_banka_kodu or banka_bul(str(banka)),  # (artık banka_kodu_coz sayesinde neredeyse hep dolu)
         "banka_adi": str(banka),
     }
     if kampanya_turu:
@@ -179,11 +199,11 @@ def _varsayilan_embedder():
     kalıyordu. Bu hafif sarmalayıcı o zinciri tamamen atlar.
     """
     from langchain_core.embeddings import Embeddings
-    from embedding_client import embed_batch
 
     class _PipelineEmbedder(Embeddings):
         def embed_documents(self, texts):
-            return embed_batch(texts, normalize=False, ilerleme=True).tolist()
+            # 🚀 bge-m3-embed (1024 boyut) — yarışma API'si
+            return evren_embed_batch(texts, normalize=False, ilerleme=True).tolist()
 
         def embed_query(self, text):
             sonuc = self.embed_documents([text])
@@ -301,13 +321,14 @@ async def auto_init_qdrant(embeddings=None) -> int:
         # from_documents(force_recreate=True) zaten koleksiyonu atomik biçimde
         # yeniden kurar — yani silme işlemi, yerine koyacak veri hazır olduğunda
         # ve tek adımda gerçekleşir.
+        _q = qdrant_ayarlari()
         QdrantVectorStore.from_documents(
             docs,
             embeddings,
-            url=QDRANT_URL,
             collection_name=COLLECTION_NAME,
             content_payload_key="belge",
             force_recreate=True,
+            **{k: v for k, v in _q.items() if k in ("url", "port", "prefix", "api_key", "timeout")},
         )
         logger.info(f"✅ Qdrant vektör veritabanı {len(docs)} kampanya ile oluşturuldu!")
         return len(docs)
@@ -324,7 +345,7 @@ def qdrant_durumu() -> dict:
     doğrulayabilirsiniz.
     """
     try:
-        client = QdrantClient(url=QDRANT_URL)
+        client = QdrantClient(**qdrant_ayarlari())
         if not client.collection_exists(COLLECTION_NAME):
             return {
                 "koleksiyon": COLLECTION_NAME,
