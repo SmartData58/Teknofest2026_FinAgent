@@ -122,6 +122,9 @@ _CASHBACK_IPUCLARI = (
     "nakit iade",
     "nakit iade oranı",
     "iade oranı",
+    "nakit ödül",
+    "nakit odul",
+    "harcama",
 )
 
 _KARPAYI_ACIK = (
@@ -219,9 +222,10 @@ def oranlari_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                 guven=0.99,
                 birim="percent",
             )
-            bulgular["nakit_iade_yuzde"] = _ilk_yuksek_guvenli(
-                bulgular.get("nakit_iade_yuzde"), aday
-            )
+            # Eğer mevcut bir nakit_iade_yuzde varsa, yüksek olan sayısal değeri korur
+            mevcut = bulgular.get("nakit_iade_yuzde")
+            if mevcut is None or aday.deger > mevcut.deger:
+                bulgular["nakit_iade_yuzde"] = aday
 
         elif any(k in pencere for k in _KARPAYI_ACIK):
             aday = _bulgu(
@@ -258,18 +262,18 @@ def oranlari_cikar(metin: str) -> Dict[str, AlanBulgusu]:
 # 2. VADE VE TAKSİT
 # =============================================================================
 
+_TAKSIT = re.compile(
+    r"\b(\d+)\s*(?:ay|aya|ayın)?\s*(?:varan|kadar)?\s*taksit\b",
+    re.IGNORECASE,
+)
+
 _VADE_ADAYI = re.compile(
     r"\d+(?:[.,]\d+)?\s*(?:ay|yıl|yil|sene)[a-zçğıöşü]*",
     re.IGNORECASE,
 )
 
-_TAKSIT = re.compile(
-    r"\b(\d+)\s*(?:ay\s*)?taksit\b",
-    re.IGNORECASE,
-)
-
 _VADE_BAGLAMI = re.compile(
-    r"(?:vade|vadeli|vadeye|vadesi|kadar)",
+    r"(?:vade|vadeli|vadeye|vadesi|kadar|varan)",
     re.IGNORECASE,
 )
 
@@ -277,19 +281,32 @@ _VADE_BAGLAMI = re.compile(
 def vade_ve_taksit_cikar(metin: str) -> Dict[str, AlanBulgusu]:
     bulgular: Dict[str, AlanBulgusu] = {}
 
-    taksit_bul = _TAKSIT.search(metin)
-    if taksit_bul:
-        bulgular["taksit"] = _bulgu(
+    # --- TAKSİT ÇIKARIMI ---
+    for taksit_bul in _TAKSIT.finditer(metin):
+        deger = int(taksit_bul.group(1))
+        
+        aday = _bulgu(
             metin,
             taksit_bul,
-            int(taksit_bul.group(1)),
-            "sayi+taksit",
+            deger,
+            "sayi+taksit_kalibi",
             guven=0.99,
             birim="adet",
         )
+        
+        bulgular["taksit"] = _ilk_yuksek_guvenli(
+            bulgular.get("taksit"), aday
+        )
 
+    # --- VADE ÇIKARIMI ---
     for vade_bul in _VADE_ADAYI.finditer(metin):
         ifade = vade_bul.group()
+        
+        # Eğer bu ifade zaten bir taksit kalıbının içindeyse (Örn: "3 aya varan taksit")
+        # bunu finansman vadesi (vade_ay) olarak tekrar işlemeyelim.
+        if "taksit" in metin[vade_bul.start(): min(len(metin), vade_bul.end() + 15)].lower():
+            continue
+
         sonrasi = metin[
             vade_bul.end(): min(len(metin), vade_bul.end() + 35)
         ].lower()
@@ -300,7 +317,6 @@ def vade_ve_taksit_cikar(metin: str) -> Dict[str, AlanBulgusu]:
 
         baglam = f"{oncesi} {sonrasi}"
 
-        # "12 ay vadeye kadar", "36 aya kadar", "24 ay vade"
         vade_mi = bool(_VADE_BAGLAMI.search(baglam))
 
         if not vade_mi:
@@ -430,18 +446,6 @@ def _tutar_cumle(metin: str, baslangic: int, bitis: int) -> str:
 def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
     """
     TL tutarlarını semantik bağlamlarına göre ayırır.
-
-    Ayrımlar:
-        - min_harcama_tl
-        - max_harcama_tl
-        - finansman_tutari
-        - min_finansman_tutari
-        - max_finansman_tutari
-        - puan_kazanc
-        - odul_tutari_tl
-        - tahsis_ucreti_tl
-        - mgm_limit_tl
-        - kisi_basi_kazanc
     """
     bulgular: Dict[str, AlanBulgusu] = {}
 
@@ -458,7 +462,7 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
         sonraki = metin[bitis:min(len(metin), bitis + 35)].lower()
 
         # -------------------------------------------------------------
-        # 3.1 MGM
+        # 3.1 MGM (Müşteri Getir Müşteri)
         # -------------------------------------------------------------
         if re.search(
             r"(arkadaş|arkadas|davet|referans|yakınını|yakinini)"
@@ -496,7 +500,6 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
         # 3.2 Tahsis / dosya masrafı
         # -------------------------------------------------------------
         if _MASRAF_IPUCLARI.search(pencere):
-            # Üyelik/abonelik gibi ücretleri finansman masrafından ayır.
             if not re.search(r"\b(?:üyelik|abonelik)\b", pencere):
                 aday = _bulgu(
                     metin,
@@ -561,17 +564,25 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                 continue
 
         # -------------------------------------------------------------
-        # 3.5 Finansman / kredi
+        # 3.5 Finansman / Kredi / Kampanya Üst Limitleri (GÜNCELLENDİ)
         # -------------------------------------------------------------
+        genel_limit_baglami = re.search(
+            r"\b(?:üst\s+limit|azami|maksimum|max|kampanya\s+limiti|kredi\s+limiti|tutar\s+limiti)\b",
+            pencere,
+            re.IGNORECASE,
+        )
+
         finansman_baglami = (
             _FINANSMAN_IPUCLARI.search(cumle)
             or _KREDI_IPUCLARI.search(cumle)
+            or "taksit" in cumle.lower()
+            or genel_limit_baglami
         )
 
-        if finansman_baglami and not _LIMIT_IPUCLARI.search(cumle):
+        if finansman_baglami:
+            # Min Finansman Tutarı
             if _MIN_IPUCLARI.search(onceki) or re.search(
-                r"\b(?:en az|minimum|asgari)\b.{0,20}"
-                r"(?:finansman|kredi)",
+                r"\b(?:en az|minimum|asgari)\b.{0,20}(?:finansman|kredi|tutar)",
                 cumle,
                 re.IGNORECASE,
             ):
@@ -588,7 +599,8 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                 )
                 continue
 
-            if _MAX_IPUCLARI.search(pencere):
+            # Max Finansman Tutarı / Kampanya Üst Limiti
+            if _MAX_IPUCLARI.search(pencere) or genel_limit_baglami:
                 aday = _bulgu(
                     metin,
                     tutar_bul,
@@ -602,6 +614,7 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                 )
                 continue
 
+            # Genel Finansman Tutarı
             aday = _bulgu(
                 metin,
                 tutar_bul,
@@ -1004,6 +1017,63 @@ def hedef_kitle_cikar(metin: str) -> Dict[str, List[str]]:
 # 7. MGM / ARKADAŞINI GETİR
 # =============================================================================
 
+_MGM_KISI_LIMITI = re.compile(
+    r"(?:toplamda|toplam)\s+(\d+)\s+kişi",
+    re.IGNORECASE
+)
+
+_MGM_MAX_ODUL = re.compile(
+    r"maksimum\s+([\d.,]+(?:\s*bin)?)\s*TL\s+nakit\s+ödül",
+    re.IGNORECASE
+)
+
+def mgm_detay_cikar(metin: str) -> Dict[str, AlanBulgusu]:
+    bulgular: Dict[str, AlanBulgusu] = {}
+
+    # 1. Kişi Sayısı Limiti Yakalama (Örn: 5 kişi)
+    kisi_bul = _MGM_KISI_LIMITI.search(metin)
+    if kisi_bul:
+        kisi_sayisi = int(kisi_bul.group(1))
+        bulgular["mgm_limit_kisi"] = _bulgu(
+            metin,
+            kisi_bul,
+            kisi_sayisi,
+            "sayi+mgm_kisi_limiti",
+            guven=0.99,
+            birim="kisi",
+        )
+
+    # 2. Kişi Başı ve Maksimum Ödül Tutarları
+    # 2.000 TL kişi başı kazanç
+    kisi_basi_bul = re.search(r"kişi\s+başı\s+maksimum\s+([\d.,]+)\s*TL", metin, re.IGNORECASE)
+    if kisi_basi_bul:
+        deger = para_normalize(kisi_basi_bul.group(1) + " TL")
+        if deger:
+            bulgular["kisi_basi_kazanc"] = _bulgu(
+                metin,
+                kisi_basi_bul,
+                deger,
+                "para+mgm_kisi_basi",
+                guven=0.98,
+                birim="TL",
+            )
+
+    # Toplam 10.000 TL maksimum ödül tutarı
+    toplam_odul_bul = _MGM_MAX_ODUL.search(metin)
+    if toplam_odul_bul:
+        deger = para_normalize(toplam_odul_bul.group(1) + " TL")
+        if deger:
+            bulgular["odul_tutari_tl"] = _bulgu(
+                metin,
+                toplam_odul_bul,
+                deger,
+                "para+mgm_toplam_odul",
+                guven=0.98,
+                birim="TL",
+            )
+
+    return bulgular
+
 #_MGM_KALIBI = re.compile(
     #r"arkadaşını\s+(?:davet\s+et|getir)"
     #r"|arkadaşınızı\s+(?:davet\s+edin|getirin)"
@@ -1264,8 +1334,112 @@ def urun_kategori_cikar(metin: str) -> Dict[str, AlanBulgusu]:
 
     return {}
 
+# =============================================================================
+# ODUL TİPİ VE ODUL METNİ ÇIKARICISI
+# =============================================================================
+
+_ODUL_TIPI_KALIPLARI = [
+    ("Nakit Ödül", re.compile(r"\bnakit\s+(?:ödül|odul|iade)\b", re.IGNORECASE)),
+    ("Puan/Bonus", re.compile(r"\b(?:puan|bonus|chip-para|worldpuan)\b", re.IGNORECASE)),
+    ("Hediye Çeki", re.compile(r"\bhediye\s+çek\w*\b", re.IGNORECASE)),
+    ("FX Dar Makas Avantajı", re.compile(r"\b(?:dar\s+makas|makas\s+avantajı|fx\s+avantajı)\b", re.IGNORECASE)),
+    ("İndirim", re.compile(r"\b(?:indirim|iskonto)\b", re.IGNORECASE)),
+]
+
+def odul_tipi_ve_metni_cikar(metin: str) -> Dict[str, AlanBulgusu]:
+    """
+    Kampanyadaki ödül/avantaj tipini ve özet ödül metnini çıkarır.
+    """
+    bulgular: Dict[str, AlanBulgusu] = {}
+
+    # 1. odul_tip tespiti
+    for tip_adi, desen in _ODUL_TIPI_KALIPLARI:
+        esles = desen.search(metin)
+        if esles:
+            bulgular["odul_tip"] = _bulgu(
+                metin,
+                esles,
+                tip_adi,
+                f"odul_tipi_{tip_adi.lower().replace(' ', '_')}",
+                guven=0.96,
+                birim="metin",
+            )
+            break
+
+    # 2. odul_metni tespiti (Ödül veya avantajı özetleyen ana cümle)
+    cumleler = re.split(r'(?<=[.!?])\s+', metin)
+    for cumle in cumleler:
+        cumle_temiz = cumle.strip()
+        if re.search(r"\b(?:dar makas|makas avantajı|nakit ödül|hediye|puan|iade)\b", cumle_temiz, re.IGNORECASE):
+            # Çok genel başlık cümleleri yerine somut oran/limit içeren cümleyi önceliklendir
+            if re.search(r"\d|%", cumle_temiz):
+                baslangic = metin.find(cumle_temiz)
+                bitis = baslangic + len(cumle_temiz) if baslangic != -1 else None
+                bulgular["odul_metni"] = AlanBulgusu(
+                    deger=cumle_temiz,
+                    ham_metin=cumle_temiz,
+                    kural="odul_metni_ozet_cumle",
+                    guven=0.92,
+                    kanit_metni=cumle_temiz,
+                    baslangic_konum=baslangic,
+                    bitis_konum=bitis,
+                    birim="metin",
+                )
+                break
+
+    return bulgular
 
 
+# =============================================================================
+# KAZANÇ METNİ ÇIKARICISI
+# =============================================================================
+
+_KAZANC_IPUCLARI = re.compile(
+    r"\b(?:kazanım|kazanabilir|kazanır|kazanın|kazanma|ödenir|aktarılacaktır|yararlanabilir|faydalanabilir|yararlanılabilmesi|faydalanılabilmesi)\b",
+    re.IGNORECASE
+)
+
+_KAZANC_SART_IPUCLARI = re.compile(
+    r"\b(?:şartı|durumunda|halinde|beklenir|dolduktan sonra|bakiyesinin|olması gerekmektedir|sağlaması|açılması gerekmektedir|kapsamında)\b",
+    re.IGNORECASE
+)
+
+def kazanc_metni_cikar(metin: str) -> Dict[str, AlanBulgusu]:
+    """
+    Kampanyadaki kazanım şartını ve mekanizmasını içeren kritik cümleleri tespit eder.
+    """
+    cumleler = re.split(r'(?<=[.!?])\s+', metin)
+    aday_cumleler = []
+
+    for cumle in cumleler:
+        cumle_temiz = cumle.strip()
+        
+        # Hem kazanım/faydalanma hem de koşul/gereksinim içeren cümleleri yakala
+        if _KAZANC_IPUCLARI.search(cumle_temiz):
+            if _KAZANC_SART_IPUCLARI.search(cumle_temiz) or "gün" in cumle_temiz.lower():
+                aday_cumleler.append(cumle_temiz)
+
+    if aday_cumleler:
+        # Şart ve detay içeriği en yüksek olan uzun cümleyi seç
+        en_iyi_cumle = max(aday_cumleler, key=len)
+        
+        baslangic = metin.find(en_iyi_cumle)
+        bitis = baslangic + len(en_iyi_cumle) if baslangic != -1 else None
+
+        return {
+            "kazanc_metin": AlanBulgusu(
+                deger=en_iyi_cumle,
+                ham_metin=en_iyi_cumle,
+                kural="cumle+kazanc_sarti_baglami",
+                guven=0.95,
+                kanit_metni=en_iyi_cumle,
+                baslangic_konum=baslangic,
+                bitis_konum=bitis,
+                birim="metin",
+            )
+        }
+
+    return {}
 
 
 # =============================================================================
@@ -1296,6 +1470,9 @@ def kurallarla_cikar(
          #mgm_cikar,
         alt_kategori_cikar,
         urun_kategori_cikar,
+        mgm_detay_cikar,    # <-- YENİ EKLENDİ (5 kişi limiti ve MGM ödülleri için)
+        odul_tipi_ve_metni_cikar,
+        kazanc_metni_cikar,
     )
 
     for cikarici in cikaricilar:

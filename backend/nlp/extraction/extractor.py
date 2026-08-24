@@ -159,7 +159,7 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
         "mgm_detay": {
             #"is_mgm": False,
             "kisi_basi_kazanc": _get_val(bulgular, "kisi_basi_kazanc"),
-            "mgm_limit_tl": _get_val(bulgular, "mgm_limit_tl")
+            "mgm_limit_kisi": _get_val(bulgular, "mgm_limit_kisi")
         }
     }
     return structured_doc

@@ -1,7 +1,6 @@
 import re
 from dataclasses import dataclass
 
-# EKSİK OLAN SINIFI BURAYA EKLEDİK (Dışarıdan import etmesine gerek kalmadı)
 @dataclass
 class AlanBulgusu:
     deger: str
@@ -22,9 +21,6 @@ GECERLI_TURLER = {
 
 _R = re.IGNORECASE
 _ERKEN_KARAKTER = 250
-
-import re
-
 
 _KURALLAR: tuple[tuple[str, str, re.Pattern], ...] = (
     # --- FİNANSMAN KAMPANYALARI ---
@@ -60,7 +56,7 @@ _KURALLAR: tuple[tuple[str, str, re.Pattern], ...] = (
             r"|arkada[şs][ıi]n[ıi]z[ıi]\s+(?:davet\s+edin|getirin)"
             r"|arkada[şs]\w*\s+getir\w*"
             r"|arkada[şs]\w*\s+davet\s+et\w*"
-            r"|yak[ıi]n[ıi]n[ıi]\s+davet\s+et\w*"
+            r"|yak[ıi]n[ıi]\s+davet\s+et\w*"
             r"|yak[ıi]n[ıi]n[ıi]z[ıi]\s+davet\s+edin"
             r"|davet\s+et(?:tiğin|tiğiniz)?\s+arkada[şs]"
             r"|referans\s+(?:kod|link|bağlant)"
@@ -93,23 +89,23 @@ _KURALLAR: tuple[tuple[str, str, re.Pattern], ...] = (
         ),
     ),
     # --- HARCAMA & KART KAMPANYALARI ---
+    # Not: Öncelik sıralaması düzeltildi; özel kart isimleri/kelimeleri önce kontrol ediliyor.
+    (
+        "kart_kampanyasi",
+        "hepsi",
+        re.compile(
+            r"\b(?:biz\s+kart|sağlam\s+kart|happy\s+card|albaraka\s+world|vkard|berekett?card"
+            r"|kredi\s+kart\w*|banka\s+kart\w*|debit\w*|troy|mastercard|visa"
+            r"|qr\s+öde\w*|taksit\w*)\b",
+            _R,
+        ),
+    ),
     (
         "alisveris_puani",
         "erken",
         re.compile(
             r"parafpara|worldpuan|puan|\bmil\b|mil'e|\biade\b|bonus"
             r"|kazand[ıi]ran|(harcad[ıi]k[çc]a|yapt[ıi]k[çc]a)\s+kazan",
-            _R,
-        ),
-    ),
-    
-    (
-        "kart_kampanyasi",
-        "hepsi",
-        re.compile(
-            r"^(?!.*(?:mü[şs]teri\s+ol|ho[şs]\s*geldin|davet|referans)).*"
-            r"(?:taksit|indirim|\bkartl?a?\b|kredi\s+kart|debit|troy|mastercard|visa"
-            r"|qr\s+öde|harcama|biz\s+kart|sağlam\s+kart|happy\s+card|albaraka\s+world|vkard|berekett?card)",
             _R,
         ),
     ),
@@ -137,8 +133,6 @@ def kuralla_siniflandir(baslik: str, metin: str) -> AlanBulgusu | None:
     return None
 
 def llm_ile_siniflandir(baslik: str, metin: str) -> AlanBulgusu | None:
-    # Test ortamı için LLM kapalı varsayıyoruz. 
-    # Gerçek entegrasyonda burası Qwen vb. bir modele istek atacaktır.
     return None
 
 def siniflandir(baslik: str, metin: str, llm_aktif: bool = True) -> AlanBulgusu | None:
