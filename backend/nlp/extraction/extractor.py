@@ -82,11 +82,10 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
 
     # Kampanya Türü için Çoklu Anahtar Kontrolü
     kampanya_turu = _get_val(bulgular, "kampanya_turu")
-    alt_kategori = (
-        doc.get("alt_kategori") or 
-        doc.get("kategori") or 
+    kategori = (
+        doc.get("kategori") or
         doc.get("sektor") or 
-        _get_val(bulgular, ["alt_kategori", "kategori", "sektor"]) or 
+        _get_val(bulgular, ["kategori", "sektor"]) or 
         "Genel"
     )
     # Banka ve ID standartlaştırma
@@ -123,7 +122,7 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
             "is_active": "aktif",
             "hedef_kitle": _get_val(bulgular, "hedef_kitle"),
             "kampanya_turu": kampanya_turu,
-            "alt_kategori": alt_kategori,
+            "kategori": kategori,
             "metin": doc.get("ham_metin"),
             "cekilis_tarihi": doc.get("cekilis_tarihi")
         },
@@ -144,7 +143,7 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
             "kazanc_metin": _get_val(bulgular, "kazanc_metin")
         },
         "mgm_detay": {
-            "is_mgm": False,
+            #"is_mgm": False,
             "kisi_basi_kazanc": _get_val(bulgular, "kisi_basi_kazanc"),
             "mgm_limit_tl": _get_val(bulgular, "mgm_limit_tl")
         }
@@ -161,12 +160,12 @@ def urun_semasina_donustur(doc: dict, bulgular: dict) -> dict:
     kampanya_turu = _get_val(bulgular, "kampanya_turu")
     
     # Scraper'dan (doc) veya NLP bulgularından alt kategori çekimi
-    alt_kategori = doc.get("alt_kategori") or doc.get("kategori") or _get_val(bulgular, ["alt_kategori", "sektor"]) or "Genel"
+    kategori = doc.get("kategori") or doc.get("kategori") or _get_val(bulgular, ["kategori", "sektor"]) or "Genel"
 
     return {
         "_id": f"fin_{banka_id}_{raw_id}",
         "banka_id": banka_id,
-        "alt_kategori": alt_kategori,
+        "kategori": kategori,
         "urun_adı": urun_adi,
         "tur": kampanya_turu,
         "max_vade_ay": _safe_int(_get_val(bulgular, ["max_vade_ay", "vade"])),

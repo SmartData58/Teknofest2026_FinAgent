@@ -298,7 +298,7 @@ def extract_campaign_data(doc):
         doc.get("banka_adi") or doc.get("banka") or genel.get("banka_id"),
     )
     kampanya_adi = genel.get("kampanya_adi") or doc.get("kampanya_adi") or doc.get("baslik") or "Kampanya"
-    kat = genel.get("kampanya_turu") or doc.get("kampanya_turu") or doc.get("kategori") or doc.get("kampanya_kategorisi") or genel.get("alt_kategori") or "Genel"
+    kat = genel.get("kampanya_turu") or doc.get("kampanya_turu") or doc.get("kategori") or doc.get("kampanya_kategorisi") or genel.get("kategori") or "Genel"
     url = genel.get("kaynak_url") or doc.get("url") or doc.get("kampanya_url") or "-"
 
     kitle_raw = genel.get("hedef_kitle") or doc.get("hedef_kitle") or "-"

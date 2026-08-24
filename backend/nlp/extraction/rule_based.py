@@ -1004,37 +1004,37 @@ def hedef_kitle_cikar(metin: str) -> Dict[str, List[str]]:
 # 7. MGM / ARKADAŞINI GETİR
 # =============================================================================
 
-_MGM_KALIBI = re.compile(
-    r"arkadaşını\s+(?:davet\s+et|getir)"
-    r"|arkadaşınızı\s+(?:davet\s+edin|getirin)"
-    r"|arkadaşı\w*\s+getir\w*"
-    r"|arkadaş\w*\s+davet\s+et\w*"
-    r"|yakınını\s+davet\s+et\w*"
-    r"|yakınınızı\s+davet\s+edin"
-    r"|davet\s+et(?:tiğin|tiğiniz)?\s+arkadaş"
-    r"|referans\s+(?:kod|link|bağlant)"
-    r"|referansın\w*\s+ile"
-    r"|getir\s+kazan",
-    re.IGNORECASE,
-)
+#_MGM_KALIBI = re.compile(
+    #r"arkadaşını\s+(?:davet\s+et|getir)"
+    #r"|arkadaşınızı\s+(?:davet\s+edin|getirin)"
+    #r"|arkadaşı\w*\s+getir\w*"
+    #r"|arkadaş\w*\s+davet\s+et\w*"
+    #r"|yakınını\s+davet\s+et\w*"
+    #r"|yakınınızı\s+davet\s+edin"
+    #r"|davet\s+et(?:tiğin|tiğiniz)?\s+arkadaş"
+    #r"|referans\s+(?:kod|link|bağlant)"
+    #r"|referansın\w*\s+ile"
+    #r"|getir\s+kazan",
+    #re.IGNORECASE,
+#)
 
 
-def mgm_cikar(metin: str) -> Dict[str, AlanBulgusu]:
-    esles = _MGM_KALIBI.search(metin)
+#def mgm_cikar(metin: str) -> Dict[str, AlanBulgusu]:
+    #esles = _MGM_KALIBI.search(metin)
 
-    if not esles:
-        return {}
+    #if not esles:
+        #return {}
 
-    return {
-        "is_mgm": _bulgu(
-            metin,
-            esles,
-            True,
-            "mgm_kalibi",
-            guven=0.99,
-            birim="boolean",
-        )
-    }
+    #return {
+        #"is_mgm": _bulgu(
+            #metin,
+            #esles,
+            #True,
+            #"mgm_kalibi",
+            #guven=0.99,
+            #birim="boolean",
+        #)
+    #}
 
 
 # =============================================================================
@@ -1198,7 +1198,7 @@ def kurallarla_cikar(
         tarihleri_cikar,
         masraf_cikar,
         hedef_kitle_cikar,
-        mgm_cikar,
+         #mgm_cikar,
         alt_kategori_cikar,
     )
 
