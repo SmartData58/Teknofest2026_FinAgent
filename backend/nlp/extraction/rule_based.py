@@ -1172,6 +1172,101 @@ def alt_kategori_cikar(metin: str) -> Dict[str, AlanBulgusu]:
 
     return {}
 
+# ============================================================
+# KATEGORİ TESPİTİ
+# ============================================================
+
+
+
+import re
+from typing import Dict, Any
+
+# 1. Regex desenlerini kategori bazında TEK BİR pattern olarak derliyoruz (Performans ve Okunabilirlik)
+KATEGORI_KURALLARI: list[tuple[str, re.Pattern]] = [
+    (
+        "Konut / Gayrimenkul Finansmanları",
+        re.compile(
+            r"\bkonut\b|\bev\s*(?:kredi|finansman)|\bmortgage\b|\bgayrimenkul\b"
+            r"|\biş\s*yer|\bis\s*yer|\barsa\b|\b2b\b|\b2-b\b|\bprefabrik\b"
+            r"|\bkentsel\s*dönüşüm|\bkentsel\s*donusum|\bbina\s*tamamlama\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Taşıt Finansmanları",
+        re.compile(
+            r"\bta[şs][ıi]t\b|\bara[çc]\b|\bo?to\s*(?:kredi|finansman)"
+            r"|\bmotosiklet\b|\bmotor\b|\btogg\b|\belektrikli\s*ara[çc]"
+            r"|\bdeniz\s*ta[şs][ıi]t|\btekne\b|\bisiklet\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Bireysel / İhtiyaç Finansmanları",
+        re.compile(
+            r"\bihtiya[çc]\b|\beğitim\b|\begitim\b|\bokul\b|\böğrenci\b|\bogrenci\b"
+            r"|\bsağlık\b|\bsaglik\b|\btedavi\b|\bhac\b|\bumre\b|\btatil\b|\bseyahat\b"
+            r"|\bev\s*eşya|\bev\s*esya|\beyaş\b|\bteknoloji\b|\btelefon\b|\bcep\b"
+            r"|\bdoğalgaz\b|\bdogalgaz\b|\btesisat\b|\benerji\s*dönüşüm|\benerji\s*donusum"
+            r"|\bkarz[-_ ]?ı\s*hasen\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Dijital / Anında Alışveriş Finansmanları",
+        re.compile(
+            r"\bmağazada\s*finansman|\bmagazada\s*finansman|\bbayide\s*finansman\b"
+            r"|\bşimdi\s*al\b|\bsimdi\s*al\b|\bveresiye\b|\bdijital\s*tüketici"
+            r"|\bdijital\s*tuketici|\bjet\s*finansman\b|\bhızlı\s*finansman"
+            r"|\bhizli\s*finansman|\balışveriş\s*kredi|\balisveris\s*kredi",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Ticari & Kurumsal Finansmanlar",
+        re.compile(
+            r"\bticari\b|\bkurumsal\b|\bkobi\b|\bişletme\s*sermaye|\bisletme\s*sermaye"
+            r"|\bsanayi\b|\bmakin[ae]\b|\bteçhizat\b|\btechizat\b|\bekipman\b"
+            r"|\btar[ıi]m\b|\bçiftçi\b|\bciftci\b|\bsürdürülebilir\b|\bsurdurulebilir\b"
+            r"|\byeşil\s*enerji\b|\byesil\s*enerji\b|\bges\b|\bgüneş\s*enerji|\bgunes\s*enerji"
+            r"|\bdış\s*ticaret|\bdis\s*ticaret|\btedarikçi\s*finansman|\btedarikci\s*finansman"
+            r"|\bleasing\b|\bkiralama\b",
+            re.IGNORECASE,
+        ),
+    ),
+]
+
+VARSAYILAN_URUN_KATEGORISI = "Diğer"
+
+
+def urun_kategori_cikar(metin: str) -> Dict[str, AlanBulgusu]:
+    """
+    Metinde geçen İLK ürün kategorisini tespit eder ve 
+    tek bir AlanBulgusu nesnesi olarak döndürür.
+    """
+    metin_temiz = (metin or "").strip()
+    if not metin_temiz:
+        return {}
+
+    for kategori_adi, desen in KATEGORI_KURALLARI:
+        esles = desen.search(metin_temiz)
+        if esles:
+            return {
+                "urun_kategori": _bulgu(
+                    metin_temiz,
+                    esles,
+                    kategori_adi,
+                    f"urun_kategori_{kategori_adi.lower()}",
+                    guven=0.95,
+                    birim="metin",
+                )
+            }
+
+    return {}
+
+
+
+
 
 # =============================================================================
 # 10. ANA GİRİŞ NOKTASI
@@ -1200,6 +1295,7 @@ def kurallarla_cikar(
         hedef_kitle_cikar,
          #mgm_cikar,
         alt_kategori_cikar,
+        urun_kategori_cikar,
     )
 
     for cikarici in cikaricilar:
@@ -1216,6 +1312,7 @@ def kurallarla_cikar(
 
     return bulgular
 
+ 
 
 # =============================================================================
 # 11. SADE JSON'A DÖNÜŞTÜRME
