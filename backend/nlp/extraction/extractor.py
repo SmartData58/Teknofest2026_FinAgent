@@ -20,6 +20,20 @@ MONGO_URI = os.getenv("MONGO_URI", DEFAULT_URI)
 
 GEÇERLİ_YÖNTEMLER = {"regex", "ner", "berturk_classifier", "llm"}
 
+# Kanıt dokümanlarında hangi kayıt tipine hangi ön ek / id alanı kullanılacağını belirler
+KAYIT_TIPI_AYARLARI = {
+    "kampanya": {
+        "id_onek": "kamp",
+        "id_alani": "kampanya_id",
+        "raw_id_alani": "raw_campaign_id",
+    },
+    "urun": {
+        "id_onek": "urun",
+        "id_alani": "urun_id",
+        "raw_id_alani": "raw_urun_id",
+    },
+}
+
 
 def prepare_for_mongo(data):
     if isinstance(data, dict):
@@ -180,9 +194,12 @@ def urun_semasina_donustur(doc: dict, bulgular: dict) -> dict:
     }
 
 
-def _kanit_dokumani_hazirla(doc: dict, alan_adi: str, bulgu_obj) -> dict | None:
+def _kanit_dokumani_hazirla(doc: dict, alan_adi: str, bulgu_obj, kayit_tipi: str = "kampanya") -> dict | None:
     """
     Tek bir AlanBulgusu nesnesini Jüri Kanıt Şemasına (extracted_fields) dönüştürür.
+
+    kayit_tipi: "kampanya" veya "urun" -> kanıt dokümanındaki id alanlarının
+    ve ön eklerin hangi kayıt tipine göre üretileceğini belirler.
     """
     if bulgu_obj is None:
         return None
@@ -214,15 +231,18 @@ def _kanit_dokumani_hazirla(doc: dict, alan_adi: str, bulgu_obj) -> dict | None:
     if metot not in GEÇERLİ_YÖNTEMLER:
         metot = "regex"
 
+    ayar = KAYIT_TIPI_AYARLARI.get(kayit_tipi, KAYIT_TIPI_AYARLARI["kampanya"])
+
     simdi = datetime.now(timezone.utc).isoformat()
     banka_id = doc.get("banka") or doc.get("banka_kodu") or "genel"
-    raw_campaign_id = str(doc["_id"])
-    kampanya_id = f"kamp_{banka_id}_{raw_campaign_id}"
+    raw_id = str(doc["_id"])
+    ust_kayit_id = f"{ayar['id_onek']}_{banka_id}_{raw_id}"
 
-    return {
-        "_id": f"field_{raw_campaign_id}_{alan_adi}",
-        "kampanya_id": kampanya_id,
-        "raw_campaign_id": raw_campaign_id,
+    kanit_doc = {
+        "_id": f"field_{ayar['id_onek']}_{raw_id}_{alan_adi}",
+        ayar["id_alani"]: ust_kayit_id,
+        ayar["raw_id_alani"]: raw_id,
+        "kayit_tipi": kayit_tipi,
         "banka_id": banka_id,
         "alan_adi": alan_adi,
         "ham_değer": ham_değer,
@@ -236,9 +256,141 @@ def _kanit_dokumani_hazirla(doc: dict, alan_adi: str, bulgu_obj) -> dict | None:
         "created_at": simdi
     }
 
+    # Kampanya kayıtları için geriye dönük uyumluluk (eski alan adı)
+    if kayit_tipi == "kampanya":
+        kanit_doc["kampanya_id"] = ust_kayit_id
+
+    return kanit_doc
+
+
+def _kampanyalari_isle(db) -> tuple[int, int]:
+    """ham_kampanyalar koleksiyonunu işleyip islenmis_kampanyalar + urun (finansman_detay)
+    + cıkarılan_alanlar koleksiyonlarına yazar. (islenmis_sayisi, kanit_sayisi) döner."""
+
+    clean_col = db["ham_kampanyalar"]
+    structured_col = db["islenmis_kampanyalar"]
+    fields_col = db["cıkarılan_alanlar"]
+
+    sorgu = {"$or": [{"is_extracted": False}, {"is_extracted": {"$exists": False}}]}
+    temiz_kampanyalar = list(clean_col.find(sorgu))
+
+    if not temiz_kampanyalar:
+        print(" Bilgi çıkarımı yapılacak yeni temiz kampanya bulunamadı.")
+        return 0, 0
+
+    print(f" Toplam {len(temiz_kampanyalar)} kampanya Hedef Şemalara Dönüştürülüyor...")
+
+    islanan_sayisi = 0
+    toplam_kanit_sayisi = 0
+
+    for doc in temiz_kampanyalar:
+        baslik = doc.get("baslik") or doc.get("kampanya_adi", "")
+        metin = doc.get("ham_metin", "")
+
+        cikarim_sonucu = hibrit_cikar(baslik, metin) or {}
+
+        structured_doc = prepare_for_mongo(semaya_donustur(doc, cikarim_sonucu))
+        structured_col.update_one(
+            {"_id": structured_doc["_id"]},
+            {"$set": structured_doc},
+            upsert=True
+        )
+
+        kanit_islemleri = []
+        for alan_adi, bulgu in cikarim_sonucu.items():
+            kanit_doc = _kanit_dokumani_hazirla(doc, alan_adi, bulgu, kayit_tipi="kampanya")
+            if kanit_doc:
+                kanit_doc = prepare_for_mongo(kanit_doc)
+                kanit_islemleri.append(
+                    UpdateOne(
+                        {"_id": kanit_doc["_id"]},
+                        {"$set": kanit_doc},
+                        upsert=True
+                    )
+                )
+
+        if kanit_islemleri:
+            kanit_sonuc = fields_col.bulk_write(kanit_islemleri)
+            toplam_kanit_sayisi += kanit_sonuc.upserted_count + kanit_sonuc.modified_count
+
+        clean_col.update_one({"_id": doc["_id"]}, {"$set": {"is_extracted": True}})
+
+        islanan_sayisi += 1
+        banka_adi = doc.get("banka") or doc.get("banka_kodu") or "genel"
+        print(f"    ✅ [{banka_adi.upper()}] Kampanya dönüştürüldü: {baslik[:40]}...")
+
+    return islanan_sayisi, toplam_kanit_sayisi
+
+
+def _urunleri_isle(db) -> tuple[int, int]:
+    """ham_urun koleksiyonunu işleyip islenmis_urunler + cıkarılan_alanlar
+    koleksiyonlarına yazar. (islenmis_sayisi, kanit_sayisi) döner."""
+
+    ham_urun_col = db["ham_urun"]
+    islenmis_urun_col = db["islenmis_urunler"]
+    fields_col = db["cıkarılan_alanlar"]
+
+    sorgu = {"$or": [{"is_extracted": False}, {"is_extracted": {"$exists": False}}]}
+    ham_urunler = list(ham_urun_col.find(sorgu))
+
+    if not ham_urunler:
+        print(" Bilgi çıkarımı yapılacak yeni ham ürün bulunamadı.")
+        return 0, 0
+
+    print(f" Toplam {len(ham_urunler)} ürün Hedef Şemalara Dönüştürülüyor...")
+
+    islanan_sayisi = 0
+    toplam_kanit_sayisi = 0
+
+    for doc in ham_urunler:
+        baslik = doc.get("baslik") or doc.get("kampanya_adi", "")
+        metin = doc.get("ham_metin", "")
+
+        cikarim_sonucu = hibrit_cikar(baslik, metin) or {}
+
+        urun_doc = prepare_for_mongo(urun_semasina_donustur(doc, cikarim_sonucu))
+        # urun_semasina_donustur "_id"yi "fin_" ile üretiyor; ham_urun kaynaklı
+        # kayıtları kampanyadan türeyen "urun" koleksiyonuyla karıştırmamak için
+        # burada "urn_" ön ekiyle yeniden üretiyoruz.
+        banka_id = doc.get("banka") or doc.get("banka_kodu") or "genel"
+        raw_id = str(doc["_id"])
+        urun_doc["_id"] = f"urn_{banka_id}_{raw_id}"
+        urun_doc["kaynak_kayit_id"] = raw_id
+
+        islenmis_urun_col.update_one(
+            {"_id": urun_doc["_id"]},
+            {"$set": urun_doc},
+            upsert=True
+        )
+
+        kanit_islemleri = []
+        for alan_adi, bulgu in cikarim_sonucu.items():
+            kanit_doc = _kanit_dokumani_hazirla(doc, alan_adi, bulgu, kayit_tipi="urun")
+            if kanit_doc:
+                kanit_doc = prepare_for_mongo(kanit_doc)
+                kanit_islemleri.append(
+                    UpdateOne(
+                        {"_id": kanit_doc["_id"]},
+                        {"$set": kanit_doc},
+                        upsert=True
+                    )
+                )
+
+        if kanit_islemleri:
+            kanit_sonuc = fields_col.bulk_write(kanit_islemleri)
+            toplam_kanit_sayisi += kanit_sonuc.upserted_count + kanit_sonuc.modified_count
+
+        ham_urun_col.update_one({"_id": doc["_id"]}, {"$set": {"is_extracted": True}})
+
+        islanan_sayisi += 1
+        banka_adi = doc.get("banka") or doc.get("banka_kodu") or "genel"
+        print(f"    ✅ [{banka_adi.upper()}] Ürün dönüştürüldü: {baslik[:40]}...")
+
+    return islanan_sayisi, toplam_kanit_sayisi
+
 
 def temiz_verilerden_bilgi_cikar() -> None:
-    
+
     print(" 🔍 LLM servisi kontrol ediliyor...")
     if not _llm_var_mi():
         print(" ⚠️  UYARI: LLM servisine erişilemedi! İşlem Regex/Kural bazlı modda devam edecek.")
@@ -246,84 +398,24 @@ def temiz_verilerden_bilgi_cikar() -> None:
         print(" ✅ LLM servisi hazır ve aktif.")
 
     print(" 🚀 Veritabanı işlemleri başlatılıyor...\n")
-    
+
     client = None
     try:
         client = MongoClient(MONGO_URI)
         db = client[MONGO_DB_NAME]
 
-        clean_col = db["ham_kampanyalar"]
-        structured_col = db["islenmis_kampanyalar"]
-        urun_col = db["urun"]
-        fields_col = db["cıkarılan_alanlar"]
+        # 1. KAMPANYALAR
+        kampanya_sayisi, kampanya_kanit_sayisi = _kampanyalari_isle(db)
 
-        sorgu = {"$or": [{"is_extracted": False}, {"is_extracted": {"$exists": False}}]}
-        temiz_kampanyalar = list(clean_col.find(sorgu))
+        # 2. FİNANSMAN ÜRÜNLERİ (spider'ların urunleri_topla() ile topladığı ham_urun verisi)
+        print()
+        urun_sayisi, urun_kanit_sayisi = _urunleri_isle(db)
 
-        if not temiz_kampanyalar:
-            print(" Bilgi çıkarımı yapılacak yeni temiz kampanya bulunamadı.")
-            return
-
-        print(f" Toplam {len(temiz_kampanyalar)} kampanya Hedef Şemalara Dönüştürülüyor...")
-
-        islanan_sayisi = 0
-        toplam_kanit_sayisi = 0
-
-        for doc in temiz_kampanyalar:
-            baslik = doc.get("baslik") or doc.get("kampanya_adi", "")
-            metin = doc.get("ham_metin", "")
-
-            # 1. Kural + LLM Hibrit Çıkarımı Yap (LLM yoksa hibrit_cikar fonksiyonu regex ile çalışmaya devam edecektir)
-            cikarim_sonucu = hibrit_cikar(baslik, metin) or {}
-
-            # 2. Altın Kampanya Şemasına Dönüştür ve Kaydet
-            structured_doc = prepare_for_mongo(semaya_donustur(doc, cikarim_sonucu))
-            structured_col.update_one(
-                {"_id": structured_doc["_id"]},
-                {"$set": structured_doc},
-                upsert=True
-            )
-
-            # 3. Finansman Şemasına Dönüştür ve Kaydet
-            urun_doc = prepare_for_mongo(urun_semasina_donustur(doc, cikarim_sonucu))
-            urun_col.update_one(
-                {"_id": urun_doc["_id"]},
-                {"$set": urun_doc},
-                upsert=True
-            )
-
-            # 4. Jüri Kanıt Şemasını Oluştur ve Kaydet
-            kanit_islemleri = []
-            for alan_adi, bulgu in cikarim_sonucu.items():
-                kanit_doc = _kanit_dokumani_hazirla(doc, alan_adi, bulgu)
-                if kanit_doc:
-                    kanit_doc = prepare_for_mongo(kanit_doc)
-                    kanit_islemleri.append(
-                        UpdateOne(
-                            {"_id": kanit_doc["_id"]},
-                            {"$set": kanit_doc},
-                            upsert=True
-                        )
-                    )
-
-            if kanit_islemleri:
-                kanit_sonuc = fields_col.bulk_write(kanit_islemleri)
-                eklenen_kanit = kanit_sonuc.upserted_count + kanit_sonuc.modified_count
-                toplam_kanit_sayisi += eklenen_kanit
-
-            # 5. Kaynak Dokümanda İşlendi İşaretini Güncelle
-            clean_col.update_one(
-                {"_id": doc["_id"]},
-                {"$set": {"is_extracted": True}}
-            )
-
-            islanan_sayisi += 1
-            banka_adi = doc.get("banka") or doc.get("banka_kodu") or "genel"
-            print(f"    ✅ [{banka_adi.upper()}] Dönüştürüldü: {baslik[:40]}...")
+        toplam_kanit_sayisi = kampanya_kanit_sayisi + urun_kanit_sayisi
 
         print(f"\n🎉 İşlem Tamamlandı!")
-        print(f"   • {islanan_sayisi} kampanya 'islenmis_kampanyalar' koleksiyonuna kaydedildi.")
-        print(f"   • {islanan_sayisi} finansman kaydı 'urun' koleksiyonuna kaydedildi.")
+        print(f"   • {kampanya_sayisi} kampanya 'islenmis_kampanyalar' koleksiyonuna kaydedildi.")
+        print(f"   • {urun_sayisi} ürün 'islenmis_urunler' koleksiyonuna kaydedildi (spider kaynaklı).")
         print(f"   • {toplam_kanit_sayisi} alan kanıtı 'cıkarılan_alanlar' koleksiyonuna kaydedildi.")
 
     except PyMongoError as err:

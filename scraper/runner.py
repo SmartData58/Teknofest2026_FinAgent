@@ -67,20 +67,27 @@ def spider_sinifini_bul(spider_adi: str) -> type[TabanScraper]:
     raise RuntimeError(f"'{spider_adi}' modülünde TabanScraper alt sınıfı bulunamadı.")
 
 
-def ham_verileri_temizle_in_memory(raw_kayitlar: list[dict]) -> list[dict]:
+def ham_verileri_temizle_in_memory(raw_kayitlar: list[dict], banka_id: str | None = None) -> list[dict]:
     """
     Spider'dan toplanan ham sözlük verilerini hafızada temizler.
     Metin alanlarını temizler, önce 'tarih_metni' sonra 'ham_metin' üzerinden tarihleri çıkarır.
+
+    banka_id verilirse, kaydın kendi içinde 'banka' alanı yoksa/boşsa bile
+    clean_doc'a tutarlı biçimde yazılır (özellikle ürün kayıtları için).
     """
     if not raw_kayitlar:
         return []
 
     temiz_kayitlar = []
-    print(f"🧹 Toplam {len(raw_kayitlar)} adet ham kampanya verisi temizleniyor...")
+    print(f"🧹 Toplam {len(raw_kayitlar)} adet ham veri temizleniyor...")
 
     for doc in raw_kayitlar:
         clean_doc = doc.copy()
         clean_doc.pop("is_processed", None)
+
+        # Banka kimliğini tutarlı hale getir
+        if banka_id and not clean_doc.get("banka"):
+            clean_doc["banka"] = banka_id
 
         # 1. Doküman içindeki tüm metin alanlarını otomatik temizle
         for anahtar, deger in clean_doc.items():
@@ -115,18 +122,17 @@ def ham_verileri_temizle_in_memory(raw_kayitlar: list[dict]) -> list[dict]:
         # Spider'ın web sitesinden çektiği kategori alanını öncelikli olarak al
         siteden_gelen_kategori = clean_doc.get("kategori")
 
-# Değerin gerçekten var ve anlamlı bir string olup olmadığını kontrol et
+        # Değerin gerçekten var ve anlamlı bir string olup olmadığını kontrol et
         if siteden_gelen_kategori and str(siteden_gelen_kategori).strip().lower() not in ["none", "null", ""]:
             clean_doc["kampanya_turu"] = siteden_gelen_kategori
         else:
-    # Siteden geçerli bir kategori gelmediyse başlık ve metinden tespit et
-            #aranacak_metin = f"{clean_doc.get('baslik', '')} {ham_metin}"
+            # Siteden geçerli bir kategori gelmediyse başlık ve metinden tespit et
             tur_bulgusu = kategori_cikar(
                         baslik or "",
                         ham_metin or "",
                     )
-    
-    # kategori_cikar'dan dönen veri yapısına uygun atama yapın:
+
+            # kategori_cikar'dan dönen veri yapısına uygun atama yapın:
             if isinstance(tur_bulgusu, dict):
                 clean_doc["kampanya_turu"] = tur_bulgusu.get("tur", "genel")
             else:
@@ -138,7 +144,7 @@ def ham_verileri_temizle_in_memory(raw_kayitlar: list[dict]) -> list[dict]:
 
         temiz_kayitlar.append(clean_doc)
 
-    print(f"✅ {len(temiz_kayitlar)} adet kampanya başarıyla temizlendi ve tarihleri işlendi.")
+    print(f"✅ {len(temiz_kayitlar)} adet kayıt başarıyla temizlendi ve tarihleri işlendi.")
     return temiz_kayitlar
 
 
@@ -161,7 +167,7 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
 
         # ---------------- KAMPANYALAR (ham_kampanya) ----------------
         raw_kayitlar = list(spider.kampanyalari_topla())
-        temizlenmis_kayitlar = ham_verileri_temizle_in_memory(raw_kayitlar)
+        temizlenmis_kayitlar = ham_verileri_temizle_in_memory(raw_kayitlar, banka_id=banka_id)
         bson_uyumlu_kayitlar = bson_uyumlu_hale_getir(temizlenmis_kayitlar)
 
         ham_kampanyalari_kaydet(
@@ -171,13 +177,13 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
             db=db,
         )
 
-        # ---------------- ÜRÜNLER (ham_urun) ----------------
+        # ---------------- ÜRÜNLER / FİNANSMANLAR (ham_urun) ----------------
         if hasattr(spider, "urunleri_topla"):
-            print(f"  🔎 [{banka_id.upper()}] Ürünler taranıyor...")
+            print(f"  🔎 [{banka_id.upper()}] Ürünler/Finansmanlar taranıyor...")
             raw_urunler = list(spider.urunleri_topla())
 
             if raw_urunler:
-                temiz_urunler = ham_verileri_temizle_in_memory(raw_urunler)
+                temiz_urunler = ham_verileri_temizle_in_memory(raw_urunler, banka_id=banka_id)
                 bson_urunler = bson_uyumlu_hale_getir(temiz_urunler)
 
                 urun_koleksiyonu = db["ham_urun"]
@@ -192,7 +198,7 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
                         upsert=True,
                     )
                     eklenen += 1
-                print(f"  ✅ {eklenen} adet ürün 'ham_urun' koleksiyonuna kaydedildi.")
+                print(f"  ✅ {eklenen} adet ürün 'ham_urun' koleksiyonuna kaydedildi (extractor.py bu koleksiyonu işleyip 'islenmis_urunler'e yazacak).")
             else:
                 print("  ℹ️ Ürün bulunamadı.")
         else:
