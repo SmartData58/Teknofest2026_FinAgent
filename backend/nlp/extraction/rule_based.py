@@ -1254,10 +1254,31 @@ from typing import Dict, Any
 # 1. Regex desenlerini kategori bazında TEK BİR pattern olarak derliyoruz (Performans ve Okunabilirlik)
 KATEGORI_KURALLARI: list[tuple[str, re.Pattern]] = [
     (
+        "Dijital / Anında Alışveriş Finansmanları",
+        re.compile(
+            r"\bmağazada\s*finansman|\bmagazada\s*finansman|\bbayide\s*finansman\b"
+            r"|\bşimdi\s*al\b|\bsimdi\s*al\b|\bveresiye\b|\bdijital\s*tüketici"
+            r"|\bdijital\s*tuketici|\bjet\s*finansman\b|\bhızlı\s*finansman"
+            r"|\bhizli\s*finansman|\balışveriş\s*kredi|\balisveris\s*kredi",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Bireysel / İhtiyaç Finansmanları",
+        re.compile(
+            r"\bihtiya[çc]\b|\beğitim\b|\begitim\b|\bokul\b|\böğrenci\b|\bogrenci\b"
+            r"|\bsağlık\b|\bsaglik\b|\btedavi\b|\bhac\b|\bumre\b|\btatil\b|\bseyahat\b"
+            r"|\bev\s*eşya|\bev\s*esya|\beyaş\b|\bteknoloji\b|\btelefon\b|\bcep\b"
+            r"|\bdoğalgaz\b|\bdogalgaz\b|\btesisat\b|\benerji\s*dönüşüm|\benerji\s*donusum"
+            r"|\bkarz[-_ ]?ı\s*hasen\b",
+            re.IGNORECASE,
+            ),
+        ),
+    (
         "Konut / Gayrimenkul Finansmanları",
         re.compile(
             r"\bkonut\b|\bev\s*(?:kredi|finansman)|\bmortgage\b|\bgayrimenkul\b"
-            r"|\biş\s*yer|\bis\s*yer|\barsa\b|\b2b\b|\b2-b\b|\bprefabrik\b"
+            r"|\bişyeri\s*finansmanı\b|\barsa\b|\b2b\b|\b2-b\b|\bprefabrik\b"
             r"|\bkentsel\s*dönüşüm|\bkentsel\s*donusum|\bbina\s*tamamlama\b",
             re.IGNORECASE,
         ),
@@ -1271,27 +1292,7 @@ KATEGORI_KURALLARI: list[tuple[str, re.Pattern]] = [
             re.IGNORECASE,
         ),
     ),
-    (
-        "Bireysel / İhtiyaç Finansmanları",
-        re.compile(
-            r"\bihtiya[çc]\b|\beğitim\b|\begitim\b|\bokul\b|\böğrenci\b|\bogrenci\b"
-            r"|\bsağlık\b|\bsaglik\b|\btedavi\b|\bhac\b|\bumre\b|\btatil\b|\bseyahat\b"
-            r"|\bev\s*eşya|\bev\s*esya|\beyaş\b|\bteknoloji\b|\btelefon\b|\bcep\b"
-            r"|\bdoğalgaz\b|\bdogalgaz\b|\btesisat\b|\benerji\s*dönüşüm|\benerji\s*donusum"
-            r"|\bkarz[-_ ]?ı\s*hasen\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Dijital / Anında Alışveriş Finansmanları",
-        re.compile(
-            r"\bmağazada\s*finansman|\bmagazada\s*finansman|\bbayide\s*finansman\b"
-            r"|\bşimdi\s*al\b|\bsimdi\s*al\b|\bveresiye\b|\bdijital\s*tüketici"
-            r"|\bdijital\s*tuketici|\bjet\s*finansman\b|\bhızlı\s*finansman"
-            r"|\bhizli\s*finansman|\balışveriş\s*kredi|\balisveris\s*kredi",
-            re.IGNORECASE,
-        ),
-    ),
+    
     (
         "Ticari & Kurumsal Finansmanlar",
         re.compile(
