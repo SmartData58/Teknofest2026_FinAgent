@@ -12,7 +12,7 @@ from langchain_core.output_parsers import StrOutputParser
 # 🛠️ evren_client.py'nin yeri: ÖNERİLEN backend/ (chatbot/ ile yan yana).
 # chatbot/ içine konulduğunda da çalışsın diye ikinci bir yol deneniyor.
 try:
-    from evren_client import (BASE_URL as EVREN_BASE_URL, API_KEY as EVREN_API_KEY,
+    from backend.chatbot.evren_client import (BASE_URL as EVREN_BASE_URL, API_KEY as EVREN_API_KEY,
                               MODEL_ANA, MODEL_HIZLI, MODEL_ROUTER)
 except ModuleNotFoundError:
     from chatbot.evren_client import (BASE_URL as EVREN_BASE_URL, API_KEY as EVREN_API_KEY,

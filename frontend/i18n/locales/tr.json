@@ -22,14 +22,19 @@
     "campaign_name": "Kampanya Adı",
     "not_specified": "Belirtilmedi",
     "value": "Değer",
+    "unit": "Birim",
     "system_note": "Sistem Notu",
-    "sql_desc": "Bu veriler yapılandırılmış SQL veritabanından hatasız olarak çekilmiştir.",
+    "sql_desc": "Bu veriler yapılandırılmış MongoDB veritabanından hatasız olarak çekilmiştir.",
     "png_preparing": "PNG görseli hazırlanıyor...",
-    "png_error": "PNG oluşturulamadı.",
+    "png_error": "PNG oluşturulamadı",
+    "png_no_chart": "Bu mesajda görüntü olarak kaydedilecek bir grafik yok.",
+    "png_retry": "Görsel sadeleştirilerek yeniden deneniyor...",
+    "pdf_preparing": "PDF raporu hazırlanıyor...",
     "average": "Ortalama",
     "avg_value": "Ortalama Değer",
     "min_value": "En Düşük",
     "max_value": "En Yüksek",
+    "analysis": "Analiz",
     "no_data_export": "Bu mesajda dışa aktarılacak veri veya tablo bulunamadı.",
     "report_footer": "Bu rapor, FinAgent Yapay Zeka asistanı tarafından otomatik olarak oluşturulmuştur.",
     "table": "Tablo ",
@@ -42,10 +47,11 @@
     "max_files": "En fazla {max} dosya yükleyebilirsiniz.",
     "files_sent": "dosya gönderildi.",
     "docs_analyzing": "Belgeler analiz ediliyor",
-    "history_scanning": "Sohbet geçmişi taranıyor",
     "starting": "başlatılıyor...",
     "process_starting": "İşlem başlatılıyor...",
+    "process_completed": "İşlem tamamlandı",
     "server_error": "Üzgünüm, sunucuyla iletişim kurulamadı.",
+    "busy": "Önceki yanıt sürüyor, lütfen bitmesini bekleyin.",
     "download_excel_title": "Excel Olarak İndir",
     "create_pdf_title": "PDF Raporu Oluştur",
     "save_png_title": "Grafiği PNG Olarak Kaydet",
@@ -54,13 +60,118 @@
     "download_excel": "Excel İndir",
     "generating": "Oluşturuluyor...",
     "view_report": "Raporu Görüntüle",
-    "sql_powered": "SQL Veritabanı ile Güçlendirildi (Tıklayın)",
+    "sql_powered": "MongoDB Veritabanı ile Güçlendirildi (Tıklayın)",
     "drop_files_here": "Dosyaları Buraya Bırakın",
+    "drop_here": "Dosyaları buraya bırakın",
+    "file_preview": "Dosya Önizleme",
+    "filter_banks": "Bankalar",
+    "filter_clear": "Temizle",
     "placeholder": "Bir şeyler sorun, yapıştırın (Ctrl+V) veya dosya bırakın...",
     "report_preview": "Rapor Önizleme",
     "db_record": "Veritabanı Kaydı",
     "download": "İndir",
     "process_completed": "İşlem tamamlandı",
     "campaign_detail": "Kampanya Detayı"
+  },
+  "landing": {
+    "nav": {
+      "hero": "Asistan",
+      "summary": "Proje Özeti",
+      "architecture": "Sistem Mimarisi",
+      "flow": "Sistem Akışı",
+      "goals": "Hedefler",
+      "team": "Takım"
+    },
+    "hero": {
+      "title": "Akıllı Finans Asistanı"
+    },
+    "transition": {
+      "title": "Yapay Zeka Hazırlanıyor...",
+      "subtitle": "FinAgent sohbet arayüzüne yönlendiriliyorsunuz"
+    },
+    "summary": {
+      "heading": "Proje Özeti",
+      "name_label": "Proje Adı",
+      "purpose_label": "Projenin Amacı",
+      "purpose_text": "Katılım bankalarının web sitelerinde yayınlanan doğal dildeki kampanya metinlerinden kâr payı oranı, vade, ücret, ödül gibi finansal bilgileri otomatik çıkararak, bu bilgileri standartlaştırıp dashboard ve chatbot aracılığıyla kullanıcılara sunmak.",
+      "problem_label": "Problemin Tanımı",
+      "problem_text": "Katılım bankacılığında kampanya metinleri farklı formatlarda, farklı terminolojilerle yazılmakta ve manuel karşılaştırma zorlaşmaktadır. Bu durum banka çalışanlarının ve müşterilerin en avantajlı ürünü seçmesini geciktirmektedir.",
+      "solution_label": "Çözüm Yaklaşımı",
+      "solution_text": "Web scraping ile veri toplama, Türkçe metin ön işleme ve regex tabanlı bilgi çıkarımı, yarışmanın Evren API üzerinden sunduğu büyük dil modeli ile niyet analizi ve doğal dilde yanıt üretimi, çıkarılan verileri standart formata dönüştürüp karşılaştırılabilir hale getirme, sonuçları interaktif dashboard ve soru-cevap chatbotu ile kullanıcıya sunma."
+    },
+    "architecture": {
+      "heading": "Sistem Mimarisi Katmanları",
+      "ui": {
+        "title": "Kullanıcı Arayüzü",
+        "web": "Nuxt Web Arayüzü",
+        "web_desc": "Dashboard, Filtreleme ve Karşılaştırma",
+        "chat": "Vue Chatbot"
+      },
+      "backend": {
+        "title": "FastAPI Backend",
+        "engine": "RAG Motoru",
+        "engine_desc": "Getirme (Retrieve) + Üretim (Generate)"
+      },
+      "ai": {
+        "title": "Yapay Zeka Servis Katmanı (Evren API)",
+        "embedding": "Embedding"
+      },
+      "data": {
+        "title": "Veri Katmanı",
+        "mongo": "Kampanya Verisi",
+        "qdrant": "Vektör DB",
+        "redis": "Önbellek",
+        "scraper": "Web Scraper"
+      }
+    },
+    "flow_heading": "Sistem Akış Diyagramı",
+    "flow": {
+      "1": { "title": "Web Scraping", "desc": "BeautifulSoup, Selenium" },
+      "2": { "title": "Ham Metin", "desc": "Kampanya metni, başlık, tarih" },
+      "3": { "title": "Ön İşleme", "desc": "HTML temizliği, normalizasyon" },
+      "4": { "title": "Regex Yakalama", "desc": "Oran, vade, tutar, taksit" },
+      "5": { "title": "Veri Kaydı", "desc": "MongoDB" },
+      "6": { "title": "Embedding", "desc": "Evren API (bge-m3-embed)" },
+      "7": { "title": "Vektör İndeksleme", "desc": "Qdrant (Metadata ile)" },
+      "8": { "title": "Kullanıcı Sorgusu", "desc": "Nuxt Arayüzü" },
+      "9": { "title": "Sorgu İşleme", "desc": "Niyet Analizi (Regex + LLM)" },
+      "10": { "title": "LLM Üretimi", "desc": "Evren API (llm-large)" },
+      "11": { "title": "Formatlama", "desc": "JSON / Markdown Tablosu" },
+      "12": { "title": "Kullanıcıya Sunum", "desc": "Dashboard & Chatbot" }
+    },
+    "goals_heading": "Proje Hedefleri",
+    "goals": {
+      "1": "Veri Toplama: En az 5 farklı katılım bankasının resmî web sitesinden, en az 3 farklı ürün kategorisine ait 100’den fazla kampanya metnini toplamak.",
+      "2": "Bilgi Çıkarımı Başarımı: Çıkarılan kâr payı oranı, vade, masraf ve ödül bilgilerinde %90 üzeri doğruluk oranına ulaşmak.",
+      "3": "Dashboard Geliştirme: Kullanıcıların bankalar arası karşılaştırma yapabilmesine olanak sağlayan, filtreleme ve sıralama özellikleri bulunan interaktif bir dashboard’u tamamlamak.",
+      "4": "Chatbot İşlevselliği: Kullanıcıların doğal dilde sorduğu “A Bankası’nın konut oranı ne?” veya “En düşük kâr payı hangi bankada?” gibi sorulara cevap verebilen bir chatbot’u çalışır hale getirmek.",
+      "5": "On-Premise Uygunluk: Sistemin, harici servislere bağımlı olmadan, tek bir lokal sunucuda çalışabilir olduğunu doğrulamak."
+    },
+    "team_heading": "SmartData Takımı",
+    "team": {
+      "1": {
+        "role": "Takım Kaptanı",
+        "university": "Bilgisayar Mühendisliği 4. Sınıf - Giresun Üniversitesi",
+        "desc": "Python, Java, JavaScript programlama dilleri ile veritabanı yönetim sistemlerinde yetkindir. Daha önce yapay zekâ destekli görüntü işleme, full-stack web geliştirme ve makine öğrenmesi tabanlı zaman serisi analizi projelerinde aktif roller üstlenmiştir. FinAgent projesinde; katılım bankacılığı kampanya metinlerinin ön işlenmesi, doğal dil işleme mimarilerinin araştırılması, bilgi çıkarımı ve derin öğrenme modellerinin geliştirilmesi süreçlerinden sorumludur."
+      },
+      "2": {
+        "role": "Backend & Sistem",
+        "university": "Bilgisayar Mühendisliği 3. Sınıf - Sivas Cumhuriyet Üniversitesi",
+        "desc": "Veritabanı sistemleri, Python programlama, algoritma geliştirme, yapay zekâ ve veri analizi alanlarında çalışmalar yürütmektedir. FinAgent projesinde; katılım bankalarının web sitelerinden otomatik veri toplama (web scraping), backend altyapısının kurulması, dashboard entegrasyonu ve sistem entegrasyon testlerinin yürütülmesinde aktif rol oynamaktadır."
+      },
+      "3": {
+        "role": "Veri Analitiği",
+        "university": "Yönetim Bilişim Sistemleri Mezunu - Sivas Cumhuriyet Üniversitesi",
+        "desc": "Veri işleme ve görüntü işleme alanlarında kendini geliştirmiştir. Python ve Kotlin dillerinde bilgi sahibidir. FinAgent projesinde; katılım bankacılığı kampanya metinlerinin ön işlenmesi, yapay zekâ modelleri için veri setlerinin düzenlenmesi ve bilgi çıkarımı süreçlerine uygun veri analitiği aşamalarının yürütülmesinden sorumludur."
+      },
+      "4": {
+        "role": "Yapay Zeka & Arayüz",
+        "university": "Yapay Zeka Mühendisliği 2. Sınıf - Adana Alparslan Türkeş BTÜ",
+        "desc": "Java eğitimi almış olup, C# ve Python programlama dilleri hakkında da bilgi sahibidir. FinAgent projesinde; kullanıcı dostu arayüzlerin geliştirilmesi, web arayüz bileşenlerinin kurgulanması ve ön yüz ile yapay zekâ model entegrasyonu süreçlerinde görev almaktadır."
+      }
+    },
+    "closing": {
+      "hint": "Sohbete başlamak için aşağı kaydırmaya devam edin veya arama yapın."
+    }
   }
 }

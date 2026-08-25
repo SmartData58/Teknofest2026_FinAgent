@@ -32,7 +32,7 @@ except ImportError:
 
 # .env'i evren_client'ın yükleyicisiyle oku
 try:
-    import evren_client as ev
+    import backend.chatbot.evren_client as ev
 except ModuleNotFoundError:
     try:
         from chatbot import evren_client as ev

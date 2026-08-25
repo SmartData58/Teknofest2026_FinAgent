@@ -439,6 +439,31 @@ const klonRenkleriniDuzelt = (orijinalKok, klonKok) => {
         const klon = klonlar[i];
         if (!klon || !klon.style) continue;
 
+        // 🚨 SIFIR BOYUTLU ELEMANLARDA ARKA PLAN GÖRSELİNİ KALDIR.
+        //
+        // Hata: "Failed to execute 'createPattern' on 'CanvasRenderingContext2D':
+        //        The image argument is a canvas element with a width or height of 0."
+        //
+        // html2canvas, degrade (gradient) arka planları önce bir ara canvas'a
+        // çizip sonra createPattern ile döşüyor. Elemanın kutusu 0 genişlik ya da
+        // 0 yükseklikteyse o ara canvas da 0 boyutlu oluyor ve createPattern
+        // istisna fırlatıyor — tüm dışa aktarma çöküyor.
+        //
+        // Bu elemanlar sayfada zaten GÖRÜNMÜYOR (ör. değeri 0 olan bir ilerleme
+        // çubuğu, henüz açılmamış bir panel). Daha önce animasyon yüzünden
+        // opacity:0 oldukları için html2canvas onları çoğu kez atlıyordu; biz
+        // animasyonları kapatıp hepsini görünür yapınca bu yol ilk kez
+        // çalışmaya başladı ve gizli hata ortaya çıktı.
+        //
+        // Boyut ORİJİNAL elemandan okunuyor: klon henüz yerleşmediği için
+        // onun ölçüleri güvenilmez.
+        try {
+            const o = orijinaller[i];
+            if (o && (o.offsetWidth === 0 || o.offsetHeight === 0)) {
+                klon.style.backgroundImage = 'none';
+            }
+        } catch (e) { /* ölçüm başarısızsa dokunma */ }
+
         for (const ozellik of _DUZ_RENK_OZELLIKLERI) {
             const cevrilmis = renkiCevir(hesaplanan[ozellik]);
             if (cevrilmis) klon.style[ozellik] = cevrilmis;
@@ -447,6 +472,65 @@ const klonRenkleriniDuzelt = (orijinalKok, klonKok) => {
             const cevrilmis = bilesikDegeriCevir(hesaplanan[ozellik]);
             if (cevrilmis) klon.style[ozellik] = cevrilmis;
         }
+    }
+};
+
+/**
+ * 🚨 PNG'NİN ASIL BOZULMA SEBEBİ: GİRİŞ ANİMASYONLARI.
+ *
+ * Belirti: dışa aktarılan PNG 2600px yüksekliğinde, ilk satır net, ikinci
+ * satır soluk, üçüncü satır neredeyse görünmez, gerisi bomboş beyaz.
+ *
+ * Sebep zincirinin tamamı:
+ *   1. Satırlar `.anim-row { animation: rowIn 0.45s ease-out BOTH; }` ile
+ *      geliyor ve her satıra `gecikme(i, 40)` ile animation-delay veriliyor.
+ *   2. `both` dolgu kipi şu demek: GECİKME SÜRESİ BOYUNCA eleman `from`
+ *      durumunda kalır — yani `opacity: 0`.
+ *   3. html2canvas sayfayı yakalamadan önce belgenin bir KLONUNU oluşturur.
+ *      Klondaki düğümler DOM'a yeni eklendiği için animasyonlar SIFIRDAN
+ *      başlar. html2canvas ise klonu neredeyse anında çizer.
+ *   4. Sonuç: gecikmesi 0 olan satır görünür, 40ms olan yarı saydam, 80ms ve
+ *      sonrası tamamen görünmez. Elemanlar YER KAPLAMAYA devam ettiği için de
+ *      görüntü kocaman ve boş çıkar.
+ *
+ * Yani sorun saydamlık değil ZAMANLAMA idi; bu yüzden önceki oklch ve opak
+ * zemin düzeltmeleri (ikisi de gerçek sorunlardı) bunu çözmedi.
+ *
+ * Çözüm: klona, TÜM animasyon ve geçişleri iptal eden ve son durumu zorlayan
+ * bir stil enjekte etmek. `!important` şart — satır içi animation-delay'i
+ * yenmesi gerekiyor.
+ */
+const klonAnimasyonlariniDurdur = (klonDoc, klonKok) => {
+    if (!klonDoc) return;
+    const stil = klonDoc.createElement('style');
+    stil.textContent = `
+        *, *::before, *::after {
+            animation: none !important;
+            animation-delay: 0s !important;
+            animation-duration: 0s !important;
+            transition: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+            filter: none !important;
+        }
+        /* Bar grafikleri scaleX(0) ile başlıyor; transform:none onları zaten
+           tam boya getirir, ama genişliği yüzde ile veren yolu da sabitleyelim. */
+        .anim-bar { transform: scaleX(1) !important; }
+    `;
+    (klonDoc.head || klonDoc.body || klonKok)?.appendChild(stil);
+
+    // İkinci savunma hattı: satır içi (inline) animationDelay değerlerini de
+    // temizle. Stil sayfası bir sebeple uygulanmazsa bu yine de kurtarır.
+    try {
+        const hepsi = [klonKok, ...(klonKok?.querySelectorAll('*') || [])];
+        for (const d of hepsi) {
+            if (!d || !d.style) continue;
+            d.style.animationDelay = '0s';
+            d.style.animation = 'none';
+            d.style.opacity = '1';
+        }
+    } catch (e) {
+        console.warn('Klon animasyon temizliği kısmen atlandı:', e);
     }
 };
 
@@ -482,19 +566,32 @@ const exportToPNG = async (index) => {
         const karanlik = document.documentElement.classList.contains('dark');
         const arkaPlan = karanlik ? '#171717' : '#ffffff';
 
-        const canvas = await window.html2canvas(el, {
+        // 🛡️ İKİ AŞAMALI YAKALAMA.
+        // html2canvas'ın arka plan/degrade çizim yolu kırılgan; tek bir eleman
+        // yüzünden tüm dışa aktarma çöküyordu. `sade=true` modunda TÜM arka plan
+        // görselleri ve gölgeler atılıyor — görüntü biraz daha yalın oluyor ama
+        // kullanıcı hiç PNG alamamaktansa yalın bir PNG alsın.
+        const yakala = (sade) => window.html2canvas(el, {
             scale: 2,
             backgroundColor: arkaPlan,
             useCORS: true,
             logging: false,
             // Dışa aktarma butonları görüntüye girmesin.
             ignoreElements: (eleman) => eleman?.hasAttribute?.('data-png-gizle'),
-            // 🛠️ Asıl düzeltme: oklch/lab renkleri html2canvas'a verilmeden önce
-            // rgb'ye çevriliyor (bkz. yukarıdaki uzun not).
             onclone: (klonDoc, klonEleman) => {
                 try {
                     const kok = klonEleman || klonDoc.getElementById('chart-container-' + index);
+                    // ⚠️ SIRA ÖNEMLİ: animasyonlar ÖNCE durdurulmalı, yoksa
+                    // klon opacity:0 hâlindeyken yakalanır (bkz. uzun not).
+                    klonAnimasyonlariniDurdur(klonDoc, kok);
                     klonRenkleriniDuzelt(el, kok);
+                    if (sade) {
+                        const s = klonDoc.createElement('style');
+                        s.textContent = `* { background-image: none !important;
+                                             box-shadow: none !important;
+                                             text-shadow: none !important; }`;
+                        (klonDoc.head || klonDoc.body)?.appendChild(s);
+                    }
                     if (kok && kok.style) {
                         // Konteynerin kendi zemini yoktu; kartın etrafındaki boşluk
                         // bu yüzden saydam kalıyordu.
@@ -503,10 +600,19 @@ const exportToPNG = async (index) => {
                         kok.style.maxWidth = 'none';
                     }
                 } catch (hata) {
-                    console.warn('PNG renk normalizasyonu atlandı:', hata);
+                    console.warn('PNG klon hazırlığı kısmen atlandı:', hata);
                 }
             },
         });
+
+        let canvas;
+        try {
+            canvas = await yakala(false);
+        } catch (ilkHata) {
+            console.warn('PNG ilk deneme başarısız, sade moda geçiliyor:', ilkHata);
+            showToast(t('chat.png_retry', "Görsel sadeleştirilerek yeniden deneniyor..."));
+            canvas = await yakala(true);
+        }
 
         // Alfa kanalını tamamen ortadan kaldır (saydamlığa karşı ikinci savunma).
         const duzTuval = tuvaliDuzlestir(canvas, arkaPlan);
@@ -881,6 +987,26 @@ const formatMessage = (text, hasChart = false) => {
 }
 
 const sendMessage = async () => {
+  // 🚨 EŞZAMANLI GÖNDERİM KİLİDİ.
+  //
+  // Bildirilen hata: öneri çiplerine arka arkaya tıklayınca aynı anda birden
+  // fazla istek gidiyordu. Giriş kutusu ve gönder düğmesi :disabled="isStreaming"
+  // ile korunuyordu ama ÇİPLER korunmuyordu — ve asıl mesele şu ki koruma
+  // ARAYÜZDEYDİ, fonksiyonun kendisinde değil. Yeni bir çağıran eklendiğinde
+  // (çipler, kısayol tuşu, otomasyon) koruma sessizce atlanıyor.
+  //
+  // Neden ciddi: her istek chatHistory'ye kendi balonlarını ekliyor ve
+  // `historyToSend` gönderim ANINDAKİ geçmişi alıyor. İki istek üst üste
+  // binince ikincisi, birincinin HENÜZ BOŞ olan cevap balonunu geçmiş diye
+  // gönderiyor; ayrıca iki akış aynı anda aynı diziye yazıyor. Sonuç bozuk
+  // sohbet geçmişi ve karışan cevaplar — jüri demosunda görülmesi en kötü
+  // hatalardan biri. Üstelik arka uçta da paralel iki ağır sorgu demek.
+  //
+  // Kilit artık TEK YERDE: hangi yoldan çağrılırsa çağrılsın korunuyor.
+  if (isStreaming.value) {
+    showToast(t('chat.busy', "Önceki yanıt sürüyor, lütfen bitmesini bekleyin."));
+    return
+  }
   if (!userMessage.value.trim() && selectedFiles.value.length === 0) return
 
   const text = userMessage.value || `${selectedFiles.value.length} ${t('chat.files_sent', 'dosya gönderildi.')}`
@@ -1271,11 +1397,21 @@ const sendMessage = async () => {
                                         </div>
                                     </div>
 
-                                    <!-- YENİ: Banka filtresi çipleri. Başlığın SAĞINDA durur; bir veya
+                                    <!-- Banka filtresi çipleri. Başlığın SAĞINDA durur; bir veya
                                          birden fazla banka seçilebilir. Seçim SADECE "Detaylı Kampanya
                                          Kıyaslaması" bölümünü daraltır — pasta grafik, istatistik
-                                         kutuları ve alttaki tam veri tablosu değişmez. -->
-                                    <div v-if="bankaSecenekleri(msg.chart).length > 1" class="flex flex-wrap items-center gap-1.5 flex-1 min-w-0 sm:px-2 order-3 sm:order-none">
+                                         kutuları ve alttaki tam veri tablosu değişmez.
+
+                                         🛠️ HATA DÜZELTMESİ: `msg.chart.type !== 'table'` koşulu EKLENDİ.
+                                         Çipler, filtrelemesi gereken "Detaylı Kampanya Kıyaslaması"
+                                         bölümünün İÇİNDE bulunduğu bloğa bağlıdır (aşağıdaki
+                                         v-if="msg.chart.type !== 'table'"). Tablo görünümünde o blok
+                                         hiç render edilmiyor, dolayısıyla çipler TIKLANIYOR AMA
+                                         HİÇBİR ŞEY YAPMIYORDU — ekran görüntüsündeki liste
+                                         cevabının sağında duran ve işlevsiz olan kısım buydu.
+                                         Çalışmayan bir kontrol, olmayan kontrolden kötüdür:
+                                         kullanıcı tıklar, bir şey beklemez ve sisteme güveni azalır. -->
+                                    <div v-if="msg.chart.type !== 'table' && bankaSecenekleri(msg.chart).length > 1" class="flex flex-wrap items-center gap-1.5 flex-1 min-w-0 sm:px-2 order-3 sm:order-none">
                                         <span class="text-[9px] font-bold uppercase tracking-wider text-neutral-400 shrink-0">{{ t('chat.filter_banks', 'Bankalar') }}</span>
                                         <button
                                             v-for="bankaAdi in bankaSecenekleri(msg.chart)"
@@ -1471,7 +1607,11 @@ const sendMessage = async () => {
                             </div>
                             
                             <div v-if="msg.suggestions && msg.suggestions.length > 0" class="mt-4 flex flex-wrap gap-2 relative z-10 animate-[msgPopIn_0.4s_ease-out]">
-                                <button v-for="(sug, sIdx) in msg.suggestions" :key="'sug-'+sIdx" @click="sendSuggestedPrompt(sug)" :style="gecikme(sIdx, 70)" class="anim-chip text-[11px] font-medium px-3 py-1.5 bg-blue-50/80 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 border border-blue-200/60 dark:border-blue-700/50 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:-translate-y-0.5 transition-all shadow-sm active:scale-95 flex items-center gap-1.5 cursor-pointer">
+                                <!-- 🛠️ :disabled EKLENDİ. Kilit sendMessage'ın içinde de var
+                                     (asıl koruma orası), ama çip tıklanabilir görünüp hiçbir şey
+                                     yapmazsa kullanıcı arayüzün donduğunu sanır. Görsel olarak da
+                                     devre dışı kalması gerekiyor. -->
+                                <button v-for="(sug, sIdx) in msg.suggestions" :key="'sug-'+sIdx" @click="sendSuggestedPrompt(sug)" :disabled="isStreaming" :style="gecikme(sIdx, 70)" class="anim-chip text-[11px] font-medium px-3 py-1.5 bg-blue-50/80 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 border border-blue-200/60 dark:border-blue-700/50 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:-translate-y-0.5 transition-all shadow-sm active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:bg-blue-50/80">
                                     <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                                     {{ sug }}
                                 </button>

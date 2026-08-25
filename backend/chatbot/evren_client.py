@@ -949,6 +949,34 @@ async def isit(modeller: Optional[List[str]] = None, embedding_de: bool = True) 
     Hiçbir hata yükseltmez — ısıtma başarısız olsa da uygulama çalışmaya devam
     etmeli. Süreleri döner ki loglarda görünsün.
     """
+    # 🛠️ ETKİN YAPILANDIRMA LOGU — "eski ayar" sınıfı hataları görünür kılar.
+    #
+    # Gerçek olay: .env'de EVREN_MAX_TOKENS=16384 yazıyordu ama konteyner
+    # 2048 kullanmaya devam etti ve LLM cevap üretemedi. Sebep: ortam
+    # değişkenleri konteyner OLUŞTURULURKEN sabitlenir; `--reload` yalnızca
+    # KODU yeniden yükler, konteynerin ortamını YENİDEN OKUMAZ. Yani .env
+    # düzeltilmiş, kod düzeltilmiş, ama çalışan süreç hâlâ eski değerdeydi —
+    # ve hiçbir yerde bu görünmüyordu.
+    #
+    # Artık her açılışta gerçekten KULLANILAN değerler yazılıyor. Log ile
+    # .env uyuşmuyorsa yapılacak şey bellidir:
+    #     docker compose up -d --force-recreate backend
+    logger.info(
+        "⚙️ Evren yapılandırması (ETKİN): "
+        f"model={MODEL_ANA} hizli={MODEL_HIZLI} router={MODEL_ROUTER} "
+        f"embed={EMBED_MODEL} | max_tokens={MAX_TOKENS or 'sunucu varsayılanı'} "
+        f"timeout={ZAMAN_ASIMI} | rerank={RERANK_AKTIF} "
+        f"dusunme={'KAPALI(deneniyor)' if DUSUNME_KAPALI else 'acik'} "
+        f"ipv4={IPV4_ZORLA} | .env={ENV_DOSYASI}"
+    )
+    if MAX_TOKENS and MAX_TOKENS < 8192:
+        logger.warning(
+            f"⚠️ max_tokens={MAX_TOKENS} DÜŞÜK. llm-large muhakeme yapıyor ve "
+            "düşünme adımları bu bütçeden düşüyor (ölçüm: 9.244 karakter). "
+            "Uzun kampanya bağlamlarında model cevabı yazmadan bütçeyi "
+            "bitirebilir. Önerilen: EVREN_MAX_TOKENS=16384"
+        )
+
     if not hazir_mi():
         return {}
     modeller = modeller or list(dict.fromkeys([MODEL_ANA, MODEL_HIZLI, MODEL_ROUTER]))
@@ -1127,9 +1155,19 @@ def durum() -> dict:
         "anahtar": bool(API_KEY),
         "modeller": {"ana": MODEL_ANA, "hizli": MODEL_HIZLI, "router": MODEL_ROUTER,
                      "embedding": EMBED_MODEL},
+        # 🛠️ max_tokens /health'e EKLENDİ. Konteynerin ortam değişkenleri
+        # oluşturulma anında sabitlendiği için .env düzeltilse bile çalışan
+        # süreç eski değerde kalabiliyor (bkz. isit()'teki not). Bu alan,
+        # curl ile tek bakışta doğrulamayı sağlar:
+        #     curl.exe http://localhost:8003/health
+        # Beklenenden düşükse: docker compose up -d --force-recreate backend
+        "max_tokens": MAX_TOKENS or "sunucu varsayılanı",
+        "timeout": ZAMAN_ASIMI,
+        "dusunme": "kapali(deneniyor)" if DUSUNME_KAPALI else "acik",
         "rerank_aktif": RERANK_AKTIF,
         "ipv4_zorla": IPV4_ZORLA,
         "env_dosyasi": ENV_DOSYASI,
+        "env_adaylari": [{"yol": y, "anahtar": a} for y, a in ENV_ADAYLARI],
         "qdrant": {"url": q.get("url"), "prefix": q.get("prefix"), "anahtar": bool(q.get("api_key"))},
         "son_isitma": SON_ISITMA or None,
     }

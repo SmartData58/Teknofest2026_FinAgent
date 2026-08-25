@@ -282,7 +282,26 @@ ACIKLAYICI_SORU = re.compile(
     r"|\buygulan[ıi]r\s+m[iı]\w*|\bdahil\s+m[iı]\w*|\bfark[ıi]\s+ne\b"
     r"|\bhangi\s+\w+lerde\b|\bhangi\s+\w+larda\b"
     r"|\bwhy\b|\bhow\s+(do|does|can|is|are|long)\b|\bwho\s+(can|is|are)\b"
-    r"|\bwhen\s+(is|are|does|do)\b|\bwhich\s+segment\w*|\bis\s+it\s+valid\b",
+    r"|\bwhen\s+(is|are|does|do)\b|\bwhich\s+segment\w*|\bis\s+it\s+valid\b"
+    # 🛠️ 500'lük koşuda EKLENDİ. Aşağıdaki altı soru tablo üretiyordu; hepsi
+    # TANIM ya da GÖRÜŞ sorusu, hiçbiri veri listesi istemiyor:
+    #     "vade ne anlama geliyor"            -> tanım
+    #     "kâr payı ile faiz arasındaki fark nedir" -> tanım
+    #     "bu kampanyalar hakkında genel yorumun ne" -> görüş
+    #     "sence bu kampanyalar cazip mi"     -> görüş
+    #     "benim için hangisi daha mantıklı olur sence" -> görüş/tavsiye
+    #     "kampanya bitince ne oluyor"        -> süreç
+    # "ne demek" zaten vardı ama "ne anlama geliyor" / "nedir" / "sence"
+    # kalıpları yoktu.
+    r"|\bne\s+anlama\s+gel\w*|\bne\s+demektir\b"
+    r"|\bnedir\b|\bne\s+ifade\s+ed\w*"
+    r"|\bsence\b|\bsizce\b|\bg[öo]r[üu][şs][üu]n\w*|\byorumun\w*"
+    r"|\bcazip\s+m[iı]\w*|\bmant[ıi]kl[ıi]\s+m[iı]\w*|\bde[ğg]er\s+m[iı]\w*"
+    r"|\btavsiye\s+ed\w*|\b[öo]ner(?:ir|isin|iyor)\w*"
+    r"|\bbitince\b|\bbitti[ğg]inde\b|\bsonra\s+ne\s+ol\w*"
+    r"|\bfark[ıi]\s+nedir\b|\baras[ıi]ndaki\s+fark\w*"
+    r"|\bwhat\s+(is|are|does)\s+\w+\s+mean\b|\bwhat\s+do\s+you\s+mean\b"
+    r"|\bin\s+your\s+opinion\b|\bdo\s+you\s+think\b|\bwhat\s+is\s+the\s+difference\b",
     re.IGNORECASE,
 )
 
@@ -647,6 +666,41 @@ def istenen_limit(soru: str) -> Optional[int]:
     return None
 
 
+# =============================================================================
+# 🚨 GÖRSEL REDDİ — "tablo verme", "grafik istemiyorum"
+#
+# 200 promptluk testte bulundu. En kötü örnek:
+#     "tablo ya da grafik verme, sadece anlat: kampanya koşulları neler"
+#     -> DOUGHNUT GRAFİK geldi.
+# Sebep: GRAFIK_ISTEGI deseni cümledeki "grafik" kelimesini görüp isteğe
+# çeviriyordu; olumsuzluk eki hiç incelenmiyordu. Aynısı "kısaca özetler
+# misin, tablo istemiyorum" -> 10 satırlık tablo.
+#
+# Kullanıcının açık talimatını tersine çevirmek, hiç görsel vermemekten çok
+# daha kötü: sistem "seni dinlemiyorum" mesajı veriyor.
+#
+# Desen, olumsuzluğu görselden SONRA arıyor ("grafik VERME") — Türkçede olağan
+# sıra bu. Ayrıca "tablo/grafik OLMADAN", "sadece anlat/yazıyla" gibi
+# kalıpları da yakalıyor.
+GORSEL_REDDI = re.compile(
+    r"(?:tablo|grafi[kğ]\w*|[çc]izelge|liste\w*|g[öo]rsel\w*|chart|table|graph)"
+    r"(?:\s+(?:ya\s+da|veya|ve|,)\s*(?:tablo|grafi[kğ]\w*|liste\w*|g[öo]rsel\w*))*"
+    r"\s*"
+    r"(?:verme|isteme|istemiyorum|istemem|olmadan|olmasın|gerekmiyor|gerek\s*yok|"
+    r"[çc]izme|g[öo]sterme|koyma|ekleme|yok|hay[ıi]r)"
+    r"|(?:sadece|yaln[ıi]zca|sade[cn]e)\s+(?:anlat|yaz[ıi]yla|metin|c[üu]mle|a[çc][ıi]kla|s[öo]zel)"
+    r"|\bno\s+(?:table|chart|graph|visual)\b"
+    r"|\b(?:without|don'?t\s+(?:show|give|include))\s+(?:a\s+)?(?:table|chart|graph|visual)\b"
+    r"|\bjust\s+(?:explain|tell|describe)\b",
+    re.IGNORECASE,
+)
+
+
+def gorsel_reddedildi(soru: str) -> bool:
+    """Kullanıcı açıkça 'tablo/grafik verme' dediyse True."""
+    return bool(GORSEL_REDDI.search(soru or ""))
+
+
 def gorsel_karari(soru: str, aciklayici: bool = False, kod_sorusu: bool = False) -> Optional[str]:
     """Bu soru için ne çizilmeli: "grafik", "tablo" veya None (hiçbir şey).
 
@@ -659,6 +713,12 @@ def gorsel_karari(soru: str, aciklayici: bool = False, kod_sorusu: bool = False)
       6. Metrik/veri içeren normal soru -> tablo (kısa özet).
       7. Diğer -> hiçbir şey.
     """
+    # 0. AÇIK RET her şeyi ezer — kullanıcı "verme" dediyse verilmez.
+    #    Bu kontrol GRAFIK_ISTEGI'nden ÖNCE olmak zorunda: "grafik verme"
+    #    cümlesinde "grafik" kelimesi zaten geçtiği için, sonra bakılırsa
+    #    istek sanılıp çizilir (testte tam olarak bu oldu).
+    if gorsel_reddedildi(soru):
+        return None
     if GRAFIK_ISTEGI.search(soru):
         return "grafik"
     if TABLO_ISTEGI.search(soru):
@@ -732,8 +792,17 @@ def gorsel_karari_tam(soru: str) -> Optional[str]:
     testlerde) karar vermek gerektiğinde kullanılır — böylece "yorum sorusuna
     grafik çizme" kuralı, çağıran taraf unutsa bile geçerli kalır.
     """
-    acik_gorsel_istegi = bool(GRAFIK_ISTEGI.search(soru) or TABLO_ISTEGI.search(soru))
-    aciklayici = bool(ACIKLAYICI_SORU.search(soru)) and not acik_gorsel_istegi
+    # 🛠️ AÇIK RET, "açık görsel isteği" sayılmamalı.
+    # 500'lük koşuda bulundu: "liste verme, cümleyle anlat" cümlesinde
+    # TABLO_ISTEGI deseni "liste" kelimesini görüp acik_gorsel_istegi=True
+    # yapıyordu. Bu da aciklayici'yi False'a çeviriyor, o da melez LLM
+    # katmanının kapısını açıyordu (llm_gorsel_sorulmali: aciklayici ise
+    # SORMA). LLM'e "görsel gerekli mi" diye sorulunca "evet" diyor ve
+    # kullanıcının AÇIK REDDİ üç adım sonra sessizce çiğneniyordu.
+    _ret = gorsel_reddedildi(soru)
+    acik_gorsel_istegi = (not _ret) and bool(
+        GRAFIK_ISTEGI.search(soru) or TABLO_ISTEGI.search(soru))
+    aciklayici = _ret or (bool(ACIKLAYICI_SORU.search(soru)) and not acik_gorsel_istegi)
     return gorsel_karari(soru, aciklayici=aciklayici,
                          kod_sorusu=bool(KOD_YAZMA_ISTEGI.search(soru)))
 
@@ -889,8 +958,17 @@ def niyet_bul(soru: str, gecmis: Sequence[Mesaj] = (), dil: str = "tr") -> Niyet
     kod_sorusu = bool(KOD_YAZMA_ISTEGI.search(soru))
     # Açık bir grafik/tablo isteği, açıklayıcı kalıpları EZER: "bu kampanyanın
     # koşullarını tablo hâlinde göster" hem açıklayıcı hem de açık tablo isteğidir.
-    acik_gorsel_istegi = bool(GRAFIK_ISTEGI.search(soru) or TABLO_ISTEGI.search(soru))
-    aciklayici = bool(ACIKLAYICI_SORU.search(soru)) and not acik_gorsel_istegi
+    # 🛠️ AÇIK RET, "açık görsel isteği" sayılmamalı.
+    # 500'lük koşuda bulundu: "liste verme, cümleyle anlat" cümlesinde
+    # TABLO_ISTEGI deseni "liste" kelimesini görüp acik_gorsel_istegi=True
+    # yapıyordu. Bu da aciklayici'yi False'a çeviriyor, o da melez LLM
+    # katmanının kapısını açıyordu (llm_gorsel_sorulmali: aciklayici ise
+    # SORMA). LLM'e "görsel gerekli mi" diye sorulunca "evet" diyor ve
+    # kullanıcının AÇIK REDDİ üç adım sonra sessizce çiğneniyordu.
+    _ret = gorsel_reddedildi(soru)
+    acik_gorsel_istegi = (not _ret) and bool(
+        GRAFIK_ISTEGI.search(soru) or TABLO_ISTEGI.search(soru))
+    aciklayici = _ret or (bool(ACIKLAYICI_SORU.search(soru)) and not acik_gorsel_istegi)
 
     gorsel = gorsel_karari(soru, aciklayici=aciklayici, kod_sorusu=kod_sorusu)
     limit = istenen_limit(soru)
