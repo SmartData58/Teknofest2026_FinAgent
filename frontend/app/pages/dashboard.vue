@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '~/stores/chatStore'
@@ -764,6 +764,15 @@ const fetchVeriler = async () => {
 
 onMounted(() => {
   fetchVeriler()
+  if (process.client) {
+    document.addEventListener('click', handleOutsideClick)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (process.client) {
+    document.removeEventListener('click', handleOutsideClick)
+  }
 })
 
 const tiers = computed(() => {
@@ -854,33 +863,85 @@ const nf = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 })
 const fmt = (n) => nf.format(n)
 
 // --- AI Modülü ---
+const showAiPopover = ref(false)
+const aiMenuRef = ref(null)
 const selectedAiPrompt = ref('rekabet_durumu')
 const customPrompt = ref('')
 
-const goToChat = () => {
-  const contextData = {
-    selectedTier: selectedTier.value,
-    totalBanksInTier: filteredBanks.value.length,
-    banks: filteredBanks.value.map(b => ({
-      name: b.kisa_ad,
-      tier: b.tier,
-      type: b.mulkiyet_turu,
-      assetSize: b.aktif_buyukluk_milyar_tl,
-      activeCampaigns: getBankCount(b)
-    }))
+const handleOutsideClick = (e) => {
+  if (aiMenuRef.value && !aiMenuRef.value.contains(e.target)) {
+    showAiPopover.value = false
   }
-  
-  let finalPrompt = ''
-  const systemNote = `\n\n[Sistem Notu: Kullanıcı şu an Pazar Zekası sayfasında ve verileri şunlar: ${JSON.stringify(contextData)}]`
+}
 
-  if (selectedAiPrompt.value === 'custom' && customPrompt.value) {
-    finalPrompt = customPrompt.value + systemNote
-  } else if (selectedAiPrompt.value === 'pazar_lideri') {
-    finalPrompt = "Seçili gruptaki pazar lideri kimdir ve neden?" + systemNote
+watch(activeCompareBanks, (newVal) => {
+  if (newVal.length === 1) {
+    selectedAiPrompt.value = 'rekabet_durumu'
+  } else if (newVal.length > 1) {
+    selectedAiPrompt.value = 'karsilastirma'
+  }
+}, { immediate: true })
+
+const executePrompt = (promptKey) => {
+  selectedAiPrompt.value = promptKey
+  showAiPopover.value = false
+  goToChat()
+}
+
+const goToChat = () => {
+  if (activeCompareBanks.value.length === 0) return
+
+  let questionText = ''
+  if (selectedAiPrompt.value === 'custom' && customPrompt.value.trim()) {
+    questionText = customPrompt.value.trim()
   } else if (selectedAiPrompt.value === 'rekabet_durumu') {
-    finalPrompt = "Seçili gruptaki rekabet stratejilerini analiz et ve önerilerde bulun." + systemNote
+    questionText = "Bu bankanın pazar konumunu ve rekabet stratejisini analiz et."
+  } else if (selectedAiPrompt.value === 'baskin_kategori') {
+    questionText = "Baskın kategorideki ağırlığını ve büyüme fırsatlarını değerlendir."
+  } else if (selectedAiPrompt.value === 'trend_analizi') {
+    questionText = "Son 6 aylık lansman trendini ve kampanya sürelerini sektöre göre incele."
+  } else if (selectedAiPrompt.value === 'karsilastirma') {
+    questionText = "Seçili bankaların kampanya portföylerini ve pazar rekabetini karşılaştır."
+  } else if (selectedAiPrompt.value === 'pazar_lideri') {
+    questionText = "Kampanya ivmesi ve çeşitlilik bakımından pazar lideri kimdir?"
+  } else if (selectedAiPrompt.value === 'kategori_ayrisim') {
+    questionText = "Kategori bazında ortak ve ayrışan stratejileri analiz et."
   } else {
-    finalPrompt = "Seçili sınıftaki bankaların kampanyalarını kısaca özetle." + systemNote
+    questionText = "Seçili bankaların kampanya stratejilerini ve sektördeki konumlarını analiz et."
+  }
+
+  let finalPrompt = ''
+
+  if (activeCompareBanks.value.length === 1) {
+    const b = activeCompareBanks.value[0]
+    const bCamps = getBankCampaigns(b)
+    const baskin = getBaskinKategori(b)
+    const catCounts = getCategoryCounts(bCamps)
+    const catDurs = getCategoryDurations(bCamps)
+    const trend = getBankTrend(bCamps)
+
+    const catSummary = categories.map((cat, i) => `${cat}: ${catCounts[i]} adet (Ort. Süre: ${catDurs[i]} ay - Sektör: ${sektorDurations.value[i] || 0} ay)`).join(', ')
+    const trendSummary = last6Months.value.map((m, i) => `${m}: ${trend[i] || 0}`).join(', ')
+
+    finalPrompt = `${b.kisa_ad} için aşağıdaki güncel pazar ve kampanya analitiği verilerini inceleyerek detaylı bir stratejik analiz gerçekleştir:\n\n` +
+      `• Banka: ${b.kisa_ad} (${b.tier || 'Tier 2'}, ${b.mulkiyet_turu || 'Özel'} Mülkiyet, Aktif Büyüklük: ${b.aktif_buyukluk_milyar_tl || 0} Milyar ₺)\n` +
+      `• Toplam Aktif Kampanya Sayısı: ${bCamps.length}\n` +
+      `• Baskın Kategori: ${baskin?.ad || 'Kart'} (%${baskin?.yuzde || 0})\n` +
+      `• Kategori Dağılımı ve Yayın Süreleri: ${catSummary}\n` +
+      `• Son 6 Aylık Lansman Trendi: ${trendSummary} (Sektör Son Ay Ortalaması: ${sektorAverages.value[sektorAverages.value.length - 1] || 0})\n\n` +
+      `Analiz Talebi / Soru: ${questionText}`
+  } else {
+    const bankDetails = activeCompareBanks.value.map((b, idx) => {
+      const bCamps = getBankCampaigns(b)
+      const baskin = getBaskinKategori(b)
+      const catCounts = getCategoryCounts(bCamps)
+      const topCats = categories.map((cat, i) => ({ cat, count: catCounts[i] })).filter(x => x.count > 0).map(x => `${x.cat} (${x.count})`).join(', ')
+      return `${idx + 1}. ${b.kisa_ad}: ${bCamps.length} aktif kampanya, Baskın Kategori: ${baskin?.ad || 'Kart'} (%${baskin?.yuzde || 0}), Aktif Büyüklük: ${b.aktif_buyukluk_milyar_tl || 0} Milyar ₺ | Kategori Dağılımı: ${topCats || 'Genel'}`
+    }).join('\n')
+
+    finalPrompt = `Aşağıdaki seçili katılım bankalarının kampanya portföylerini ve pazar rekabetini karşılaştır:\n\n` +
+      `${bankDetails}\n\n` +
+      `Kıyaslama Talebi / Soru: ${questionText}`
   }
 
   chatStore.setChatData(finalPrompt, [])
@@ -1623,37 +1684,17 @@ const mgmCampaigns = computed(() => {
       <!-- BANKA ÇALIŞANI MODU -->
       <div v-else class="space-y-8 animate-fade-in">
         
-        <!-- Üst Kontrol Barı: Tier Butonları & FinAgent AI Modülü -->
-        <div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
-          <div class="flex items-center p-1 rounded-lg border border-neutral-300/50 dark:border-neutral-600/50 bg-white/40 dark:bg-neutral-800/40 backdrop-blur-md shadow-sm w-fit">
-            <button 
-              v-for="tier in tiers" 
-              :key="tier"
-              @click="selectedTier = (selectedTier === tier ? null : tier)"
-              :class="selectedTier === tier ? 'bg-white dark:bg-neutral-700 shadow-sm text-blue-600 dark:text-cyan-400 font-bold' : 'text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white font-medium'"
-              class="px-4 py-1.5 text-xs rounded-md transition-all whitespace-nowrap cursor-pointer select-none"
-            >
-              {{ tier }}
-            </button>
-          </div>
-
-          <!-- FinAgent AI Modülü (Kompakt ve Şık) -->
-          <div class="flex items-center gap-2 bg-white dark:bg-neutral-900 border border-blue-100 dark:border-blue-900 rounded-2xl p-2 px-3 shadow-sm">
-            <div class="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
-               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-            </div>
-            <select v-model="selectedAiPrompt" class="text-xs px-2.5 py-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 focus:ring-2 focus:ring-blue-500 outline-none">
-              <option value="rekabet_durumu">Rekabet Stratejisi Öner</option>
-              <option value="pazar_lideri">Sektör Lideri Kim?</option>
-              <option value="kampanya_ozeti">Seçili Sınıfı Özetle</option>
-              <option value="custom">Kendi Sorumu Yazacağım</option>
-            </select>
-            <input v-if="selectedAiPrompt === 'custom'" v-model="customPrompt" type="text" placeholder="Sorunuzu yazın..." class="text-xs px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus:ring-2 focus:ring-blue-500 outline-none w-44" />
-            <button @click="goToChat" class="bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-blue-700 shadow-sm transition-all flex items-center gap-1 shrink-0">
-              <span>Analiz Et</span>
-              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-            </button>
-          </div>
+        <!-- Üst Kontrol Barı: Tier Butonları -->
+        <div class="flex items-center p-1 rounded-lg border border-neutral-300/50 dark:border-neutral-600/50 bg-white/40 dark:bg-neutral-800/40 backdrop-blur-md shadow-sm w-fit">
+          <button 
+            v-for="tier in tiers" 
+            :key="tier"
+            @click="selectedTier = (selectedTier === tier ? null : tier)"
+            :class="selectedTier === tier ? 'bg-white dark:bg-neutral-700 shadow-sm text-blue-600 dark:text-cyan-400 font-bold' : 'text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white font-medium'"
+            class="px-4 py-1.5 text-xs rounded-md transition-all whitespace-nowrap cursor-pointer select-none"
+          >
+            {{ tier }}
+          </button>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -1721,12 +1762,115 @@ const mgmCampaigns = computed(() => {
         <!-- YENİ: GRAFİKLİ KARŞILAŞTIRMA ALANI -->
         <div id="chart-box-all-comparison" v-if="activeCompareBanks.length > 0" class="mt-8 rounded-3xl border border-blue-200 dark:border-blue-900/50 bg-neutral-50/50 dark:bg-neutral-900 shadow-sm animate-fade-in overflow-hidden">
           
-          <!-- Üst Bilgi Çubuğu -->
-          <div class="px-8 py-5 border-b border-blue-100 dark:border-blue-900 flex flex-col md:flex-row items-center justify-between gap-4">
+          <!-- Üst Bilgi Çubuğu (AI Butonu & İndirme Butonları) -->
+          <div class="px-6 lg:px-8 py-5 border-b border-blue-100 dark:border-blue-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <h2 class="text-xl font-extrabold text-neutral-900 dark:text-white tracking-tight">
               {{ activeCompareBanks.length === 1 ? activeCompareBanks[0].kisa_ad + ' - Derinlemesine Analiz' : 'Pazar Rekabeti Karşılaştırması' }}
             </h2>
-            <div class="flex items-center gap-3">
+            
+            <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+              
+              <!-- FinAgent AI Balon / Popover Menüsü -->
+              <div class="relative" ref="aiMenuRef" data-png-gizle>
+                <button 
+                  @click="showAiPopover = !showAiPopover" 
+                  title="FinAgent Yapay Zeka Analizi" 
+                  class="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 hover:from-blue-100 hover:to-indigo-100 dark:hover:from-blue-900/50 dark:hover:to-indigo-900/50 text-blue-600 dark:text-cyan-400 border border-blue-200 dark:border-blue-800/60 rounded-xl font-bold text-xs shadow-sm hover:shadow active:scale-95 transition-all duration-200 group"
+                >
+                  <img src="/logo.svg" class="w-5 h-5 object-contain group-hover:scale-110 transition-transform duration-200" alt="FinAgent" />
+                  <span>FinAgent'a Sor</span>
+                  <svg class="w-3.5 h-3.5 text-blue-500 transition-transform duration-200" :class="showAiPopover ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                <!-- Açılır Balon (Dropdown Popover) -->
+                <Transition
+                  enter-active-class="transition-all duration-200 ease-out"
+                  enter-from-class="opacity-0 scale-95 -translate-y-2"
+                  enter-to-class="opacity-100 scale-100 translate-y-0"
+                  leave-active-class="transition-all duration-150 ease-in"
+                  leave-from-class="opacity-100 scale-100 translate-y-0"
+                  leave-to-class="opacity-0 scale-95 -translate-y-2"
+                >
+                  <div v-if="showAiPopover" class="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl z-50 p-4 space-y-3">
+                    
+                    <!-- Balon Üst Başlığı -->
+                    <div class="flex items-center justify-between pb-2.5 border-b border-neutral-100 dark:border-neutral-800">
+                      <div class="flex items-center gap-2">
+                        <div class="w-6 h-6 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center p-1">
+                          <img src="/logo.svg" class="w-full h-full object-contain" alt="" />
+                        </div>
+                        <span class="text-xs font-extrabold text-neutral-800 dark:text-white">FinAgent Pazar Zekası</span>
+                      </div>
+                      <span class="text-[11px] font-semibold text-neutral-400">
+                        {{ activeCompareBanks.length === 1 ? activeCompareBanks[0].kisa_ad : activeCompareBanks.length + ' Banka Seçili' }}
+                      </span>
+                    </div>
+
+                    <!-- 3 Soru + 1 Soru Giriş Alanı -->
+                    <div class="space-y-2">
+                      
+                      <!-- Tek Banka: 3 Soru -->
+                      <template v-if="activeCompareBanks.length === 1">
+                        <button @click="executePrompt('rekabet_durumu')" class="w-full text-left p-2.5 rounded-xl bg-neutral-50/70 dark:bg-neutral-800/40 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-neutral-200/70 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-800 transition-all text-xs font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 dark:hover:text-blue-400">
+                          Pazar konumunu ve rekabet stratejisini analiz et
+                        </button>
+
+                        <button @click="executePrompt('baskin_kategori')" class="w-full text-left p-2.5 rounded-xl bg-neutral-50/70 dark:bg-neutral-800/40 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-neutral-200/70 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-800 transition-all text-xs font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 dark:hover:text-blue-400">
+                          Baskın kategorideki ağırlığını ve büyüme fırsatlarını değerlendir
+                        </button>
+
+                        <button @click="executePrompt('trend_analizi')" class="w-full text-left p-2.5 rounded-xl bg-neutral-50/70 dark:bg-neutral-800/40 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-neutral-200/70 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-800 transition-all text-xs font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 dark:hover:text-blue-400">
+                          Son 6 aylık lansman trendini ve kampanya sürelerini sektöre göre incele
+                        </button>
+                      </template>
+
+                      <!-- Çoklu Banka: 3 Soru -->
+                      <template v-else>
+                        <button @click="executePrompt('karsilastirma')" class="w-full text-left p-2.5 rounded-xl bg-neutral-50/70 dark:bg-neutral-800/40 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-neutral-200/70 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-800 transition-all text-xs font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 dark:hover:text-blue-400">
+                          Seçili bankaların kampanya portföylerini ve pazar rekabetini karşılaştır
+                        </button>
+
+                        <button @click="executePrompt('pazar_lideri')" class="w-full text-left p-2.5 rounded-xl bg-neutral-50/70 dark:bg-neutral-800/40 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-neutral-200/70 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-800 transition-all text-xs font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 dark:hover:text-blue-400">
+                          Kampanya ivmesi ve çeşitlilik bakımından pazar lideri kimdir?
+                        </button>
+
+                        <button @click="executePrompt('kategori_ayrisim')" class="w-full text-left p-2.5 rounded-xl bg-neutral-50/70 dark:bg-neutral-800/40 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-neutral-200/70 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-800 transition-all text-xs font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 dark:hover:text-blue-400">
+                          Kategori bazında ortak ve ayrışan stratejileri analiz et
+                        </button>
+                      </template>
+
+                      <!-- Soru Girme Yeri -->
+                      <div class="pt-2 border-t border-neutral-100 dark:border-neutral-800">
+                        <div class="flex items-center gap-1.5">
+                          <input 
+                            v-model="customPrompt" 
+                            @keyup.enter="executePrompt('custom')" 
+                            type="text" 
+                            :placeholder="activeCompareBanks.length === 1 ? 'Bu banka hakkında soru yazın...' : 'Seçili bankalar hakkında soru yazın...'" 
+                            class="w-full text-xs px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-950 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all" 
+                          />
+                          <button 
+                            @click="executePrompt('custom')" 
+                            :disabled="!customPrompt.trim()" 
+                            class="p-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-xl transition-all shrink-0 active:scale-95 shadow-sm"
+                            title="Gönder"
+                          >
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+
+                  </div>
+                </Transition>
+              </div>
+
+              <!-- İndirme Butonları -->
               <div class="flex items-center gap-1.5" data-png-gizle>
                 <button @click="exportChart('all-comparison', 'csv')" title="Tüm Analizi Excel Olarak İndir" class="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
                   <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
@@ -1738,6 +1882,8 @@ const mgmCampaigns = computed(() => {
                   <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                 </button>
               </div>
+
+              <!-- Seçimi Temizle -->
               <button v-if="selectedBanks.length > 0" @click="selectedBanks = []" class="text-sm font-bold text-neutral-400 hover:text-neutral-700 dark:hover:text-white transition-colors ml-1">
                 Seçimi Temizle
               </button>

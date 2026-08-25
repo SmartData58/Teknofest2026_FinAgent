@@ -14,12 +14,13 @@
     </div>
 
     
-    <!-- KİŞİSELLEŞTİRİLMİŞ KARŞILAŞTIRMA MATRİSİ -->
-    <div class="reveal-on-scroll space-y-6 bg-white/80 dark:bg-neutral-800/50 backdrop-blur-md border border-neutral-200/50 dark:border-neutral-700/50 rounded-2xl p-6 shadow-sm">
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-200 dark:border-neutral-700 pb-3">
+    <!-- ================= ÖZEL KARŞILAŞTIRMA BÖLÜMÜ (DİĞER KRİTERLERLE BİREBİR AYNI ORYANTASYON) ================= -->
+    <div class="reveal-on-scroll space-y-4">
+      <!-- Kriter Başlığı ile Birebir Aynı Başlık Yapısı -->
+      <div class="border-b border-neutral-200 dark:border-neutral-700 pb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h2 class="text-xl font-bold text-neutral-800 dark:text-neutral-100 flex items-center gap-2">
           <span class="inline-block w-1.5 h-5 rounded-full bg-gradient-to-b from-indigo-500 to-purple-500"></span>
-          {{ $t('comparison.custom_compare', 'Özel Karşılaştırma Matrisi') }}
+          {{ $t('comparison.custom_compare', 'Özel Karşılaştırma') }}
         </h2>
 
         <!-- Dışa Aktarma Butonları (Sonuç Geldikten Sonra) -->
@@ -37,7 +38,7 @@
       </div>
       
       <!-- Arama ve Seçim Çubuğu -->
-      <div class="relative z-30">
+      <div class="bg-white/80 dark:bg-neutral-800/50 backdrop-blur-md border border-neutral-200/50 dark:border-neutral-700/50 rounded-xl p-4 shadow-sm relative z-30">
         <div class="flex flex-col md:flex-row gap-3 items-start md:items-center">
           <div class="relative w-full md:w-2/3">
             <input 
@@ -77,7 +78,7 @@
         </div>
         
         <!-- Seçilen Etiketler -->
-        <div v-if="selectedForCompare.length > 0" class="flex flex-wrap gap-2 mt-4">
+        <div v-if="selectedForCompare.length > 0" class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800">
           <span v-for="camp in selectedForCompare" :key="camp.id" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
             <span class="truncate max-w-[180px]">{{ camp.baslik }}</span>
             <button @click="removeFromCompare(camp.id)" class="hover:text-indigo-900 dark:hover:text-indigo-100 hover:bg-indigo-200 dark:hover:bg-indigo-800 rounded-full p-0.5 transition-colors">
@@ -87,110 +88,95 @@
         </div>
       </div>
 
-      <!-- Karşılaştırma Matrisi Tablosu (Sadece Dolu Kısımlar Listelenir) -->
-      <div id="comparison-matrix-table" v-if="matrixData.length > 0" class="mt-8 overflow-x-auto custom-scrollbar border border-neutral-200 dark:border-neutral-700 rounded-xl animate-fade-in shadow-md bg-white dark:bg-neutral-900 p-2" data-lenis-prevent="true">
-        <table class="w-full text-left border-collapse min-w-max">
-          <thead>
-            <tr class="bg-neutral-50 dark:bg-neutral-800/50">
-              <th class="p-4 border-b border-r border-neutral-200 dark:border-neutral-700 font-semibold text-neutral-500 w-44">{{ $t('comparison.feature', 'Özellik') }}</th>
-              <th v-for="camp in matrixData" :key="camp.id" @click="openCampaignModal(camp.id)" class="p-4 border-b border-r last:border-r-0 border-neutral-200 dark:border-neutral-700 font-bold text-center w-64 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 cursor-pointer transition-colors group">
-                <div class="text-xs text-neutral-500 mb-1 font-normal flex items-center justify-center gap-1">
-                  <img v-if="getBankaLogo(camp.genel_bilgi?.banka_id)" :src="getBankaLogo(camp.genel_bilgi?.banka_id)" class="w-3.5 h-3.5 object-contain" @error="(e) => e.target.style.display = 'none'" />
-                  <span>{{ getBankaAd(camp.genel_bilgi?.banka_id) }}</span>
-                </div>
-                <div class="whitespace-normal break-words group-hover:underline">{{ camp.genel_bilgi?.kampanya_adi }}</div>
-                <div class="text-[10px] text-neutral-400 font-normal mt-1 flex items-center justify-center gap-0.5">
-                  Detayı Gör <svg class="w-3 h-3 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-                </div>
-              </th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-neutral-200 dark:divide-neutral-700 text-sm">
-            
-            <!-- Kampanya Türü -->
-            <tr v-if="hasAnyValidRow(c => c.genel_bilgi?.kampanya_turu)" class="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 transition-colors">
-              <td class="p-4 border-r border-neutral-200 dark:border-neutral-700 font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-50/30 dark:bg-neutral-800/20">{{ $t('campaigns.columns.tur', 'Kampanya Türü') }}</td>
-              <td v-for="camp in matrixData" :key="camp.id" class="p-4 border-r last:border-r-0 border-neutral-200 dark:border-neutral-700 text-center">
-                {{ camp.genel_bilgi?.kampanya_turu || '-' }}
-              </td>
-            </tr>
+      <!-- Karşılaştırma Sonuç Tablosu (Diğer Tablolarla Birebir Aynı Oryantasyon) -->
+      <div id="comparison-matrix-table" v-if="matrixData.length > 0" class="space-y-4 animate-fade-in">
+        <div class="bg-white/80 dark:bg-neutral-800/50 backdrop-blur-md border border-neutral-200/50 dark:border-neutral-700/50 rounded-xl shadow-sm overflow-hidden relative">
+          <div class="overflow-x-auto overflow-y-auto max-h-[360px] custom-scrollbar" data-lenis-prevent="true">
+            <table class="w-full text-left border-collapse whitespace-nowrap min-w-max relative">
+              <!-- Sticky Thead -->
+              <thead class="sticky top-0 z-20 bg-neutral-100/95 dark:bg-neutral-900/95 backdrop-blur-md shadow-sm after:absolute after:inset-x-0 after:bottom-0 after:border-b after:border-neutral-200/50 dark:after:border-neutral-700/50">
+                <tr class="text-xs uppercase text-neutral-500 dark:text-neutral-400">
+                  <th class="p-4 font-semibold">Banka</th>
+                  <th class="p-4 font-semibold">Kampanya</th>
+                  <th v-if="hasAnyValidRow(c => c.genel_bilgi?.kampanya_turu)" class="p-4 font-semibold">Tür</th>
+                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.kar_payi_orani)" class="p-4 font-semibold">Kâr Payı (%)</th>
+                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.vade_ay)" class="p-4 font-semibold">Vade (Ay)</th>
+                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.taksit)" class="p-4 font-semibold">Taksit</th>
+                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.tahsis_ucreti)" class="p-4 font-semibold">Tahsis Ücreti</th>
+                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.finansman_tutari)" class="p-4 font-semibold">Finansman Tutarı</th>
+                  <th v-if="hasAnyValidRow(c => c.promosyon_detay?.odul_tutari)" class="p-4 font-semibold">Ödül (TL)</th>
+                  <th v-if="hasAnyValidRow(c => c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul)" class="p-4 font-semibold">MGM / Davet</th>
+                  <th v-if="hasAnyValidRow(c => c.genel_bilgi?.hedef_kitle)" class="p-4 font-semibold">Hedef Kitle</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-neutral-200/50 dark:divide-neutral-700/50 text-sm">
+                <tr v-for="(camp, ri) in matrixData" :key="camp.id"
+                    @click="openCampaignModal(camp.id)"
+                    class="hover:bg-indigo-50/60 dark:hover:bg-indigo-900/20 transition-colors cursor-pointer group">
+                  
+                  <!-- Banka -->
+                  <td class="p-4 text-neutral-700 dark:text-neutral-300">
+                    <span class="inline-flex items-center gap-2 font-semibold text-neutral-900 dark:text-neutral-100">
+                      <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-indigo-500 to-purple-500 text-white">{{ ri + 1 }}</span>
+                      <img v-if="getBankaLogo(camp.genel_bilgi?.banka_id)" :src="getBankaLogo(camp.genel_bilgi?.banka_id)" class="w-4 h-4 object-contain" @error="(e) => e.target.style.display = 'none'" />
+                      {{ getBankaAd(camp.genel_bilgi?.banka_id) }}
+                    </span>
+                  </td>
 
-            <!-- Kâr Payı -->
-            <tr v-if="hasAnyValidRow(c => c.finansman_detay?.kar_payi_orani)" class="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 transition-colors">
-              <td class="p-4 border-r border-neutral-200 dark:border-neutral-700 font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-50/30 dark:bg-neutral-800/20">{{ $t('campaigns.columns.karPayi', 'Kâr Payı (%)') }}</td>
-              <td v-for="camp in matrixData" :key="camp.id" class="p-4 border-r last:border-r-0 border-neutral-200 dark:border-neutral-700 text-center">
-                <span v-if="isValidVal(camp.finansman_detay?.kar_payi_orani)" class="font-semibold text-blue-600 dark:text-blue-400">%{{ camp.finansman_detay?.kar_payi_orani }}</span>
-                <span v-else class="px-2 py-0.5 rounded text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-400">-</span>
-              </td>
-            </tr>
+                  <!-- Kampanya Adı -->
+                  <td class="p-4 font-medium text-neutral-900 dark:text-neutral-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors max-w-xs truncate" :title="camp.genel_bilgi?.kampanya_adi">
+                    {{ camp.genel_bilgi?.kampanya_adi || camp.baslik }}
+                  </td>
 
-            <!-- Vade -->
-            <tr v-if="hasAnyValidRow(c => c.finansman_detay?.vade_ay)" class="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 transition-colors">
-              <td class="p-4 border-r border-neutral-200 dark:border-neutral-700 font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-50/30 dark:bg-neutral-800/20">{{ $t('campaigns.columns.vade', 'Vade (Ay)') }}</td>
-              <td v-for="camp in matrixData" :key="camp.id" class="p-4 border-r last:border-r-0 border-neutral-200 dark:border-neutral-700 text-center">
-                <span v-if="isValidVal(camp.finansman_detay?.vade_ay)">{{ camp.finansman_detay?.vade_ay }} Ay</span>
-                <span v-else class="px-2 py-0.5 rounded text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-400">-</span>
-              </td>
-            </tr>
+                  <!-- Tür -->
+                  <td v-if="hasAnyValidRow(c => c.genel_bilgi?.kampanya_turu)" class="p-4 text-neutral-600 dark:text-neutral-400">
+                    {{ camp.genel_bilgi?.kampanya_turu || '-' }}
+                  </td>
 
-            <!-- Taksit -->
-            <tr v-if="hasAnyValidRow(c => c.finansman_detay?.taksit)" class="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 transition-colors">
-              <td class="p-4 border-r border-neutral-200 dark:border-neutral-700 font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-50/30 dark:bg-neutral-800/20">{{ $t('campaigns.columns.taksit', 'Taksit') }}</td>
-              <td v-for="camp in matrixData" :key="camp.id" class="p-4 border-r last:border-r-0 border-neutral-200 dark:border-neutral-700 text-center">
-                <span v-if="isValidVal(camp.finansman_detay?.taksit)">{{ camp.finansman_detay?.taksit }}</span>
-                <span v-else class="px-2 py-0.5 rounded text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-400">-</span>
-              </td>
-            </tr>
+                  <!-- Kâr Payı -->
+                  <td v-if="hasAnyValidRow(c => c.finansman_detay?.kar_payi_orani)" class="p-4 font-bold text-blue-600 dark:text-blue-400">
+                    {{ isValidVal(camp.finansman_detay?.kar_payi_orani) ? '%' + camp.finansman_detay?.kar_payi_orani : '-' }}
+                  </td>
 
-            <!-- Tahsis Ücreti -->
-            <tr v-if="hasAnyValidRow(c => c.finansman_detay?.tahsis_ucreti)" class="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 transition-colors">
-              <td class="p-4 border-r border-neutral-200 dark:border-neutral-700 font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-50/30 dark:bg-neutral-800/20">Tahsis Ücreti (TL)</td>
-              <td v-for="camp in matrixData" :key="camp.id" class="p-4 border-r last:border-r-0 border-neutral-200 dark:border-neutral-700 text-center">
-                <span v-if="isValidVal(camp.finansman_detay?.tahsis_ucreti)" class="font-semibold text-orange-600 dark:text-orange-400">{{ Number(camp.finansman_detay?.tahsis_ucreti).toLocaleString('tr-TR') }} TL</span>
-                <span v-else class="px-2 py-0.5 rounded text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-400">-</span>
-              </td>
-            </tr>
+                  <!-- Vade -->
+                  <td v-if="hasAnyValidRow(c => c.finansman_detay?.vade_ay)" class="p-4 text-neutral-700 dark:text-neutral-300">
+                    {{ isValidVal(camp.finansman_detay?.vade_ay) ? camp.finansman_detay?.vade_ay + ' Ay' : '-' }}
+                  </td>
 
-            <!-- Finansman Tutarı -->
-            <tr v-if="hasAnyValidRow(c => c.finansman_detay?.finansman_tutari)" class="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 transition-colors">
-              <td class="p-4 border-r border-neutral-200 dark:border-neutral-700 font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-50/30 dark:bg-neutral-800/20">Finansman Tutarı (TL)</td>
-              <td v-for="camp in matrixData" :key="camp.id" class="p-4 border-r last:border-r-0 border-neutral-200 dark:border-neutral-700 text-center">
-                <span v-if="isValidVal(camp.finansman_detay?.finansman_tutari)" class="font-semibold text-cyan-600 dark:text-cyan-400">{{ Number(camp.finansman_detay?.finansman_tutari).toLocaleString('tr-TR') }} TL</span>
-                <span v-else class="px-2 py-0.5 rounded text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-400">-</span>
-              </td>
-            </tr>
+                  <!-- Taksit -->
+                  <td v-if="hasAnyValidRow(c => c.finansman_detay?.taksit)" class="p-4 text-neutral-700 dark:text-neutral-300">
+                    {{ isValidVal(camp.finansman_detay?.taksit) ? camp.finansman_detay?.taksit : '-' }}
+                  </td>
 
-            <!-- Ödül Miktarı -->
-            <tr v-if="hasAnyValidRow(c => c.promosyon_detay?.odul_tutari)" class="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 transition-colors">
-              <td class="p-4 border-r border-neutral-200 dark:border-neutral-700 font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-50/30 dark:bg-neutral-800/20">{{ $t('campaigns.columns.odul', 'Ödül Miktarı') }}</td>
-              <td v-for="camp in matrixData" :key="camp.id" class="p-4 border-r last:border-r-0 border-neutral-200 dark:border-neutral-700 text-center">
-                <span v-if="isValidVal(camp.promosyon_detay?.odul_tutari)" class="font-semibold text-emerald-600 dark:text-emerald-400">{{ Number(camp.promosyon_detay?.odul_tutari).toLocaleString('tr-TR') }} TL</span>
-                <span v-else class="px-2 py-0.5 rounded text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-400">-</span>
-              </td>
-            </tr>
+                  <!-- Tahsis Ücreti -->
+                  <td v-if="hasAnyValidRow(c => c.finansman_detay?.tahsis_ucreti)" class="p-4 font-bold text-orange-600 dark:text-orange-400">
+                    {{ isValidVal(camp.finansman_detay?.tahsis_ucreti) ? Number(camp.finansman_detay?.tahsis_ucreti).toLocaleString('tr-TR') + ' TL' : '-' }}
+                  </td>
 
-            <!-- MGM / Davet Et Kazan -->
-            <tr v-if="hasAnyValidRow(c => c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul || (c.mgm_detay?.is_mgm && c.promosyon_detay?.odul_tutari))" class="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 transition-colors">
-              <td class="p-4 border-r border-neutral-200 dark:border-neutral-700 font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-50/30 dark:bg-neutral-800/20">MGM (Davet Et Kazan)</td>
-              <td v-for="camp in matrixData" :key="camp.id" class="p-4 border-r last:border-r-0 border-neutral-200 dark:border-neutral-700 text-center">
-                <span v-if="isValidVal(camp.mgm_detay?.kisi_basi_kazanc || camp.mgm_detay?.davet_eden_odul || (camp.mgm_detay?.is_mgm && camp.promosyon_detay?.odul_tutari))" class="font-bold text-amber-600 dark:text-amber-400">
-                  {{ Number(camp.mgm_detay?.kisi_basi_kazanc || camp.mgm_detay?.davet_eden_odul || camp.promosyon_detay?.odul_tutari).toLocaleString('tr-TR') }} TL
-                </span>
-                <span v-else class="px-2 py-0.5 rounded text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-400">-</span>
-              </td>
-            </tr>
+                  <!-- Finansman Tutarı -->
+                  <td v-if="hasAnyValidRow(c => c.finansman_detay?.finansman_tutari)" class="p-4 font-bold text-cyan-600 dark:text-cyan-400">
+                    {{ isValidVal(camp.finansman_detay?.finansman_tutari) ? Number(camp.finansman_detay?.finansman_tutari).toLocaleString('tr-TR') + ' TL' : '-' }}
+                  </td>
 
-            <!-- Hedef Kitle -->
-            <tr v-if="hasAnyValidRow(c => c.genel_bilgi?.hedef_kitle)" class="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 transition-colors">
-              <td class="p-4 border-r border-neutral-200 dark:border-neutral-700 font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-50/30 dark:bg-neutral-800/20">{{ $t('campaigns.columns.hedefKitle', 'Hedef Kitle') }}</td>
-              <td v-for="camp in matrixData" :key="camp.id" class="p-4 border-r last:border-r-0 border-neutral-200 dark:border-neutral-700 text-center">
-                <span v-if="isValidVal(Array.isArray(camp.genel_bilgi?.hedef_kitle) ? camp.genel_bilgi.hedef_kitle.join(', ') : camp.genel_bilgi?.hedef_kitle)">{{ Array.isArray(camp.genel_bilgi?.hedef_kitle) ? camp.genel_bilgi.hedef_kitle.join(', ') : camp.genel_bilgi?.hedef_kitle }}</span>
-                <span v-else class="px-2 py-0.5 rounded text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-400">-</span>
-              </td>
-            </tr>
+                  <!-- Ödül -->
+                  <td v-if="hasAnyValidRow(c => c.promosyon_detay?.odul_tutari)" class="p-4 font-bold text-emerald-600 dark:text-emerald-400">
+                    {{ isValidVal(camp.promosyon_detay?.odul_tutari) ? Number(camp.promosyon_detay?.odul_tutari).toLocaleString('tr-TR') + ' TL' : '-' }}
+                  </td>
 
-          </tbody>
-        </table>
+                  <!-- MGM -->
+                  <td v-if="hasAnyValidRow(c => c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul)" class="p-4 font-bold text-amber-600 dark:text-amber-400">
+                    {{ isValidVal(camp.mgm_detay?.kisi_basi_kazanc || camp.mgm_detay?.davet_eden_odul) ? Number(camp.mgm_detay?.kisi_basi_kazanc || camp.mgm_detay?.davet_eden_odul).toLocaleString('tr-TR') + ' TL' : '-' }}
+                  </td>
+
+                  <!-- Hedef Kitle -->
+                  <td v-if="hasAnyValidRow(c => c.genel_bilgi?.hedef_kitle)" class="p-4 text-neutral-600 dark:text-neutral-400">
+                    {{ isValidVal(camp.genel_bilgi?.hedef_kitle) ? (Array.isArray(camp.genel_bilgi?.hedef_kitle) ? camp.genel_bilgi?.hedef_kitle.join(', ') : camp.genel_bilgi?.hedef_kitle) : '-' }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -295,7 +281,7 @@
       Bu bilgiler yatırım tavsiyesi değildir. Karşılaştırmalar yalnızca metinlerden otomatik çıkarılan alanlara dayanır; kampanya koşullarının tamamı için bankaların resmî sayfaları esastır.
     </div>
 
-    <!-- ================= KAMPANYA DETAY PANELİ (DRAWER / MODAL) ================= -->
+    <!-- ================= KAMPANYA DETAY PANELİ (DRAWER / MODAL - NO BLUR) ================= -->
     <Teleport to="body">
       <Transition
         enter-active-class="transform transition-all duration-300 ease-out" 
@@ -469,7 +455,7 @@ const formatTarih = (val) => {
   }
 }
 
-// 🎯 SEÇİLEN KAMPANYALARIN HİÇBİRİNDE DOLU DEĞİLSE SATIRI GİZLEYEN YARDIMCI
+// 🎯 SEÇİLEN KAMPANYALARIN HİÇBİRİNDE DOLU DEĞİLSE SÜTUNU GİZLEYEN YARDIMCI
 const hasAnyValidRow = (getterFn) => {
   if (!matrixData.value || matrixData.value.length === 0) return false
   return matrixData.value.some(camp => isValidVal(getterFn(camp)))
@@ -599,43 +585,42 @@ const exportMatrix = async (format) => {
       const XLSX = window.XLSX
       const wb = XLSX.utils.book_new()
 
-      const headers = ['Özellik', ...matrixData.value.map(c => `${getBankaAd(c.genel_bilgi?.banka_id)} - ${c.genel_bilgi?.kampanya_adi || c.baslik}`)]
+      const headers = ['Banka', 'Kampanya']
+      if (hasAnyValidRow(c => c.genel_bilgi?.kampanya_turu)) headers.push('Tür')
+      if (hasAnyValidRow(c => c.finansman_detay?.kar_payi_orani)) headers.push('Kâr Payı (%)')
+      if (hasAnyValidRow(c => c.finansman_detay?.vade_ay)) headers.push('Vade (Ay)')
+      if (hasAnyValidRow(c => c.finansman_detay?.taksit)) headers.push('Taksit')
+      if (hasAnyValidRow(c => c.finansman_detay?.tahsis_ucreti)) headers.push('Tahsis Ücreti (TL)')
+      if (hasAnyValidRow(c => c.finansman_detay?.finansman_tutari)) headers.push('Finansman Tutarı (TL)')
+      if (hasAnyValidRow(c => c.promosyon_detay?.odul_tutari)) headers.push('Ödül (TL)')
+      if (hasAnyValidRow(c => c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul)) headers.push('MGM / Davet (TL)')
+      if (hasAnyValidRow(c => c.genel_bilgi?.hedef_kitle)) headers.push('Hedef Kitle')
+
       const rows = [
-        ['FINAGENT - KAMPANYA KARŞILAŞTIRMA MATRİSİ'],
+        ['FINAGENT - KAMPANYA KARŞILAŞTIRMA LİSTESİ'],
         [`Tarih: ${today}`, `Karşılaştırılan Kampanya Sayısı: ${matrixData.value.length}`],
         [],
         headers
       ]
 
-      if (hasAnyValidRow(c => c.genel_bilgi?.kampanya_turu)) {
-        rows.push(['Kampanya Türü', ...matrixData.value.map(c => c.genel_bilgi?.kampanya_turu || '-')])
-      }
-      if (hasAnyValidRow(c => c.finansman_detay?.kar_payi_orani)) {
-        rows.push(['Kâr Payı (%)', ...matrixData.value.map(c => c.finansman_detay?.kar_payi_orani ? `%${c.finansman_detay.kar_payi_orani}` : '-')])
-      }
-      if (hasAnyValidRow(c => c.finansman_detay?.vade_ay)) {
-        rows.push(['Vade (Ay)', ...matrixData.value.map(c => c.finansman_detay?.vade_ay ? `${c.finansman_detay.vade_ay} Ay` : '-')])
-      }
-      if (hasAnyValidRow(c => c.finansman_detay?.taksit)) {
-        rows.push(['Taksit', ...matrixData.value.map(c => c.finansman_detay?.taksit || '-')])
-      }
-      if (hasAnyValidRow(c => c.finansman_detay?.tahsis_ucreti)) {
-        rows.push(['Tahsis Ücreti (TL)', ...matrixData.value.map(c => c.finansman_detay?.tahsis_ucreti ? `${Number(c.finansman_detay.tahsis_ucreti).toLocaleString('tr-TR')} TL` : '-')])
-      }
-      if (hasAnyValidRow(c => c.promosyon_detay?.odul_tutari)) {
-        rows.push(['Ödül (TL)', ...matrixData.value.map(c => c.promosyon_detay?.odul_tutari ? `${Number(c.promosyon_detay.odul_tutari).toLocaleString('tr-TR')} TL` : '-')])
-      }
-      if (hasAnyValidRow(c => c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul)) {
-        rows.push(['MGM / Davet Ödülü', ...matrixData.value.map(c => c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul ? `${Number(c.mgm_detay.kisi_basi_kazanc || c.mgm_detay.davet_eden_odul).toLocaleString('tr-TR')} TL` : '-')])
-      }
-      if (hasAnyValidRow(c => c.genel_bilgi?.hedef_kitle)) {
-        rows.push(['Hedef Kitle', ...matrixData.value.map(c => Array.isArray(c.genel_bilgi?.hedef_kitle) ? c.genel_bilgi.hedef_kitle.join(', ') : (c.genel_bilgi?.hedef_kitle || '-'))])
-      }
+      matrixData.value.forEach(c => {
+        const row = [getBankaAd(c.genel_bilgi?.banka_id), c.genel_bilgi?.kampanya_adi || c.baslik]
+        if (hasAnyValidRow(x => x.genel_bilgi?.kampanya_turu)) row.push(c.genel_bilgi?.kampanya_turu || '-')
+        if (hasAnyValidRow(x => x.finansman_detay?.kar_payi_orani)) row.push(c.finansman_detay?.kar_payi_orani ? `%${c.finansman_detay.kar_payi_orani}` : '-')
+        if (hasAnyValidRow(x => x.finansman_detay?.vade_ay)) row.push(c.finansman_detay?.vade_ay ? `${c.finansman_detay.vade_ay} Ay` : '-')
+        if (hasAnyValidRow(x => x.finansman_detay?.taksit)) row.push(c.finansman_detay?.taksit || '-')
+        if (hasAnyValidRow(x => x.finansman_detay?.tahsis_ucreti)) row.push(c.finansman_detay?.tahsis_ucreti ? `${Number(c.finansman_detay.tahsis_ucreti).toLocaleString('tr-TR')} TL` : '-')
+        if (hasAnyValidRow(x => x.finansman_detay?.finansman_tutari)) row.push(c.finansman_detay?.finansman_tutari ? `${Number(c.finansman_detay.finansman_tutari).toLocaleString('tr-TR')} TL` : '-')
+        if (hasAnyValidRow(x => x.promosyon_detay?.odul_tutari)) row.push(c.promosyon_detay?.odul_tutari ? `${Number(c.promosyon_detay.odul_tutari).toLocaleString('tr-TR')} TL` : '-')
+        if (hasAnyValidRow(x => x.mgm_detay?.kisi_basi_kazanc || x.mgm_detay?.davet_eden_odul)) row.push(c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul ? `${Number(c.mgm_detay.kisi_basi_kazanc || c.mgm_detay.davet_eden_odul).toLocaleString('tr-TR')} TL` : '-')
+        if (hasAnyValidRow(x => x.genel_bilgi?.hedef_kitle)) row.push(Array.isArray(c.genel_bilgi?.hedef_kitle) ? c.genel_bilgi.hedef_kitle.join(', ') : (c.genel_bilgi?.hedef_kitle || '-'))
+        rows.push(row)
+      })
 
       const ws = XLSX.utils.aoa_to_sheet(rows)
-      ws['!cols'] = [{ wch: 25 }, ...matrixData.value.map(() => ({ wch: 40 }))]
-      XLSX.utils.book_append_sheet(wb, ws, 'Karsilastirma_Matrisi')
-      XLSX.writeFile(wb, `FinAgent_Karsilastirma_Matrisi_${Date.now()}.xlsx`)
+      ws['!cols'] = [{ wch: 20 }, { wch: 40 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }]
+      XLSX.utils.book_append_sheet(wb, ws, 'Karsilastirma')
+      XLSX.writeFile(wb, `FinAgent_Karsilastirma_${Date.now()}.xlsx`)
     } catch (e) {
       console.error('Excel export hatası:', e)
     }
@@ -647,48 +632,41 @@ const exportMatrix = async (format) => {
         <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #171717; background-color: #ffffff; padding: 25px; max-width: 850px; margin: 0 auto;">
             <!-- ÜST BAŞLIK -->
             <div style="border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 20px;">
-                <h1 style="color: #2563eb; margin: 0; font-size: 24px; font-weight: bold;">FinAgent Kampanya Karşılaştırma Matrisi</h1>
+                <h1 style="color: #2563eb; margin: 0; font-size: 24px; font-weight: bold;">FinAgent Kampanya Karşılaştırması</h1>
                 <p style="color: #6b7280; font-size: 12px; margin: 5px 0 0 0;">Oluşturulma Tarihi: ${escapeHtml(today)}</p>
             </div>
 
             <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 15px;">
                 <thead>
                     <tr style="background-color: #f3f4f6;">
-                        <th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: left; color: #1f2937; width: 140px;">Özellik</th>
-                        ${matrixData.value.map(c => `
-                          <th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center; color: #1e40af;">
-                              <div style="font-size: 9.5px; color: #6b7280;">${escapeHtml(getBankaAd(c.genel_bilgi?.banka_id))}</div>
-                              <div style="font-weight: bold;">${escapeHtml(c.genel_bilgi?.kampanya_adi || c.baslik)}</div>
-                          </th>
-                        `).join('')}
+                        <th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: left; color: #1f2937;">Banka</th>
+                        <th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: left; color: #1f2937;">Kampanya</th>
+                        ${hasAnyValidRow(c => c.genel_bilgi?.kampanya_turu) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center;">Tür</th>` : ''}
+                        ${hasAnyValidRow(c => c.finansman_detay?.kar_payi_orani) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center;">Kâr Payı</th>` : ''}
+                        ${hasAnyValidRow(c => c.finansman_detay?.vade_ay) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center;">Vade</th>` : ''}
+                        ${hasAnyValidRow(c => c.finansman_detay?.taksit) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center;">Taksit</th>` : ''}
+                        ${hasAnyValidRow(c => c.finansman_detay?.tahsis_ucreti) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center;">Tahsis Ücreti</th>` : ''}
+                        ${hasAnyValidRow(c => c.promosyon_detay?.odul_tutari) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center;">Ödül</th>` : ''}
+                        ${hasAnyValidRow(c => c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center;">MGM</th>` : ''}
+                        ${hasAnyValidRow(c => c.genel_bilgi?.hedef_kitle) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: left;">Hedef Kitle</th>` : ''}
                     </tr>
                 </thead>
                 <tbody>`
 
-      if (hasAnyValidRow(c => c.genel_bilgi?.kampanya_turu)) {
-        html += `<tr><td style="padding: 7px 10px; border: 1px solid #d1d5db; font-weight: bold; background: #f9fafb;">Kampanya Türü</td>${matrixData.value.map(c => `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center;">${escapeHtml(c.genel_bilgi?.kampanya_turu || '-')}</td>`).join('')}</tr>`
-      }
-      if (hasAnyValidRow(c => c.finansman_detay?.kar_payi_orani)) {
-        html += `<tr><td style="padding: 7px 10px; border: 1px solid #d1d5db; font-weight: bold; background: #f9fafb;">Kâr Payı</td>${matrixData.value.map(c => `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center; font-weight: bold; color: #2563eb;">${c.finansman_detay?.kar_payi_orani ? `%${c.finansman_detay.kar_payi_orani}` : '-'}</td>`).join('')}</tr>`
-      }
-      if (hasAnyValidRow(c => c.finansman_detay?.vade_ay)) {
-        html += `<tr><td style="padding: 7px 10px; border: 1px solid #d1d5db; font-weight: bold; background: #f9fafb;">Vade</td>${matrixData.value.map(c => `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center;">${c.finansman_detay?.vade_ay ? `${c.finansman_detay.vade_ay} Ay` : '-'}</td>`).join('')}</tr>`
-      }
-      if (hasAnyValidRow(c => c.finansman_detay?.taksit)) {
-        html += `<tr><td style="padding: 7px 10px; border: 1px solid #d1d5db; font-weight: bold; background: #f9fafb;">Taksit</td>${matrixData.value.map(c => `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center;">${escapeHtml(c.finansman_detay?.taksit || '-')}</td>`).join('')}</tr>`
-      }
-      if (hasAnyValidRow(c => c.finansman_detay?.tahsis_ucreti)) {
-        html += `<tr><td style="padding: 7px 10px; border: 1px solid #d1d5db; font-weight: bold; background: #f9fafb;">Tahsis Ücreti</td>${matrixData.value.map(c => `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center; color: #ea580c; font-weight: bold;">${c.finansman_detay?.tahsis_ucreti ? `${Number(c.finansman_detay.tahsis_ucreti).toLocaleString('tr-TR')} TL` : '-'}</td>`).join('')}</tr>`
-      }
-      if (hasAnyValidRow(c => c.promosyon_detay?.odul_tutari)) {
-        html += `<tr><td style="padding: 7px 10px; border: 1px solid #d1d5db; font-weight: bold; background: #f9fafb;">Ödül</td>${matrixData.value.map(c => `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center; color: #059669; font-weight: bold;">${c.promosyon_detay?.odul_tutari ? `${Number(c.promosyon_detay.odul_tutari).toLocaleString('tr-TR')} TL` : '-'}</td>`).join('')}</tr>`
-      }
-      if (hasAnyValidRow(c => c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul)) {
-        html += `<tr><td style="padding: 7px 10px; border: 1px solid #d1d5db; font-weight: bold; background: #f9fafb;">MGM / Davet</td>${matrixData.value.map(c => `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center; color: #d97706; font-weight: bold;">${c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul ? `${Number(c.mgm_detay.kisi_basi_kazanc || c.mgm_detay.davet_eden_odul).toLocaleString('tr-TR')} TL` : '-'}</td>`).join('')}</tr>`
-      }
-      if (hasAnyValidRow(c => c.genel_bilgi?.hedef_kitle)) {
-        html += `<tr><td style="padding: 7px 10px; border: 1px solid #d1d5db; font-weight: bold; background: #f9fafb;">Hedef Kitle</td>${matrixData.value.map(c => `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center;">${escapeHtml(Array.isArray(c.genel_bilgi?.hedef_kitle) ? c.genel_bilgi.hedef_kitle.join(', ') : (c.genel_bilgi?.hedef_kitle || '-'))}</td>`).join('')}</tr>`
-      }
+      matrixData.value.forEach(c => {
+        html += `<tr>
+          <td style="padding: 7px 10px; border: 1px solid #d1d5db; font-weight: bold; color: #1e40af;">${escapeHtml(getBankaAd(c.genel_bilgi?.banka_id))}</td>
+          <td style="padding: 7px 10px; border: 1px solid #d1d5db; font-weight: 500;">${escapeHtml(c.genel_bilgi?.kampanya_adi || c.baslik)}</td>
+          ${hasAnyValidRow(x => x.genel_bilgi?.kampanya_turu) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center;">${escapeHtml(c.genel_bilgi?.kampanya_turu || '-')}</td>` : ''}
+          ${hasAnyValidRow(x => x.finansman_detay?.kar_payi_orani) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center; font-weight: bold; color: #2563eb;">${c.finansman_detay?.kar_payi_orani ? `%${c.finansman_detay.kar_payi_orani}` : '-'}</td>` : ''}
+          ${hasAnyValidRow(x => x.finansman_detay?.vade_ay) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center;">${c.finansman_detay?.vade_ay ? `${c.finansman_detay.vade_ay} Ay` : '-'}</td>` : ''}
+          ${hasAnyValidRow(x => x.finansman_detay?.taksit) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center;">${escapeHtml(c.finansman_detay?.taksit || '-')}</td>` : ''}
+          ${hasAnyValidRow(x => x.finansman_detay?.tahsis_ucreti) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center; color: #ea580c; font-weight: bold;">${c.finansman_detay?.tahsis_ucreti ? `${Number(c.finansman_detay.tahsis_ucreti).toLocaleString('tr-TR')} TL` : '-'}</td>` : ''}
+          ${hasAnyValidRow(x => x.promosyon_detay?.odul_tutari) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center; color: #059669; font-weight: bold;">${c.promosyon_detay?.odul_tutari ? `${Number(c.promosyon_detay.odul_tutari).toLocaleString('tr-TR')} TL` : '-'}</td>` : ''}
+          ${hasAnyValidRow(x => x.mgm_detay?.kisi_basi_kazanc || x.mgm_detay?.davet_eden_odul) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center; color: #d97706; font-weight: bold;">${c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul ? `${Number(c.mgm_detay.kisi_basi_kazanc || c.mgm_detay.davet_eden_odul).toLocaleString('tr-TR')} TL` : '-'}</td>` : ''}
+          ${hasAnyValidRow(x => x.genel_bilgi?.hedef_kitle) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db;">${escapeHtml(Array.isArray(c.genel_bilgi?.hedef_kitle) ? c.genel_bilgi.hedef_kitle.join(', ') : (c.genel_bilgi?.hedef_kitle || '-'))}</td>` : ''}
+        </tr>`
+      })
 
       html += `</tbody></table>
             <div style="margin-top: 30px; padding-top: 10px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 11px; color: #9ca3af;">
@@ -701,7 +679,7 @@ const exportMatrix = async (format) => {
 
       await window.html2pdf().set({
           margin:       0.4,
-          filename:     `FinAgent_Karsilastirma_Matrisi_${Date.now()}.pdf`,
+          filename:     `FinAgent_Karsilastirma_${Date.now()}.pdf`,
           image:        { type: 'jpeg', quality: 0.98 },
           html2canvas:  { scale: 2, backgroundColor: '#ffffff', useCORS: true },
           jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' },
@@ -725,7 +703,7 @@ const exportMatrix = async (format) => {
 
       const dataUrl = canvas.toDataURL('image/png', 1.0)
       const link = document.createElement('a')
-      link.download = `FinAgent_Karsilastirma_Matrisi_${Date.now()}.png`
+      link.download = `FinAgent_Karsilastirma_${Date.now()}.png`
       link.href = dataUrl
       document.body.appendChild(link)
       link.click()
