@@ -49,7 +49,7 @@ from chatbot.intent import banka_bul, banka_adi_getir, banka_kodu_coz
 
 # 🚀 Qdrant artık yarışma sunucusunda (url + port=443 + prefix=<takım> + api_key)
 try:
-    from evren_client import qdrant_ayarlari, embed_batch as evren_embed_batch
+    from backend.chatbot.evren_client import qdrant_ayarlari, embed_batch as evren_embed_batch
 except ModuleNotFoundError:              # evren_client.py chatbot/ içine konmuşsa
     from chatbot.evren_client import qdrant_ayarlari, embed_batch as evren_embed_batch
 QDRANT_URL = os.getenv("QDRANT_HOST", "http://qdrant:6333")  # (yalnız geriye dönük)

@@ -10,7 +10,7 @@
 # =============================================================================
 
 try:
-    from evren_client import embed_batch, embed_hazir_mi
+    from backend.chatbot.evren_client import embed_batch, embed_hazir_mi
 except ModuleNotFoundError:
     from chatbot.evren_client import embed_batch, embed_hazir_mi
 
