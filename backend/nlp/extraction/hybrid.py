@@ -4,7 +4,7 @@
 import os
 from typing import Any
 
-from .llm_extractor import ALAN_SEMASI,llm_hazir, llm_ile_cikar
+from .llm_ex import ALAN_SEMASI, llm_hazir, llm_ile_cikar
 from .rule_based import AlanBulgusu, kurallarla_cikar
 
 LLM_AKTIF = os.environ.get("FINAGENT_LLM", "1") != "0"
@@ -21,8 +21,7 @@ def _llm_var_mi() -> bool:
         print(" ℹ️ FINAGENT_LLM=0 olduğu için LLM devre dışı.")
         return False
     
-    #hazir = llm_hazir()
-    hazir = False
+    hazir = llm_hazir()
     if not hazir:
         print(" ⚠️ UYARI: Ollama/Model erişilemez — Sadece kural tabanlı modda çalışılıyor.")
     return hazir
