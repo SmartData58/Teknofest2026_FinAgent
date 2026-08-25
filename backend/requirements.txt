@@ -39,6 +39,8 @@ langchain-qdrant
 #                         # ⚠️ En son sil ve build'den sonra /health'i doğrula.
 # langchain-ollama        # ❌ yerel Ollama yok
 
+   openai>=1.0.0
+
 # --- Yerel ML (OCR + NER) ----------------------------------------------------
 # ⚠️ torch / torchvision BU DOSYADA YOK — Dockerfile'da AYRI bir katmanda,
 # PyTorch'un CUDA indeksinden kuruluyor (torchvision==0.25.0 sabit, torch onunla
