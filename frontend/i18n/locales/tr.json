@@ -66,12 +66,20 @@
     "file_preview": "Dosya Önizleme",
     "filter_banks": "Bankalar",
     "filter_clear": "Temizle",
+    "visit_source": "Kaynak sayfaya git",
     "placeholder": "Bir şeyler sorun, yapıştırın (Ctrl+V) veya dosya bırakın...",
     "report_preview": "Rapor Önizleme",
     "db_record": "Veritabanı Kaydı",
     "download": "İndir",
-    "process_completed": "İşlem tamamlandı",
-    "campaign_detail": "Kampanya Detayı"
+    "campaign_detail": "Kampanya Detayı",
+    "metric_time_title": "Bu yanıtın uçtan uca süresi",
+    "metric_token_title": "Girdi + çıktı token toplamı (tüm arka plan çağrıları dahil)",
+    "metric_calls_title": "Bu yanıt için yapılan API çağrısı sayısı",
+    "metric_calls": "çağrı",
+    "metric_cached": "önbellek",
+    "metric_cache_title": "Bu yanıt önbellekten geldi, yeni token harcanmadı",
+    "mixed_units": "Birimler karışık (TL / %) — ortalama alınamaz",
+    "category": "Kategori"
   },
   "landing": {
     "nav": {
@@ -126,18 +134,54 @@
     },
     "flow_heading": "Sistem Akış Diyagramı",
     "flow": {
-      "1": { "title": "Web Scraping", "desc": "BeautifulSoup, Selenium" },
-      "2": { "title": "Ham Metin", "desc": "Kampanya metni, başlık, tarih" },
-      "3": { "title": "Ön İşleme", "desc": "HTML temizliği, normalizasyon" },
-      "4": { "title": "Regex Yakalama", "desc": "Oran, vade, tutar, taksit" },
-      "5": { "title": "Veri Kaydı", "desc": "MongoDB" },
-      "6": { "title": "Embedding", "desc": "Evren API (bge-m3-embed)" },
-      "7": { "title": "Vektör İndeksleme", "desc": "Qdrant (Metadata ile)" },
-      "8": { "title": "Kullanıcı Sorgusu", "desc": "Nuxt Arayüzü" },
-      "9": { "title": "Sorgu İşleme", "desc": "Niyet Analizi (Regex + LLM)" },
-      "10": { "title": "LLM Üretimi", "desc": "Evren API (llm-large)" },
-      "11": { "title": "Formatlama", "desc": "JSON / Markdown Tablosu" },
-      "12": { "title": "Kullanıcıya Sunum", "desc": "Dashboard & Chatbot" }
+      "1": {
+        "title": "Web Scraping",
+        "desc": "BeautifulSoup, Selenium"
+      },
+      "2": {
+        "title": "Ham Metin",
+        "desc": "Kampanya metni, başlık, tarih"
+      },
+      "3": {
+        "title": "Ön İşleme",
+        "desc": "HTML temizliği, normalizasyon"
+      },
+      "4": {
+        "title": "Regex Yakalama",
+        "desc": "Oran, vade, tutar, taksit"
+      },
+      "5": {
+        "title": "Veri Kaydı",
+        "desc": "MongoDB"
+      },
+      "6": {
+        "title": "Embedding",
+        "desc": "Evren API (bge-m3-embed)"
+      },
+      "7": {
+        "title": "Vektör İndeksleme",
+        "desc": "Qdrant (Metadata ile)"
+      },
+      "8": {
+        "title": "Kullanıcı Sorgusu",
+        "desc": "Nuxt Arayüzü"
+      },
+      "9": {
+        "title": "Sorgu İşleme",
+        "desc": "Niyet Analizi (Regex + LLM)"
+      },
+      "10": {
+        "title": "LLM Üretimi",
+        "desc": "Evren API (llm-large)"
+      },
+      "11": {
+        "title": "Formatlama",
+        "desc": "JSON / Markdown Tablosu"
+      },
+      "12": {
+        "title": "Kullanıcıya Sunum",
+        "desc": "Dashboard & Chatbot"
+      }
     },
     "goals_heading": "Proje Hedefleri",
     "goals": {
@@ -172,6 +216,42 @@
     },
     "closing": {
       "hint": "Sohbete başlamak için aşağı kaydırmaya devam edin veya arama yapın."
+    },
+    "api_docs": {
+      "title": "Yeni Eklenen API Uç Noktaları",
+      "compare_title": "1. Kişiselleştirilmiş Karşılaştırma",
+      "compare_desc": "/api/campaigns/compare: Seçili kampanya ID'lerini alarak yan yana matris kıyası için verileri döndürür.",
+      "top_title": "2. En Avantajlı Kampanyalar",
+      "top_desc": "/api/campaigns/top-advantageous: Kâr payı, vade, ödül ve tahsis ücreti gibi kategorilerde sektörün en iyi kampanyalarını listeler."
     }
+  },
+  "campaigns": {
+    "columns": {
+      "banka": "Banka",
+      "kampanya": "Kampanya",
+      "tur": "Tür",
+      "karPayi": "Kâr Payı (%)",
+      "vade": "Vade (ay)",
+      "taksit": "Taksit",
+      "odul": "Ödül (TL)",
+      "bitisTarihi": "Bitiş",
+      "hedefKitle": "Hedef Kitle"
+    }
+  },
+  "comparison": {
+    "custom_compare": "Özel Karşılaştırma Matrisi",
+    "search_placeholder": "Karşılaştırmak istediğiniz kampanyayı arayın...",
+    "compare_btn": "Karşılaştır",
+    "feature": "Özellik",
+    "no_data": "Veri Yok"
+  },
+  "dashboard": {
+    "top_campaigns": "Sektörün En Avantajlı Kampanyaları",
+    "lowest_profit": "En Düşük Kâr Payı",
+    "highest_reward": "En Yüksek Ödül",
+    "longest_term": "En Uzun Vade",
+    "lowest_fee": "En Düşük Ücret",
+    "export_png": "PNG İndir",
+    "export_excel": "Excel (CSV) İndir"
   }
 }

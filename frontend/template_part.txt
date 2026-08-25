@@ -1,0 +1,83 @@
+﻿        <!-- YENİ: GRAFİKLİ KARŞILAŞTIRMA ALANI -->
+        <div v-if="activeCompareBanks.length > 0" class="mt-8 rounded-3xl border border-blue-200 dark:border-blue-900/50 bg-neutral-50/50 dark:bg-neutral-900 shadow-sm animate-fade-in overflow-hidden">
+          
+          <!-- Üst Bilgi Çubuğu -->
+          <div class="px-8 py-5 border-b border-blue-100 dark:border-blue-900 flex flex-col md:flex-row items-center justify-between">
+            <h2 class="text-xl font-extrabold text-neutral-900 dark:text-white tracking-tight">
+              {{ activeCompareBanks.length === 1 ? activeCompareBanks[0].kisa_ad + ' - Derinlemesine Analiz' : 'Pazar Rekabeti Karşılaştırması' }}
+            </h2>
+            <button v-if="selectedBanks.length > 0" @click="selectedBanks = []" class="text-sm font-bold text-neutral-400 hover:text-neutral-700 dark:hover:text-white transition-colors">
+              Seçimi Temizle
+            </button>
+          </div>
+          
+          <div class="p-6 md:p-8 space-y-8">
+            
+            <!-- Satır 1: Trend ve Radar -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <!-- Line Grafiği (Başlangıç Trendi) -->
+              <div class="bg-white dark:bg-neutral-950 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm">
+                <h3 class="text-base font-bold text-neutral-900 dark:text-white mb-1">Kampanya Başlangıç Trendi</h3>
+                <p class="text-xs font-semibold text-neutral-500 mb-6">Son 6 ayda başlayan yeni kampanya ivmesi</p>
+                <div class="h-64 relative">
+                   <Line :data="lineChartData" :options="lineOptions" />
+                </div>
+              </div>
+              
+              <!-- Radar Grafiği -->
+              <div class="bg-white dark:bg-neutral-950 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm">
+                <h3 class="text-base font-bold text-neutral-900 dark:text-white mb-1">Kampanya Dağılımı</h3>
+                <p class="text-xs font-semibold text-neutral-500 mb-6">Banka vs Sektör Ortalaması - Çeşitlilik</p>
+                <div class="h-64 relative flex items-center justify-center">
+                   <Radar :data="radarChartData" :options="radarOptions" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Satır 2: Ortalama Süre -->
+            <div class="grid grid-cols-1 gap-8">
+              <!-- Bar Grafiği -->
+              <div class="bg-white dark:bg-neutral-950 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm">
+                <h3 class="text-base font-bold text-neutral-900 dark:text-white mb-1">Ortalama Kampanya Süresi & Hedef Kitle</h3>
+                <p class="text-xs font-semibold text-neutral-500 mb-6">Tür bazında kampanya yayın süresi dağılımı (gün)</p>
+                <div class="h-80 relative">
+                   <Bar :data="durationBarChartData" :options="durationBarOptions" />
+                </div>
+              </div>
+            </div>
+            
+            <!-- Satır 3: MGM Analizi (Eğer Varsa) -->
+            <div v-if="mgmCampaigns.length > 0" class="bg-white dark:bg-neutral-950 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm overflow-hidden">
+              <div class="p-6 border-b border-neutral-100 dark:border-neutral-800">
+                <h3 class="text-base font-bold text-neutral-900 dark:text-white mb-1">Yakınını Davet Et / MGM Analizi</h3>
+                <p class="text-xs font-semibold text-neutral-500">Üye getir üye kazan kampanyalarının karşılaştırması</p>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                  <thead>
+                    <tr class="text-[11px] font-extrabold text-neutral-400 dark:text-neutral-500 uppercase tracking-widest bg-neutral-50/50 dark:bg-neutral-900/50 border-b border-neutral-100 dark:border-neutral-800">
+                      <th class="py-4 px-6">Banka</th>
+                      <th class="py-4 px-6">Kampanya</th>
+                      <th class="py-4 px-6">Davet Başına Kazanç</th>
+                      <th class="py-4 px-6">Maksimum Limit</th>
+                      <th class="py-4 px-6">Şartlar</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-neutral-100 dark:divide-neutral-800">
+                    <tr v-for="c in mgmCampaigns" :key="c._id" class="hover:bg-blue-50/30 dark:hover:bg-blue-900/10">
+                      <td class="py-4 px-6 font-bold flex items-center gap-3">
+                        <img v-if="getBankaLogo(c.genel_bilgi?.banka_id)" :src="getBankaLogo(c.genel_bilgi?.banka_id)" class="w-6 h-6 object-contain" />
+                        {{ getBankaAd(c.genel_bilgi?.banka_id) }}
+                      </td>
+                      <td class="py-4 px-6 font-semibold">{{ c.genel_bilgi?.kampanya_adi }}</td>
+                      <td class="py-4 px-6 font-extrabold text-emerald-600 dark:text-emerald-400">{{ c.mgm_detay?.kisi_basi_kazanc ? c.mgm_detay.kisi_basi_kazanc + ' TL' : '-' }}</td>
+                      <td class="py-4 px-6 font-medium text-neutral-600 dark:text-neutral-300">{{ c.mgm_detay?.mgm_limit_tl ? c.mgm_detay.mgm_limit_tl + ' TL' : 'Sınırsız' }}</td>
+                      <td class="py-4 px-6 font-medium text-neutral-500 text-xs">{{ c.genel_bilgi?.hedef_kitle?.join(', ') || 'Belirtilmemiş' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div>

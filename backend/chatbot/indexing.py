@@ -49,7 +49,7 @@ from chatbot.intent import banka_bul, banka_adi_getir, banka_kodu_coz
 
 # 🚀 Qdrant artık yarışma sunucusunda (url + port=443 + prefix=<takım> + api_key)
 try:
-    from backend.chatbot.evren_client import qdrant_ayarlari, embed_batch as evren_embed_batch
+    from evren_client import qdrant_ayarlari, embed_batch as evren_embed_batch
 except ModuleNotFoundError:              # evren_client.py chatbot/ içine konmuşsa
     from chatbot.evren_client import qdrant_ayarlari, embed_batch as evren_embed_batch
 QDRANT_URL = os.getenv("QDRANT_HOST", "http://qdrant:6333")  # (yalnız geriye dönük)
@@ -192,6 +192,12 @@ def _kampanya_belgesi_olustur(k: dict) -> Document:
         odul = k.get("odul_tl", k.get("odul_miktari", 0))
     odul_metni = promosyon_detay.get("odul_metni")
 
+    # 🔗 YENİ: kampanyanın orijinal banka-sitesi linki. generate_response.py'deki
+    # _kampanya_normallestir() ile AYNI alan zinciri (genel_bilgi.kaynak_url öncelikli,
+    # yoksa üst seviye url/kampanya_url) — iki taraf farklı alan adı arasa Mongo'da
+    # dolu olan bir link Qdrant tarafında hep boş görünürdü.
+    kaynak_url = genel_bilgi.get("kaynak_url") or k.get("kaynak_url") or k.get("url") or k.get("kampanya_url") or ""
+
     kampanya_turu = k.get("kampanya_turu") or genel_bilgi.get("kampanya_turu") or ""
     # 🛠️ hedef_kitle bazı kayıtlarda LİSTE (['tum_musteriler']), bazılarında düz
     # metin ("segment") olarak geliyor. Liste hâli str()'e verilince belgeye
@@ -219,6 +225,8 @@ def _kampanya_belgesi_olustur(k: dict) -> Document:
         icerik += f"\nKoşullar: {k.get('kosullar')}"
     if aciklama:
         icerik += f"\nDetay: {aciklama}"
+    if kaynak_url:
+        icerik += f"\nURL: {kaynak_url}"
 
     metadata = {
         "kampanya_id": str(k.get("_id", "")),
@@ -231,6 +239,10 @@ def _kampanya_belgesi_olustur(k: dict) -> Document:
         metadata["kampanya_turu"] = str(kampanya_turu)
     if hedef_kitle:
         metadata["hedef_kitle"] = str(hedef_kitle)
+    if kaynak_url:
+        # 🔗 Sohbetin "Kaynak" panelinde tıklanabilir link göstermek için —
+        # bkz. generate_response.py: kaynaklar_listesi.append({..., "url": ...}).
+        metadata["kaynak_url"] = str(kaynak_url)
 
     return Document(page_content=icerik, metadata=metadata)
 

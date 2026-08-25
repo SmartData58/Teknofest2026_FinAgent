@@ -18,6 +18,7 @@ HIZLI DOĞRULAMA (anahtarlar tanımlıyken):
 """
 import json
 import os
+import threading
 import time
 from typing import Iterable, List, Optional
 
@@ -346,6 +347,229 @@ async def kapat():
 
 
 # =============================================================================
+# 0.5 KULLANIM SAYACI — ÇIKARIM SÜRESİ + TOKEN TÜKETİMİ
+#
+# Yarışma şartnamesi "sistemin çıkarım süresinin ve kaynak kullanımının
+# raporlanmasını" istiyor. Dokümantasyon iki kaynak sunuyor:
+#   1) GET /key/info      -> takımın kümülatif istek/token/harcama kaydı
+#   2) her yanıttaki `usage` alanı -> "istemci tarafında ölçüm yapılacaksa
+#      EN GÜVENİLİR veri kaynağı" (dokümantasyonun kendi ifadesi)
+# Burada (2) uygulanıyor: her çağrı otomatik olarak kaydediliyor.
+#
+# ⚠️ AKIŞ (streaming) ÖZEL DURUMU: OpenAI uyumlu sunucular akış modunda usage'ı
+# YALNIZCA `stream_options={"include_usage": true}` gönderilirse, hem de en son
+# parçada (choices=[] olan bir chunk) yollar. Bu alan standart olmayan
+# sunucularda 400'e sebep olabildiği için chat_template_kwargs ile AYNI
+# stratejiyle korunuyor: bir kez denenir, sunucu reddederse kalıcı olarak
+# bırakılır ve istek alansız tekrarlanır (bkz. _akis_secenegi_dusur).
+#
+# Akışta usage gelmezse süre yine ölçülür, token sayısı "bilinmiyor" kalır —
+# bu yüzden `token_bilinen_cagri` ayrıca sayılıyor; rapor, kapsamı hakkında
+# dürüst olabilsin diye.
+# =============================================================================
+_KULLANIM_KILIDI = threading.Lock()
+
+# Akış modunda usage istemenin desteklenip desteklenmediği (None = denenmedi).
+_AKIS_USAGE_CALISIYOR: Optional[bool] = None
+
+
+def _bos_sayac() -> dict:
+    return {
+        "cagri": 0,               # toplam çağrı
+        "hata": 0,                # istisna ile biten çağrı
+        "token_bilinen_cagri": 0,  # usage alanı GERÇEKTEN dönen çağrı sayısı
+        "girdi_token": 0,
+        "cikti_token": 0,
+        "toplam_token": 0,
+        "sure_toplam": 0.0,       # saniye
+        "sureler": [],            # yüzdelik hesabı için (son N tutulur)
+        "ilk_token_sureleri": [],  # yalnızca akış yolunda anlamlı
+    }
+
+
+# tur -> sayac.  "sohbet" | "sohbet_akis" | "embedding" | "rerank"
+_KULLANIM: dict = {}
+_KULLANIM_BASLANGIC = time.time()
+
+# Bellek koruması: gecikme listeleri sınırsız büyümesin (500 senaryoluk
+# testlerde on binlerce çağrı olabiliyor). Yüzdelikler için bu fazlasıyla
+# yeterli; toplamlar zaten ayrı alanlarda kümülatif tutuluyor.
+_SURE_SAKLAMA_SINIRI = 5000
+
+
+def _usage_oku(veri: dict) -> Optional[dict]:
+    """Yanıttan OpenAI `usage` bloğunu okur (yoksa None).
+
+    Alan adları sunucudan sunucuya değişebiliyor; üç yaygın yazım da
+    destekleniyor. total yoksa girdi+çıktı'dan türetiliyor.
+    """
+    if not isinstance(veri, dict):
+        return None
+    u = veri.get("usage")
+    if not isinstance(u, dict):
+        return None
+    girdi = u.get("prompt_tokens") or u.get("input_tokens") or 0
+    cikti = u.get("completion_tokens") or u.get("output_tokens") or 0
+    toplam = u.get("total_tokens") or (girdi + cikti)
+    if not (girdi or cikti or toplam):
+        return None
+    return {"girdi": int(girdi), "cikti": int(cikti), "toplam": int(toplam)}
+
+
+def _kullanim_kaydet(tur: str, sure: float, usage: Optional[dict] = None,
+                     ilk_token: Optional[float] = None, hata: bool = False) -> None:
+    """Tek bir çağrının ölçümünü sayaca işler. Asla istisna fırlatmaz —
+    ölçüm kodu, ölçtüğü sistemi bozmamalı."""
+    try:
+        with _KULLANIM_KILIDI:
+            s = _KULLANIM.setdefault(tur, _bos_sayac())
+            s["cagri"] += 1
+            if hata:
+                s["hata"] += 1
+            s["sure_toplam"] += sure
+            if len(s["sureler"]) < _SURE_SAKLAMA_SINIRI:
+                s["sureler"].append(round(sure, 3))
+            if ilk_token is not None and len(s["ilk_token_sureleri"]) < _SURE_SAKLAMA_SINIRI:
+                s["ilk_token_sureleri"].append(round(ilk_token, 3))
+            if usage:
+                s["token_bilinen_cagri"] += 1
+                s["girdi_token"] += usage["girdi"]
+                s["cikti_token"] += usage["cikti"]
+                s["toplam_token"] += usage["toplam"]
+    except Exception as e:      # pragma: no cover
+        logger.debug(f"Kullanım sayacı yazılamadı (yok sayıldı): {e}")
+
+
+def _yuzdelik(degerler: List[float], oran: float) -> Optional[float]:
+    """Basit yüzdelik (numpy'a gerek yok, liste zaten küçük)."""
+    if not degerler:
+        return None
+    sirali = sorted(degerler)
+    k = min(len(sirali) - 1, max(0, int(round((len(sirali) - 1) * oran))))
+    return sirali[k]
+
+
+def kullanim_ozeti() -> dict:
+    """Biriken çıkarım süresi / token istatistiklerini döner.
+
+    Yarışma raporu için: türe göre çağrı sayısı, token toplamları ve gecikme
+    dağılımı (ortalama, p50, p90, en yüksek). `token_kapsami`, token
+    rakamlarının çağrıların yüzde kaçını kapsadığını söyler — akış modunda
+    sunucu usage yollamazsa bu oran 100'ün altında kalır ve rapor bunu
+    gizlemez.
+    """
+    with _KULLANIM_KILIDI:
+        anlik = {t: dict(s, sureler=list(s["sureler"]),
+                         ilk_token_sureleri=list(s["ilk_token_sureleri"]))
+                 for t, s in _KULLANIM.items()}
+        basla = _KULLANIM_BASLANGIC
+
+    detay = {}
+    genel = {"cagri": 0, "hata": 0, "girdi_token": 0, "cikti_token": 0,
+             "toplam_token": 0, "sure_toplam": 0.0}
+    for tur, s in anlik.items():
+        sure = s["sureler"]
+        detay[tur] = {
+            "cagri": s["cagri"],
+            "hata": s["hata"],
+            "girdi_token": s["girdi_token"],
+            "cikti_token": s["cikti_token"],
+            "toplam_token": s["toplam_token"],
+            "token_kapsami_yuzde": (round(100 * s["token_bilinen_cagri"] / s["cagri"], 1)
+                                    if s["cagri"] else 0.0),
+            "sure_toplam_sn": round(s["sure_toplam"], 2),
+            "sure_ortalama_sn": (round(s["sure_toplam"] / s["cagri"], 2) if s["cagri"] else None),
+            "sure_p50_sn": _yuzdelik(sure, 0.50),
+            "sure_p90_sn": _yuzdelik(sure, 0.90),
+            "sure_maks_sn": (max(sure) if sure else None),
+            "ilk_token_p50_sn": _yuzdelik(s["ilk_token_sureleri"], 0.50),
+        }
+        for k in genel:
+            genel[k] += s.get(k, 0)
+    genel["sure_toplam_sn"] = round(genel.pop("sure_toplam"), 2)
+
+    return {
+        "olcum_baslangici": basla,
+        "olcum_suresi_sn": round(time.time() - basla, 1),
+        "genel": genel,
+        "tur_bazinda": detay,
+        "akis_usage_destegi": _AKIS_USAGE_CALISIYOR,
+    }
+
+
+def kullanim_anlik() -> dict:
+    """Sayaçların O ANKİ toplamını döner (ucuz — yüzdelik hesaplamaz).
+
+    Amaç: tek bir kullanıcı isteğinin maliyetini ölçmek. İstek başında bir
+    anlık görüntü alınır, sonunda `kullanim_farki()` ile fark hesaplanır.
+    Böylece SADECE ana LLM akışı değil, o istek sırasında yapılan HER çağrı
+    (niyet sınıflandırma, embedding, rerank, yedek çağrılar) maliyete dahil
+    olur — kullanıcının gerçekten ödediği bedel budur.
+
+    ⚠️ EŞZAMANLILIK SINIRI: sayaçlar süreç genelindedir. Aynı anda İKİ istek
+    işlenirse farklar birbirine karışır. Arayüzde sendMessage() sert bir kilit
+    tuttuğu için tek tarayıcıdan bu mümkün değil; çok kullanıcılı gerçek
+    yükte bu rakam "yaklaşık" kabul edilmeli.
+    """
+    with _KULLANIM_KILIDI:
+        toplam = {"cagri": 0, "girdi_token": 0, "cikti_token": 0,
+                  "toplam_token": 0, "sure_toplam": 0.0}
+        for s in _KULLANIM.values():
+            for k in toplam:
+                toplam[k] += s.get(k, 0)
+    return toplam
+
+
+def kullanim_farki(onceki: dict) -> dict:
+    """kullanim_anlik() ile alınmış bir görüntüden bu yana olan farkı döner."""
+    simdi = kullanim_anlik()
+    return {
+        "cagri": simdi["cagri"] - onceki.get("cagri", 0),
+        "girdi_token": simdi["girdi_token"] - onceki.get("girdi_token", 0),
+        "cikti_token": simdi["cikti_token"] - onceki.get("cikti_token", 0),
+        "toplam_token": simdi["toplam_token"] - onceki.get("toplam_token", 0),
+        "api_suresi_sn": round(simdi["sure_toplam"] - onceki.get("sure_toplam", 0.0), 2),
+    }
+
+
+def kullanim_sifirla() -> None:
+    """Sayaçları sıfırlar (ör. bir test koşusundan önce)."""
+    global _KULLANIM_BASLANGIC
+    with _KULLANIM_KILIDI:
+        _KULLANIM.clear()
+        _KULLANIM_BASLANGIC = time.time()
+
+
+async def anahtar_bilgisi(timeout: Optional[float] = None) -> dict:
+    """Yarışmanın GET /key/info ucunu sorgular (takımın kümülatif kullanımı).
+
+    ⚠️ ADRES TUZAĞI: dokümantasyondaki örnek
+        curl https://evren-llmapi.ssyz.org.tr/key/info
+    yani uç nokta KÖK adreste — BASE_URL'in sonundaki `/v1` ile DEĞİL.
+    f"{BASE_URL}/key/info" yazmak .../v1/key/info üretir ve 404 döner.
+    Bu yüzden kök adres türetiliyor; yine de bazı kurulumlar /v1 altında
+    sunabilir diye 404'te bir kez de o yol deneniyor.
+
+    Not: yalnızca KENDİ anahtarınızın verisine erişilebiliyor; başka takımın
+    anahtarıyla sorgu 403 döner.
+    """
+    if not hazir_mi():
+        raise EvrenHatasi("EVREN_API_KEY tanımlı değil (.env dosyanı kontrol et).")
+
+    kok = BASE_URL[:-3].rstrip("/") if BASE_URL.endswith("/v1") else BASE_URL
+    istemci = _async_al()
+    son_hata = None
+    for adres in (f"{kok}/key/info", f"{BASE_URL}/key/info"):
+        r = await istemci.get(adres, timeout=timeout or ZAMAN_ASIMI)
+        if r.status_code < 400:
+            return r.json()
+        son_hata = f"{adres} -> HTTP {r.status_code}: {r.text[:200]}"
+        if r.status_code != 404:
+            break        # 403/401 gibi hatalarda ikinci yolu denemenin anlamı yok
+    raise EvrenHatasi(f"/key/info okunamadı ({son_hata})")
+
+
+# =============================================================================
 # 1. SOHBET (streaming) — OpenAI /v1/chat/completions
 # =============================================================================
 _DUSUNME_ALANI_CALISIYOR: Optional[bool] = None   # None = henüz denenmedi
@@ -366,6 +590,11 @@ def _govde_kur(mesajlar, model, max_tokens, temperature, akis: bool) -> dict:
     }
     if akis:
         govde["stream"] = True
+        # 📊 Akışta usage yalnızca bu alan gönderilirse (ve en son parçada)
+        # gelir. Standart olmayan sunucularda 400'e sebep olabilir; o durumda
+        # _akis_secenegi_dusur() alanı kalıcı olarak bırakır.
+        if _AKIS_USAGE_CALISIYOR is not False:
+            govde["stream_options"] = {"include_usage": True}
 
     # 0 = alanı hiç gönderme (sunucunun kendi varsayılanı geçerli olsun)
     sinir = MAX_TOKENS if max_tokens is None else max_tokens
@@ -396,6 +625,27 @@ def _dusunmesiz_kopya(govde: dict) -> Optional[dict]:
     )
     yeni = dict(govde)
     yeni.pop("chat_template_kwargs", None)
+    return yeni
+
+
+def _akis_secenegi_dusur(govde: dict) -> Optional[dict]:
+    """400 alındığında `stream_options` alanını atmış bir kopya döner.
+
+    chat_template_kwargs ile aynı mantık: standart olmayan alanı bir kez dener,
+    sunucu reddederse kalıcı olarak bırakır. Ölçüm uğruna sistemi bozmayız —
+    usage kaybedilir, cevap üretilmeye devam eder.
+    """
+    global _AKIS_USAGE_CALISIYOR
+    if "stream_options" not in govde:
+        return None
+    _AKIS_USAGE_CALISIYOR = False
+    logger.warning(
+        "Sunucu 'stream_options' alanını reddetti — akışta token ölçümü "
+        "bırakıldı. Süreler ölçülmeye devam ediyor, token sayısı bu yolda "
+        "'bilinmiyor' kalacak (bkz. kullanim_ozeti -> token_kapsami_yuzde)."
+    )
+    yeni = dict(govde)
+    yeni.pop("stream_options", None)
     return yeni
 
 
@@ -458,16 +708,40 @@ async def sohbet_akisi(
     dusunme_goruldu = False
     bitis_sebebi = None
 
+    # 📊 ÖLÇÜM: çıkarım süresi + (sunucu yollarsa) token tüketimi.
+    _t0 = time.perf_counter()
+    _ilk_token_sn: Optional[float] = None
+    _usage: Optional[dict] = None
+    _olculdu = False           # sayaç bu çağrı için bir kez yazılsın
+
+    def _olc(hata: bool = False):
+        """Bu çağrının ölçümünü bir KEZ sayaca yazar.
+
+        Neden bayrak var: akış yolu erken `return` edebiliyor, istisna
+        fırlatabiliyor ya da yedek (non-stream) yola düşebiliyor. Bayrak
+        olmadan aynı çağrı iki kez sayılır ve rapordaki çağrı sayısı şişerdi.
+        """
+        nonlocal _olculdu
+        if _olculdu:
+            return
+        _olculdu = True
+        _kullanim_kaydet("sohbet_akis", time.perf_counter() - _t0,
+                         usage=_usage, ilk_token=_ilk_token_sn, hata=hata)
+
     try:
         istemci = _async_al()
-        for deneme in (1, 2):
+        for deneme in (1, 2, 3):
             async with istemci.stream("POST", url, json=govde,
                                       timeout=timeout or ZAMAN_ASIMI) as cevap:
                 if cevap.status_code >= 400:
                     ham = await cevap.aread()
-                    # 400 + standart olmayan düşünme alanı -> alanı atıp bir kez daha dene
-                    if cevap.status_code == 400 and deneme == 1:
-                        yedek = _dusunmesiz_kopya(govde)
+                    # 400 + standart olmayan alanlar -> alanı atıp yeniden dene.
+                    # İKİ standart dışı alan var (chat_template_kwargs ve
+                    # stream_options); hangisinin reddedildiğini sunucu
+                    # söylemediği için sırayla ikisi de düşürülüyor. Bu yüzden
+                    # deneme sayısı 3'e çıkarıldı.
+                    if cevap.status_code == 400 and deneme < 3:
+                        yedek = _dusunmesiz_kopya(govde) or _akis_secenegi_dusur(govde)
                         if yedek is not None:
                             govde = yedek
                             continue
@@ -483,6 +757,15 @@ async def sohbet_akisi(
                         parca = json.loads(satir)
                     except json.JSONDecodeError:
                         continue
+                    # 📊 usage, include_usage açıkken EN SON parçada gelir ve o
+                    # parçanın choices'ı BOŞTUR — bu yüzden aşağıdaki choices
+                    # döngüsünden ÖNCE ve ondan bağımsız okunmalı.
+                    _u = _usage_oku(parca)
+                    if _u:
+                        _usage = _u
+                        global _AKIS_USAGE_CALISIYOR
+                        if _AKIS_USAGE_CALISIYOR is None:
+                            _AKIS_USAGE_CALISIYOR = True
                     for secim in parca.get("choices") or []:
                         delta = secim.get("delta") or {}
                         icerik = _metni_cikar(delta)
@@ -494,6 +777,8 @@ async def sohbet_akisi(
                         if delta.get("reasoning_content") or delta.get("reasoning"):
                             dusunme_goruldu = True
                         if icerik:
+                            if not hic_veri_geldi:
+                                _ilk_token_sn = time.perf_counter() - _t0
                             hic_veri_geldi = True
                             yield icerik
                         if secim.get("finish_reason"):
@@ -504,6 +789,7 @@ async def sohbet_akisi(
             # (`continue` yalnızca 400 + düşünme alanı durumunda çalışır.)
             break
         if hic_veri_geldi:
+            _olc()
             return
         # 🛠️ TEŞHİS: Eskiden burada sadece "akış boş döndü" yazıyordu ve neden
         # boş döndüğü ANLAŞILMIYORDU. Canlı sistemde kullanıcı, ekranda 150
@@ -521,9 +807,15 @@ async def sohbet_akisi(
                 "EVREN_MAX_TOKENS değerini yükselt."
             )
     except EvrenHatasi:
+        _olc(hata=True)
         raise
     except Exception as e:
         logger.warning(f"Streaming başarısız ({type(e).__name__}: {e}), tek seferlik çağrıya düşülüyor.")
+
+    # Akış içerik üretemedi ya da patladı: bu denemeyi başarısız olarak kaydet.
+    # Aşağıdaki yedek çağrı KENDİ ölçümünü "sohbet" türü altında ayrıca yazar,
+    # böylece raporda "akış boşa gitti, non-stream'e düşüldü" görünür.
+    _olc(hata=True)
 
     # --- Yedek: non-stream ---
     metin = await sohbet_tek_seferlik(mesajlar, model, max_tokens, temperature, timeout)
@@ -544,16 +836,27 @@ async def sohbet_tek_seferlik(
     # bile MAX_TOKENS'a düşüyordu, "alanı hiç gönderme" seçeneği bu yolda
     # çalışmıyordu. İki kopyanın ayrışmasına klasik bir örnek.
     govde = _govde_kur(mesajlar, model, max_tokens, temperature, akis=False)
-    r = await _async_al().post(f"{BASE_URL}/chat/completions", json=govde,
-                               timeout=timeout or ZAMAN_ASIMI)
-    if r.status_code == 400:
-        yedek = _dusunmesiz_kopya(govde)
-        if yedek is not None:
-            govde = yedek
-            r = await _async_al().post(f"{BASE_URL}/chat/completions", json=govde,
-                                       timeout=timeout or ZAMAN_ASIMI)
-    r.raise_for_status()
-    veri = r.json()
+    _t0 = time.perf_counter()          # 📊 ÖLÇÜM
+    try:
+        r = await _async_al().post(f"{BASE_URL}/chat/completions", json=govde,
+                                   timeout=timeout or ZAMAN_ASIMI)
+        if r.status_code == 400:
+            yedek = _dusunmesiz_kopya(govde)
+            if yedek is not None:
+                govde = yedek
+                r = await _async_al().post(f"{BASE_URL}/chat/completions", json=govde,
+                                           timeout=timeout or ZAMAN_ASIMI)
+        r.raise_for_status()
+        veri = r.json()
+    except Exception:
+        _kullanim_kaydet("sohbet", time.perf_counter() - _t0, hata=True)
+        raise
+
+    # Ölçüm, aşağıdaki "boş cevap" istisnalarından ÖNCE yazılıyor: çağrı
+    # gerçekten yapıldı, süresi ve tokenları harcandı — cevabın kullanılabilir
+    # olmaması bunu değiştirmez. Rapor gerçek maliyeti göstermeli.
+    _kullanim_kaydet("sohbet", time.perf_counter() - _t0, usage=_usage_oku(veri))
+
     try:
         secim = (veri.get("choices") or [])[0]
     except Exception:
@@ -596,10 +899,17 @@ async def sohbet_tek_seferlik(
 # =============================================================================
 def _embed_istek(metinler: List[str], model: str, timeout: float) -> List[List[float]]:
     govde = {"model": model, "input": metinler}
-    r = _senkron_al().post(f"{BASE_URL}/embeddings", json=govde, timeout=timeout)
-    if r.status_code >= 400:
-        raise EvrenHatasi(f"Embedding HTTP {r.status_code}: {r.text[:300]}")
-    veri = r.json()
+    _t0 = time.perf_counter()          # 📊 ÖLÇÜM
+    try:
+        r = _senkron_al().post(f"{BASE_URL}/embeddings", json=govde, timeout=timeout)
+        if r.status_code >= 400:
+            raise EvrenHatasi(f"Embedding HTTP {r.status_code}: {r.text[:300]}")
+        veri = r.json()
+    except Exception:
+        _kullanim_kaydet("embedding", time.perf_counter() - _t0, hata=True)
+        raise
+    # Embedding yanıtında da usage bulunur (yalnızca prompt_tokens dolu olur).
+    _kullanim_kaydet("embedding", time.perf_counter() - _t0, usage=_usage_oku(veri))
 
     # Standart OpenAI biçimi: {"data": [{"embedding": [...], "index": 0}, ...]}
     if isinstance(veri, dict) and isinstance(veri.get("data"), list):
@@ -738,6 +1048,7 @@ async def rerank(soru: str, metinler: List[str], top_n: int = 4,
                  else list(_RERANK_BICIMLERI.keys()))
 
     istemci = _async_al()
+    _t0 = time.perf_counter()          # 📊 ÖLÇÜM (biçim denemeleri dahil toplam)
     if True:
         for bicim in denenecek:
             govde = _RERANK_BICIMLERI[bicim](model, soru, metinler, top_n)
@@ -746,9 +1057,12 @@ async def rerank(soru: str, metinler: List[str], top_n: int = 4,
                 if r.status_code >= 400:
                     logger.debug(f"rerank biçimi '{bicim}' reddedildi: HTTP {r.status_code} {r.text[:120]}")
                     continue
-                ciftler = _rerank_yanitini_coz(r.json())
+                yanit = r.json()
+                ciftler = _rerank_yanitini_coz(yanit)
                 if not ciftler:
                     continue
+                _kullanim_kaydet("rerank", time.perf_counter() - _t0,
+                                 usage=_usage_oku(yanit))
                 if _CALISAN_RERANK_BICIMI != bicim:
                     _CALISAN_RERANK_BICIMI = bicim
                     logger.info(f"✅ Rerank biçimi belirlendi: '{bicim}'")
@@ -758,6 +1072,7 @@ async def rerank(soru: str, metinler: List[str], top_n: int = 4,
                 logger.debug(f"rerank biçimi '{bicim}' hata verdi: {type(e).__name__}: {e}")
                 continue
 
+    _kullanim_kaydet("rerank", time.perf_counter() - _t0, hata=True)
     logger.warning("Rerank hiçbir biçimde çalışmadı — sıralama değiştirilmeden devam ediliyor.")
     return []
 
@@ -1170,4 +1485,8 @@ def durum() -> dict:
         "env_adaylari": [{"yol": y, "anahtar": a} for y, a in ENV_ADAYLARI],
         "qdrant": {"url": q.get("url"), "prefix": q.get("prefix"), "anahtar": bool(q.get("api_key"))},
         "son_isitma": SON_ISITMA or None,
+        # 📊 Yarışma şartnamesi çıkarım süresi + kaynak kullanımı raporu
+        # istiyor. Süreç başlangıcından bu yana biriken ölçüm burada:
+        #     curl.exe http://localhost:8003/health
+        "kullanim": kullanim_ozeti(),
     }

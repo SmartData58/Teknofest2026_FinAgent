@@ -66,11 +66,20 @@
     "file_preview": "File Preview",
     "filter_banks": "Banks",
     "filter_clear": "Clear",
+    "visit_source": "Visit source page",
     "placeholder": "Ask something, paste (Ctrl+V) or drop a file...",
     "report_preview": "Report Preview",
     "db_record": "Database Record",
     "download": "Download",
-    "campaign_detail": "Campaign Details"
+    "campaign_detail": "Campaign Details",
+    "metric_time_title": "End-to-end duration of this response",
+    "metric_token_title": "Total input + output tokens (including all background calls)",
+    "metric_calls_title": "Number of API calls made for this response",
+    "metric_calls": "calls",
+    "metric_cached": "cached",
+    "metric_cache_title": "This response came from cache; no new tokens were spent",
+    "mixed_units": "Mixed units (TL / %) — cannot be averaged",
+    "category": "Category"
   },
   "landing": {
     "nav": {
@@ -125,18 +134,54 @@
     },
     "flow_heading": "System Flow Diagram",
     "flow": {
-      "1": { "title": "Web Scraping", "desc": "BeautifulSoup, Selenium" },
-      "2": { "title": "Raw Text", "desc": "Campaign text, title, date" },
-      "3": { "title": "Preprocessing", "desc": "HTML cleanup, normalization" },
-      "4": { "title": "Regex Extraction", "desc": "Rate, term, amount, installments" },
-      "5": { "title": "Data Storage", "desc": "MongoDB" },
-      "6": { "title": "Embedding", "desc": "Evren API (bge-m3-embed)" },
-      "7": { "title": "Vector Indexing", "desc": "Qdrant (with metadata)" },
-      "8": { "title": "User Query", "desc": "Nuxt Interface" },
-      "9": { "title": "Query Processing", "desc": "Intent Analysis (Regex + LLM)" },
-      "10": { "title": "LLM Generation", "desc": "Evren API (llm-large)" },
-      "11": { "title": "Formatting", "desc": "JSON / Markdown Table" },
-      "12": { "title": "Presentation to User", "desc": "Dashboard & Chatbot" }
+      "1": {
+        "title": "Web Scraping",
+        "desc": "BeautifulSoup, Selenium"
+      },
+      "2": {
+        "title": "Raw Text",
+        "desc": "Campaign text, title, date"
+      },
+      "3": {
+        "title": "Preprocessing",
+        "desc": "HTML cleanup, normalization"
+      },
+      "4": {
+        "title": "Regex Extraction",
+        "desc": "Rate, term, amount, installments"
+      },
+      "5": {
+        "title": "Data Storage",
+        "desc": "MongoDB"
+      },
+      "6": {
+        "title": "Embedding",
+        "desc": "Evren API (bge-m3-embed)"
+      },
+      "7": {
+        "title": "Vector Indexing",
+        "desc": "Qdrant (with metadata)"
+      },
+      "8": {
+        "title": "User Query",
+        "desc": "Nuxt Interface"
+      },
+      "9": {
+        "title": "Query Processing",
+        "desc": "Intent Analysis (Regex + LLM)"
+      },
+      "10": {
+        "title": "LLM Generation",
+        "desc": "Evren API (llm-large)"
+      },
+      "11": {
+        "title": "Formatting",
+        "desc": "JSON / Markdown Table"
+      },
+      "12": {
+        "title": "Presentation to User",
+        "desc": "Dashboard & Chatbot"
+      }
     },
     "goals_heading": "Project Goals",
     "goals": {
@@ -171,6 +216,42 @@
     },
     "closing": {
       "hint": "Keep scrolling down or search to start chatting."
+    },
+    "api_docs": {
+      "title": "Newly Added API Endpoints",
+      "compare_title": "1. Personalized Comparison",
+      "compare_desc": "/api/campaigns/compare: Takes selected campaign IDs and returns data for side-by-side matrix comparison.",
+      "top_title": "2. Top Advantageous Campaigns",
+      "top_desc": "/api/campaigns/top-advantageous: Lists the industry's best campaigns across categories like profit rate, term, reward, and allocation fee."
     }
+  },
+  "campaigns": {
+    "columns": {
+      "banka": "Bank",
+      "kampanya": "Campaign",
+      "tur": "Type",
+      "karPayi": "Profit Rate (%)",
+      "vade": "Term (m)",
+      "taksit": "Installment",
+      "odul": "Reward (TL)",
+      "bitisTarihi": "End Date",
+      "hedefKitle": "Target Aud."
+    }
+  },
+  "comparison": {
+    "custom_compare": "Custom Comparison Matrix",
+    "search_placeholder": "Search for a campaign to compare...",
+    "compare_btn": "Compare",
+    "feature": "Feature",
+    "no_data": "No Data"
+  },
+  "dashboard": {
+    "top_campaigns": "Industry's Most Advantageous Campaigns",
+    "lowest_profit": "Lowest Profit Rate",
+    "highest_reward": "Highest Reward",
+    "longest_term": "Longest Term",
+    "lowest_fee": "Lowest Fee",
+    "export_png": "Download PNG",
+    "export_excel": "Download Excel (CSV)"
   }
 }

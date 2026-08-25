@@ -21,7 +21,7 @@ from chatbot.indexing import qdrant_durumu, auto_init_qdrant
 
 # 🚀 Yarışma çıkarım servisi istemcisi (yerel Ollama/embedding/reranker yerine).
 try:
-    from backend.chatbot.evren_client import (isit, isitmayi_surdur, kapat as evren_kapat,
+    from evren_client import (isit, isitmayi_surdur, kapat as evren_kapat,
                               durum as evren_durum, gorsel_mi, gorsel_parcasi, MAKS_GORSEL)
 except ModuleNotFoundError:              # evren_client.py chatbot/ içine konmuşsa
     from chatbot.evren_client import (isit, isitmayi_surdur, kapat as evren_kapat,
@@ -101,13 +101,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Kampanya indeksleri kurulamadı: {e}")
 
+    # 🧹 AÇILIŞTA ÖNBELLEK SIFIRLAMA — STARTUP_CACHE_FLUSH ile kontrol edilir.
+    # Kapalıyken bunu AÇIKÇA loglamak önemli: bir hata düzeltildikten sonra
+    # aynı soru sorulduğunda Redis eski cevabı döndürür ve düzeltme
+    # çalışmamış gibi görünür. Log, o yanılgıyı hemen fark ettirir.
     if STARTUP_CACHE_TEMIZLE:
         try:
             await _redis_onbellegini_temizle()
         except Exception as e:
             logger.error(f"Redis temizlenirken hata: {e}")
     else:
-        logger.info("ℹ️ Başlangıç önbellek temizliği kapalı (STARTUP_CACHE_FLUSH=0).")
+        logger.warning(
+            "⚠️ Başlangıç önbellek temizliği KAPALI (STARTUP_CACHE_FLUSH=0). "
+            "Daha önce sorulmuş sorular ESKİ cevabı döndürebilir — kodda "
+            "değişiklik yaptıysanız 1 yapıp yeniden başlatın."
+        )
 
     # 🔥 MODEL ISITMA — ölçümle gerekli olduğu görüldü:
     # Yarışma servisinde her modelin İLK isteği ~15 saniye (model sunucuda o an

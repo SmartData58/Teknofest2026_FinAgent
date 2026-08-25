@@ -421,6 +421,12 @@ OZET_SATIR_SAYISI = 3
 # Açıkça liste/tablo istendiğinde (ama sayı belirtilmediğinde) üst sınır.
 VARSAYILAN_LISTE_LIMITI = 10
 VARSAYILAN_LISTE_LIMITI_ANALIST = 50
+# 🆕 Birden fazla banka adı geçen KIYASLAMA sorularında banka BAŞINA en az
+# kaç satır gösterileceği. Gerekçe: "A ve B'yi kıyasla" sorusu 3 satırlık
+# özete kırpıldığında üç satırın da aynı bankadan gelmesi mümkün oluyordu;
+# model de ekranda göremediği bankayı "verisi yok" diye raporluyordu
+# (bkz. generate_response.py'deki BANKA DENGELİ DİLİM notu).
+KIYAS_BANKA_BASI_SATIR = 5
 
 
 @dataclass(frozen=True)
@@ -949,10 +955,25 @@ def niyet_bul(soru: str, gecmis: Sequence[Mesaj] = (), dil: str = "tr") -> Niyet
     if banka is None and bool(gecmis) and not _BANKA_SORGUSU.search(soru) and not kiyas_genis:
         for m in reversed(gecmis):
             if m.rol == "user":
-                b = banka_bul(m.icerik)
-                if b:
-                    banka = b
-                    banka_kodlari = [b]
+                # 🚨 HATA DÜZELTMESİ: burada banka_bul() (TEKİL) kullanılıyordu.
+                #
+                # Bildirilen hata: kullanıcı önce "albaraka ile kuveyt türkü
+                # karşılaştır" dedi (çalıştı), ardından "iki bankanın tüm
+                # kampanyalarını karşılaştır" dedi. İkinci mesajda banka ADI
+                # geçmediği için geçmişten devralınıyor — ama banka_bul() yalnızca
+                # İLK bankayı döndürdüğü için Kuveyt Türk sessizce kayboluyordu.
+                # Sonuç zinciri: banka_kodlari=['albaraka'] -> çok bankalı kıyas
+                # koşulu sağlanmıyor -> ajanın metrik tahmini iptal edilmiyor ->
+                # havuz kar_payi>0 filtresiyle 0 kayda düşüyor -> hiç tablo
+                # üretilemiyor -> sistem vektör aramaya düşüyor ve model
+                # "Kuveyt Türk'e ait veri yok" diyordu.
+                #
+                # Kıyaslama sorusunda geçmişten TEK banka devralmak, kıyaslamayı
+                # tanım gereği imkânsız kılar; bahsedilen bankaların HEPSİ alınmalı.
+                kodlar_gecmis = bankalari_bul(m.icerik)
+                if kodlar_gecmis:
+                    banka_kodlari = kodlar_gecmis
+                    banka = kodlar_gecmis[0]
                     break
 
     kod_sorusu = bool(KOD_YAZMA_ISTEGI.search(soru))

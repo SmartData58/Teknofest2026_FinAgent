@@ -32,6 +32,6 @@ export default defineNuxtConfig({
   },
 
   build: {
-    transpile: ['three', 'gsap'],
+    transpile: ['three', 'gsap', 'chart.js', 'vue-chartjs', 'chartjs-plugin-zoom', 'hammerjs'],
   }
 })

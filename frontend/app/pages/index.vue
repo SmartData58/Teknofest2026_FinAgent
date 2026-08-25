@@ -80,7 +80,7 @@ const scrollTo = (id) => {
 // - LLM/Embedding modelleri artık yerel değil, yarışmanın "Evren" API'si
 //   üzerinden (EVREN_MODEL=llm-large, EVREN_EMBED_MODEL=bge-m3-embed).
 const flowSteps = computed(() => [
-  { id: 1, title: t('landing.flow.1.title', 'Web Scraping'), desc: t('landing.flow.1.desc', 'BeautifulSoup, Selenium') },
+  { id: 1, title: t('landing.flow.1.title', 'Web Scraping'), desc: t('landing.flow.1.desc', 'BeautifulSoup, Playwright') },
   { id: 2, title: t('landing.flow.2.title', 'Ham Metin'), desc: t('landing.flow.2.desc', 'Kampanya metni, başlık, tarih') },
   { id: 3, title: t('landing.flow.3.title', 'Ön İşleme'), desc: t('landing.flow.3.desc', 'HTML temizliği, normalizasyon') },
   { id: 4, title: t('landing.flow.4.title', 'Regex Yakalama'), desc: t('landing.flow.4.desc', 'Oran, vade, tutar, taksit') },
@@ -267,17 +267,14 @@ onUnmounted(() => {
 
     <div v-if="!isLoading" class="relative w-full transition-opacity duration-500 ease-in">
 
-      <!-- 3D ARKA PLAN (parallax ile derinlik) -->
-      <div data-parallax="0.12" class="fixed top-0 left-0 w-full h-screen pointer-events-none -z-10 opacity-30 dark:opacity-25">
-        <ClientOnly>
-          <CyberHead />
-        </ClientOnly>
-      </div>
-
       <div class="relative z-10 w-full">
 
         <!-- ================= BÖLÜM 1: HERO ================= -->
-        <section id="hero" class="scroll-section snap-start snap-always min-h-screen flex flex-col px-6 relative pt-14">
+        <section id="hero" class="scroll-section snap-start snap-always min-h-screen flex flex-col px-6 relative pt-14 overflow-hidden">
+          
+          <!-- SADECE BEYAZ KISIM (HERO) İÇİN SÜZÜLEN PARTİKÜLLER -->
+          <FloatingParticles />
+
           <div class="sticky top-14 w-full flex flex-wrap justify-center gap-3 pt-6 pb-2 z-30">
             <div v-for="item in navItems" :key="item.id" class="relative group">
               <button @click="scrollTo(item.id)" class="px-5 py-2 text-sm font-medium rounded-full bg-white/60 dark:bg-neutral-800/60 backdrop-blur-md border border-neutral-200/50 dark:border-neutral-700/50 text-neutral-600 dark:text-neutral-300 hover:border-blue-400 hover:text-blue-600 hover:-translate-y-0.5 transition-all shadow-sm focus:outline-none">{{ item.name }}</button>
@@ -345,7 +342,9 @@ onUnmounted(() => {
                     <div class="px-6 py-3 bg-white/10 border border-white/10 rounded-xl text-sm font-medium text-white w-full sm:w-1/2 flex items-center justify-center">
                       <span class="text-cyan-300 font-bold">{{ t('landing.architecture.ui.chat', 'Vue Chatbot') }}</span>
                     </div>
-                  </div>
+ 
+                  
+                 </div>
                 </div>
 
                 <div class="stagger-item p-5 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl shadow-lg relative overflow-hidden hover:bg-white/15 hover:-translate-y-1 transition-all duration-300">
@@ -360,7 +359,7 @@ onUnmounted(() => {
                       <span class="text-xs text-white/70">{{ t('landing.architecture.backend.engine_desc', 'Getirme (Retrieve) + Üretim (Generate)') }}</span>
                     </div>
                     <div class="px-6 py-3 bg-white/10 border border-white/10 rounded-xl text-sm font-medium text-white w-full sm:w-1/2 flex items-center justify-center">
-                      <span class="text-xs font-mono text-white/80">/api/chat, /admin/reindex, /health</span>
+                      <span class="text-xs font-mono text-white/80">/api/chat, /api/campaigns/compare, /api/campaigns/top-advantageous, /admin/reindex, /health</span>
                     </div>
                   </div>
                 </div>
@@ -404,7 +403,7 @@ onUnmounted(() => {
                     </div>
                     <div class="p-2 bg-white/10 border border-white/10 rounded-xl flex flex-col items-center text-center">
                       <span class="text-teal-300 text-sm font-bold">{{ t('landing.architecture.data.scraper', 'Web Scraper') }}</span>
-                      <span class="text-[10px] text-white/70">BS4 + Selenium</span>
+                      <span class="text-[10px] text-white/70">BS4 + Playwright</span>
                     </div>
                   </div>
                 </div>

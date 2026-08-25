@@ -87,7 +87,15 @@ const removeFile = (index) => {
   if (selectedFiles.value.length === 0 && fileInput.value) fileInput.value.value = ''
 }
 
+const showBadApple = ref(false)
+
 const goToChat = () => {
+  if (inputText.value.trim().toLowerCase() === 'bad apple') {
+    showBadApple.value = true
+    inputText.value = ''
+    return
+  }
+
   if (isNavigating.value || (!inputText.value.trim() && selectedFiles.value.length === 0)) return
 
   isNavigating.value = true
@@ -217,6 +225,12 @@ const goToChat = () => {
       </div>
 
     </form>
+
+    <!-- 🍎 Bad Apple Easter Egg Overlay -->
+    <Teleport to="body">
+      <BadAppleAscii :show="showBadApple" @close="showBadApple = false" />
+    </Teleport>
+
   </div>
 </template>
 

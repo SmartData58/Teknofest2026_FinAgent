@@ -4,6 +4,7 @@ import hashlib
 import asyncio
 import httpx
 import re
+import time
 import traceback
 from typing import List, Optional
 from loguru import logger
@@ -23,6 +24,7 @@ from chatbot.intent import (
     # birbiriyle çelişen regexler vardı (biri "liste"yi tanıyor, diğeri
     # tanımıyordu); "liste istedim liste gelmedi" sorununun bir bacağı buydu.
     dil_normalize, gorsel_karari, gorsel_karari_tam, gorsel_limiti,
+    KIYAS_BANKA_BASI_SATIR, istenen_limit,
     llm_gorsel_sorulmali,
 )
 from chatbot.agents import (
@@ -52,12 +54,14 @@ try:
         embed_batch, sohbet_akisi as evren_sohbet_akisi, rerank as evren_rerank,
         qdrant_ayarlari, MAX_TOKENS as EVREN_MAX_TOKENS,
         guard_kontrol, cok_kipli_mesaj, GUARD_ENGELLE,
+        kullanim_anlik, kullanim_farki,
     )
 except ModuleNotFoundError:              # evren_client.py chatbot/ içine konmuşsa
     from chatbot.evren_client import (
         embed_batch, sohbet_akisi as evren_sohbet_akisi, rerank as evren_rerank,
         qdrant_ayarlari, MAX_TOKENS as EVREN_MAX_TOKENS,
         guard_kontrol, cok_kipli_mesaj, GUARD_ENGELLE,
+        kullanim_anlik, kullanim_farki,
     )
 
 TEMP_DIR = "./temp"
@@ -631,6 +635,146 @@ _SIRALAMA_AZALAN = re.compile(
     re.IGNORECASE)
 
 
+def _cok_bankali_kiyas_hazir(kodlar) -> bool:
+    """Birden fazla banka adı geçiyor mu (kıyaslama profili üretilsin mi)."""
+    return len([k for k in (kodlar or []) if k]) > 1
+
+
+def _metrik_ozeti(degerler: list) -> dict:
+    """Bir metriğin DOLU değerleri üzerinden özet.
+
+    ⚠️ `dolu` alanı bilerek var: kar_payi kayıtların çoğunda 0. Ortalamayı
+    sıfırları dahil ederek hesaplamak oranı sahte biçimde aşağı çeker; sıfırları
+    atıp kaç kayda dayandığını SÖYLEMEMEK ise sahte bir kesinlik yaratır.
+    İkisini birlikte veriyoruz.
+    """
+    if not degerler:
+        return {"dolu": 0, "en_dusuk": None, "en_yuksek": None, "ortalama": None}
+    return {
+        "dolu": len(degerler),
+        "en_dusuk": round(min(degerler), 2),
+        "en_yuksek": round(max(degerler), 2),
+        "ortalama": round(sum(degerler) / len(degerler), 2),
+    }
+
+
+def _banka_profilleri_cikar(kayitlar: list, dil: str = "tr") -> list:
+    """Her banka için kıyaslanabilir profil çıkarır.
+
+    Dönen her öğe: banka adı, kampanya sayısı, kategori dağılımı ve
+    kar_payi / odul / vade metriklerinin (yalnızca DOLU kayıtlar üzerinden)
+    özeti. "A ile B'yi kıyasla" sorusunun cevabı budur — satır listesi değil.
+    """
+    gruplar: dict = {}
+    for c in kayitlar:
+        gruplar.setdefault(c.get("banka") or "-", []).append(c)
+
+    profiller = []
+    for ad, grup in gruplar.items():
+        kategoriler: dict = {}
+        for c in grup:
+            kategoriler[c.get("kat") or "-"] = kategoriler.get(c.get("kat") or "-", 0) + 1
+        profiller.append({
+            "banka": ad,
+            "kampanya_sayisi": len(grup),
+            # En yaygın 4 kategori — "kampanya dağılımı" sorusunun cevabı.
+            "kategoriler": sorted(kategoriler.items(), key=lambda x: -x[1])[:4],
+            "kar_payi": _metrik_ozeti([c["kar_payi"] for c in grup if c["kar_payi"] > 0]),
+            "odul": _metrik_ozeti([c["odul"] for c in grup if c["odul"] > 0]),
+            "vade": _metrik_ozeti([c["vade"] for c in grup if c["vade"] > 0]),
+        })
+    return sorted(profiller, key=lambda p: -p["kampanya_sayisi"])
+
+
+def _profil_notu_kur(profiller: list, dil: str) -> str:
+    """Banka profillerini modele verilecek metne çevirir."""
+    if not profiller:
+        return ""
+    satirlar = []
+    for p in profiller:
+        kat = ", ".join(f"{ad} ({n})" for ad, n in p["kategoriler"]) or "-"
+
+        def _m(anahtar, birim):
+            m = p[anahtar]
+            if not m["dolu"]:
+                return ("no records with this field filled" if dil == "en"
+                        else "bu alan hiçbir kayıtta dolu değil")
+            return (f"{m['dolu']} kayıt: {m['en_dusuk']}{birim}–{m['en_yuksek']}{birim}, "
+                    f"ort {m['ortalama']}{birim}" if dil != "en" else
+                    f"{m['dolu']} records: {m['en_dusuk']}{birim}–{m['en_yuksek']}{birim}, "
+                    f"avg {m['ortalama']}{birim}")
+
+        if dil == "en":
+            satirlar.append(
+                f"- {p['banka']}: {p['kampanya_sayisi']} campaigns | categories: {kat} "
+                f"| profit rate: {_m('kar_payi', '%')} | reward: {_m('odul', ' TL')} "
+                f"| term: {_m('vade', ' mo')}"
+            )
+        else:
+            satirlar.append(
+                f"- {p['banka']}: {p['kampanya_sayisi']} kampanya | kategoriler: {kat} "
+                f"| kâr payı: {_m('kar_payi', '%')} | ödül: {_m('odul', ' TL')} "
+                f"| vade: {_m('vade', ' ay')}"
+            )
+    govde = "\n".join(satirlar)
+    if dil == "en":
+        return (
+            "BANK COMPARISON PROFILE — computed over ALL matching campaigns of each "
+            "bank (not just the rows shown). The user asked for a GENERAL comparison, "
+            "so build your answer on THESE figures, not on the individual rows:\n"
+            f"{govde}\n"
+            "Compare the banks across campaign count, category mix, rates, rewards and "
+            "terms. ⚠️ Each metric shows how many records actually carry it. If a bank "
+            "has few or zero filled records for a metric, state that THE FIELD is "
+            "missing — its campaign count is given separately above and must not be "
+            "contradicted. Never compare a rate (%) against a reward amount (TL)."
+        )
+    return (
+        "BANKA KIYAS PROFİLİ — her bankanın TÜM uygun kampanyaları üzerinden "
+        "hesaplandı (yalnızca gösterilen satırlar değil). Kullanıcı GENEL bir "
+        "karşılaştırma istedi; cevabını tek tek satırlara değil BU RAKAMLARA dayandır:\n"
+        f"{govde}\n"
+        "Bankaları kampanya sayısı, kategori dağılımı, oran, ödül ve vade açısından "
+        "karşılaştır. ⚠️ Her metrikte o alanın kaç kayıtta DOLU olduğu yazıyor. Bir "
+        "bankada ilgili alan az sayıda ya da hiç dolu değilse, EKSİK OLANIN O ALAN "
+        "olduğunu söyle — bankanın kampanya sayısı yukarıda ayrıca veriliyor ve o "
+        "sayıyı yok saymak yanlış olur. Oranı (%) ödül tutarıyla (TL) asla kıyaslama."
+    )
+
+
+def _profil_kart_metni(p: dict, dil: str) -> str:
+    """Grafikte bir bankaya tıklanınca açılan detay kartının metni."""
+    M = _METIN[dil]
+    kat = "\n".join(f"  - {ad}: {n}" for ad, n in p["kategoriler"]) or "  -"
+
+    def _m(anahtar, birim):
+        m = p[anahtar]
+        if not m["dolu"]:
+            return ("kayıtlı değer yok" if dil != "en" else "no recorded value")
+        return (f"{m['en_dusuk']}{birim} – {m['en_yuksek']}{birim} "
+                f"(ort {m['ortalama']}{birim}, {m['dolu']} kayıt)" if dil != "en" else
+                f"{m['en_dusuk']}{birim} – {m['en_yuksek']}{birim} "
+                f"(avg {m['ortalama']}{birim}, {m['dolu']} records)")
+
+    if dil == "en":
+        return (
+            f"BANK COMPARISON PROFILE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"Bank: {p['banka']}\nCampaigns: {p['kampanya_sayisi']}\n\n"
+            f"Categories:\n{kat}\n\n"
+            f"Profit rate: {_m('kar_payi', '%')}\n"
+            f"Reward: {_m('odul', ' TL')}\n"
+            f"Term: {_m('vade', ' mo')}\n"
+        )
+    return (
+        f"BANKA KIYAS PROFİLİ\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{M['banka']}: {p['banka']}\nKampanya sayısı: {p['kampanya_sayisi']}\n\n"
+        f"Kategoriler:\n{kat}\n\n"
+        f"Kâr payı: {_m('kar_payi', '%')}\n"
+        f"Ödül: {_m('odul', ' TL')}\n"
+        f"Vade: {_m('vade', ' ay')}\n"
+    )
+
+
 def grafigi_hazirla_mongo_dinamik(
     user_query: str,
     view_mode: str,
@@ -672,6 +816,35 @@ def grafigi_hazirla_mongo_dinamik(
     chart_type = "doughnut" if karar == "grafik" else "table"
 
     ay_soneki = " Ay" if dil == "tr" else " mo"
+
+    # 🚨 HATA DÜZELTMESİ — GENEL KIYAS TEK METRİĞE KİLİTLENİYORDU.
+    #
+    # Bildirilen hata: "albaraka ile kuveyt türkü karşılaştır" sorusuna başlık
+    # "Kar Payı Karşılaştırması" çıktı, tabloda 1 satır kaldı ve model
+    # "Albaraka'ya ait kayıt bulunmadığından karşılaştırma yapamıyorum" dedi.
+    #
+    # Sebep: Text-to-Mongo ajanı (LLM) bu soru için zorla_hedef="kar_payi"
+    # üretiyor. O da is_specific=True yapıyor ve aşağıdaki filtre havuzu
+    # `kar_payi > 0` olan kayıtlara indiriyor — oran alanı kayıtların
+    # neredeyse hiçbirinde dolu olmadığı için 155 kayıt 1'e düşüyor.
+    # Kullanıcı ise metrik BELİRTMEDİ; "karşılaştır" dedi.
+    #
+    # Kural: kullanıcı kendi cümlesinde bir metrik adı geçirmediyse ve
+    # birden fazla banka adı varsa, ajanın metrik tahmini havuzu DARALTMAZ.
+    # Ajan yanılabilir; kullanıcının açık ifadesi yanılmaz.
+    _kullanici_metrik_dedi = bool(
+        _METRIK_KAR.search(query_lower)
+        or _METRIK_ODUL.search(query_lower)
+        or _METRIK_VADE.search(query_lower)
+    )
+    if (zorla_hedef and not _kullanici_metrik_dedi
+            and _cok_bankali_kiyas_hazir(banka_kodlari)):
+        logger.info(
+            f"Genel banka kıyaslaması: ajanın metrik tahmini ('{zorla_hedef}') "
+            "yok sayıldı — kullanıcı metrik belirtmedi, havuz daraltılmıyor."
+        )
+        zorla_hedef = None
+        zorla_baslik = None      # "Kâr Payı Karşılaştırması" başlığı da yanıltıcıydı
 
     is_specific = True
     if zorla_hedef == "kar_payi":
@@ -761,6 +934,27 @@ def grafigi_hazirla_mongo_dinamik(
         hedef, prefix, suffix = "odul", "", ""
     elif is_specific:
         gecerli = [d for d in temel_havuz if d[hedef] > 0]
+        # 🚨 EMNİYET AĞI: metrik filtresi HİÇ kayıt bırakmadıysa geri dön.
+        #
+        # Bildirilen hata: "iki bankanın tüm kampanyalarını karşılaştır"
+        # sorusunda ajan hedefi 'kar_payi' tahmin etti; o alan ilgili bankada
+        # hiçbir kayıtta dolu olmadığı için havuz 0'a düştü, tablo hiç
+        # üretilemedi, mongo_kesin_cevap_var False kaldı ve sistem vektör
+        # aramaya düştü. Model de elindeki 4 alakasız parçaya bakıp
+        # "veri yok" dedi — oysa 155 kampanya duruyordu.
+        #
+        # Boş bir tablo üretmek yerine metrik filtresini bırakıp genel listeye
+        # dönmek her zaman daha iyi: kullanıcı en azından kampanyaları görür ve
+        # aşağıdaki kapsam notu ilgili alanın boş olduğunu zaten söyler.
+        if not gecerli and temel_havuz:
+            logger.warning(
+                f"'{hedef}' alanı kapsamdaki {len(temel_havuz)} kaydın "
+                "HİÇBİRİNDE dolu değil — metrik filtresi bırakılıyor, genel "
+                "liste gösteriliyor (boş tablo üretmek yerine)."
+            )
+            is_specific = False
+            prefix, suffix = "", ""
+            gecerli = temel_havuz
     else:
         gecerli = temel_havuz
 
@@ -853,29 +1047,168 @@ def grafigi_hazirla_mongo_dinamik(
     # tablonun yanında 3 satırın ortalaması "ORTALAMA DEĞER" diye
     # gösteriliyordu. Artık ikisi de TÜM uygun küme üzerinden.
     # =========================================================================
-    def _deger(c):
+    # 🚨 HATA DÜZELTMESİ — BİRİM KARIŞIMI (canlı ekran görüntüsüyle yakalandı).
+    #
+    # Bildirilen hata: model "ortalama kâr payı oranı %1627.76" ve "en yüksek
+    # kâr payı oranı %0" dedi. İkisi de saçma; %1627 diye bir kâr payı yok.
+    #
+    # Sebep: is_specific=False iken her satır KENDİ birimini seçiyor
+    # (aşağıdaki g_prefix/g_suffix satırlarına bakın): ödülü olan kayıt "TL",
+    # olmayan kayıt "%" ile gösteriliyor. Ama ozet, bu iki farklı birimdeki
+    # sayıları TEK BİR LİSTEDE toplayıp ortalama/en yüksek hesaplıyordu —
+    # yani 100.000 TL ile %2,99'u aynı torbaya atıp ortalamasını alıyordu.
+    # Sonuç sayı olarak "doğru" ama ANLAMSIZ; model de tek bir birim etiketi
+    # (%) uydurup sundu. Elmalarla armutları toplamak.
+    #
+    # Çözüm: değer ve birim BİRLİKTE taşınıyor, özet BİRİM BAŞINA ayrı
+    # hesaplanıyor. Tek birim varsa davranış eskisi gibi; birden fazla birim
+    # varsa tek bir "en yüksek" iddiası ÜRETİLMİYOR (çünkü öylesi bir sayı
+    # yok) — modele de ekrana da birim bazında ayrı veriliyor.
+    def _deger_birim(c):
         if is_specific:
-            return c.get(hedef) or 0
-        return c["odul"] if c["odul"] > 0 else (c["kar_payi"] if c["kar_payi"] > 0 else 0)
+            return (c.get(hedef) or 0), (suffix.strip() or prefix.strip() or "")
+        if c["odul"] > 0:
+            return c["odul"], "TL"
+        if c["kar_payi"] > 0:
+            return c["kar_payi"], "%"
+        return 0, ""
 
-    tum_degerler = [_deger(c) for c in gecerli]
     tum_bankalar = sorted({c["banka"] for c in gecerli if c.get("banka")})
-    ozet = None
-    if tum_degerler:
-        ozet = {
-            "adet": uygun_toplam,
-            "toplam": round(sum(tum_degerler), 2),
-            "ortalama": round(sum(tum_degerler) / len(tum_degerler), 2),
-            "en_dusuk": min(tum_degerler),
-            "en_yuksek": max(tum_degerler),
-            "banka_sayisi": len(tum_bankalar),
-            "bankalar": tum_bankalar,
+    _birim_gruplari: dict = {}
+    for _c in gecerli:
+        _d, _b = _deger_birim(_c)
+        _birim_gruplari.setdefault(_b, []).append(_d)
+
+    def _ozetle(degerler, birim):
+        return {
+            "birim": birim,
+            "adet": len(degerler),
+            "toplam": round(sum(degerler), 2),
+            "ortalama": round(sum(degerler) / len(degerler), 2),
+            "en_dusuk": min(degerler),
+            "en_yuksek": max(degerler),
         }
+
+    ozet = None
+    ozet_gruplar = None
+    if _birim_gruplari:
+        # Birim bilgisi olmayan (değeri 0 olan) grup, gerçek bir ölçüm değil —
+        # istatistiği bozmasın diye ayrı tutuluyor ama tek grup oysa kullanılır.
+        _anlamli = {b: d for b, d in _birim_gruplari.items() if b}
+        _kullanilacak = _anlamli or _birim_gruplari
+        if len(_kullanilacak) == 1:
+            _b, _d = next(iter(_kullanilacak.items()))
+            ozet = _ozetle(_d, _b)
+            ozet["adet"] = uygun_toplam
+        else:
+            ozet_gruplar = [_ozetle(d, b) for b, d in sorted(_kullanilacak.items())]
+        tum_degerler = [x for d in _kullanilacak.values() for x in d]
+        _banka_bilgisi = {"banka_sayisi": len(tum_bankalar), "bankalar": tum_bankalar,
+                          "adet": uygun_toplam}
+        if ozet:
+            ozet.update({"banka_sayisi": len(tum_bankalar), "bankalar": tum_bankalar})
+        else:
+            _banka_bilgisi["gruplar"] = ozet_gruplar
+            ozet_gruplar = _banka_bilgisi
+
+    # =========================================================================
+    # 🆕 BANKA PROFİLİ KIYASLAMASI — "A ile B'yi karşılaştır" sorusunun
+    #    GERÇEK cevabı.
+    #
+    # Bildirilen hata: kullanıcı "albaraka türk ve kuveyt türk kampanyalarını
+    # kıyaslar mısın" dedi; sistem tek bir "Değer" sütunlu satır listesi
+    # gösterdi. Kullanıcının kastı ise GENEL bir profil kıyasıydı: kampanya
+    # sayısı/dağılımı, oranlar, ödüller, vadeler.
+    #
+    # Sebep: soruda metrik kelimesi geçmediği için is_specific=False oluyor ve
+    # kod "hangi sütunu göstereyim" sorusuna satır bazında cevap veriyor. Ama
+    # KIYASLAMA sorusunun cevabı satır listesi DEĞİL, banka başına ÖZETTİR.
+    # Satır listesi ne kadar dengeli olursa olsun, "hangi banka daha avantajlı"
+    # sorusuna cevap vermez — o cevap toplulaştırmayı gerektirir.
+    #
+    # Bu blok her banka için ayrı profil çıkarıp modele veriyor. Not: her metrik
+    # KENDİ dolu kayıt sayısıyla birlikte veriliyor — çünkü kar_payi alanı
+    # kayıtların çoğunda boş; "ortalama oran" derken kaç kayda dayandığını
+    # söylemezsek model yine yanıltıcı bir kesinlik üretir.
+    # ⚠️ PROFİL `temel_havuz` ÜZERİNDEN — `gecerli` DEĞİL.
+    # `gecerli`, metrik filtresinden geçmiş havuzdur (is_specific ise yalnızca
+    # ilgili alanı DOLU olan kayıtlar). Profili onun üzerinden hesaplamak, ilk
+    # denemede tam olarak bildirilen hataya yol açtı: oran alanı dolu tek kayıt
+    # kaldı, profil "Albaraka'da hiç kampanya yok" gibi göründü. Oysa bankanın
+    # 49 kampanyası vardı, sadece ORAN ALANI boştu. Genel kıyasın doğru
+    # popülasyonu, bankaya göre filtrelenmiş AMA metriğe göre daraltılmamış
+    # havuzdur.
+    banka_profilleri = None
+    if _cok_bankali_kiyas_hazir(kodlar) and temel_havuz:
+        banka_profilleri = _banka_profilleri_cikar(temel_havuz, dil)
 
     if zorla_limit is not None:
         limit = max(1, min(int(zorla_limit), len(gecerli))) if gecerli else 0
     else:
         limit = min(gorsel_limiti(user_query, karar, view_mode), len(gecerli))
+
+    # 🚨 HATA DÜZELTMESİ — KIYASLAMA 3 SATIRA KIRPILIYORDU.
+    #
+    # Bildirilen hata: "albaraka türk ve kuveyt türk kampanyalarını kıyaslar
+    # mısın" sorusuna ekranda 3 satır çıktı, ÜÇÜ DE Albaraka'ydı; model de
+    # "Kuveyt Türk'e ait kampanya mevcut değildir" dedi. Oysa havuzda 155
+    # kayıt vardı ve Kuveyt Türk EN ÇOK kaydı olan bankaydı.
+    #
+    # İki ayrı kusur üst üste bindi:
+    #  1) gorsel_limiti(): "kıyasla" kelimesi GRAFIK_ISTEGI/TABLO_ISTEGI
+    #     kalıplarına uymuyor, yani "açık liste isteği yok" sayılıp
+    #     OZET_SATIR_SAYISI (3) dönüyordu. 2 bankayı 3 satırla kıyaslamak
+    #     yapısal olarak imkânsız.
+    #  2) Dilim `gecerli[:limit]` — sıralama neyse ilk N. Sıralamada bir banka
+    #     öne geçerse diğeri EKRANA HİÇ ÇIKMIYOR. Model de gördüğü veriye göre
+    #     doğru konuşuyor: göremediği bankayı "yok" sayıyor.
+    #
+    # Model yine hata yapmadı; ona kıyaslama sorusu sorup tek bankanın verisini
+    # verdik. Düzeltme iki adımlı: yeterli satır + BANKA DENGELİ dilim.
+    _kiyas_kodlari = [k for k in (kodlar or []) if k]
+    _cok_bankali_kiyas = len(_kiyas_kodlari) > 1
+    # 🚨 KOŞUL DÜZELTİLDİ — ilk hâli HİÇ ÇALIŞMIYORDU.
+    #
+    # Önceki koşul `zorla_limit is None` idi. Ama çağıran taraf zorla_limit'i
+    # HER ZAMAN veriyor (zorla_limit=gorsel_limiti(...)), dolayısıyla bu dal
+    # hiçbir zaman girilmiyordu: iki bankalı kıyaslamada tablo yine 3 satırda
+    # kalıyordu. (Dengeli dilim çalışıyordu, çünkü onun böyle bir koşulu yok —
+    # bu yüzden hata "satırlar karışık ama az" şeklinde görünüyordu.)
+    #
+    # Doğru ayrım "zorla_limit verildi mi" değil, KULLANICI SAYI İSTEDİ Mİ:
+    #   • "3 tane göster" / "tümünü listele" -> istenen_limit dolu, DOKUNMA.
+    #   • sadece "karşılaştır"               -> sayı yok, 3 satır kıyas için az.
+    _kullanici_sayi_istedi = bool(istenen_limit(user_query))
+    if _cok_bankali_kiyas and not _kullanici_sayi_istedi and gecerli:
+        # Her banka için en az KIYAS_BANKA_BASI_SATIR satır sığacak kadar yer aç.
+        _asgari = KIYAS_BANKA_BASI_SATIR * len(_kiyas_kodlari)
+        limit = min(max(limit, _asgari), len(gecerli))
+
+    if _cok_bankali_kiyas and limit and len(gecerli) > limit:
+        # BANKA DENGELİ DİLİM: her bankadan sırayla birer kayıt alınır
+        # (round-robin). Böylece hiçbir banka sessizce dışarıda kalmaz.
+        # Her bankanın kendi içindeki sıralaması KORUNUR — yani "en yüksek"
+        # sorularında her bankanın en iyileri öne gelir.
+        _kovalar: dict = {}
+        for _c in gecerli:
+            _kovalar.setdefault(_c["banka_kodu"], []).append(_c)
+        _dengeli = []
+        _sira = 0
+        while len(_dengeli) < limit:
+            _eklendi = False
+            for _kod in _kiyas_kodlari:
+                _kova = _kovalar.get(_kod) or []
+                if _sira < len(_kova) and len(_dengeli) < limit:
+                    _dengeli.append(_kova[_sira])
+                    _eklendi = True
+            if not _eklendi:
+                break          # tüm kovalar tükendi
+            _sira += 1
+        # Adı geçmeyen bankalardan kayıt varsa (filtre gevşemişse) kalanı doldur
+        if len(_dengeli) < limit:
+            _secilen = {id(x) for x in _dengeli}
+            _dengeli += [c for c in gecerli if id(c) not in _secilen][:limit - len(_dengeli)]
+        gecerli = _dengeli
 
     # NOT: "banka çalışanı görünümünde her zaman 50 satır" davranışı KALDIRILDI.
     # O kural yüzünden analist görünümünde en basit soru bile 50 satırlık bir
@@ -885,6 +1218,12 @@ def grafigi_hazirla_mongo_dinamik(
     gecerli = gecerli[:limit] if limit else []
 
     labels, sub_labels, values, source_indices, full_texts, categories = [], [], [], [], [], []
+    # 🔗 YENİ: her satırın kampanya kaynağı (banka sitesindeki orijinal sayfa)
+    # linki — tabloda/kaynak panelinde tıklanabilir link göstermek için.
+    # c["url"] zaten _kampanya_normallestir() içinde MongoDB'den okunuyordu
+    # ("-" varsayılanla), burada sadece gerçek bir link YOKSA boş string'e
+    # çeviriyoruz ki ön yüz "değer var mı" kontrolünü kolayca yapabilsin.
+    urls = []
     db_context = ""
 
     for idx, c in enumerate(gecerli):
@@ -905,20 +1244,29 @@ def grafigi_hazirla_mongo_dinamik(
         values.append(gosterilen_deger)
         source_indices.append(idx + 1)
         categories.append(c["kat"])
+        gecerli_url = c["url"] if c["url"] and c["url"] != "-" else ""
+        urls.append(gecerli_url)
 
         # 🌍 Kayıt detay kartı da dile göre etiketleniyor (EN seçiliyken modalda
         # Türkçe alan adları görünüyordu).
+        #
+        # 🛠️ EMOJİLER KALDIRILDI + URL SATIRI ÇIKARILDI: kullanıcı ekran
+        # görüntüsünde emojilerin dağınık göründüğünü ve URL'nin uzun ham metin
+        # olarak basıldığını bildirdi ("linkte direkt link yazan bir kutucuk
+        # oluştur"). Artık URL bu metnin İÇİNDE değil — ayrı bir alan olarak
+        # `urls` dizisinde taşınıyor (yukarıda), ön yüz onu modalın üstünde
+        # tıklanabilir bir düğme/kutucuk olarak çiziyor (bkz. chat.vue
+        # openModalFromText). Metin gövdesinde tekrar basmaya gerek yok.
         M = _METIN[dil]
         tam_metin = (
-            f"📌 {M['kayit_basligi']}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🏦 {M['banka']}: {c['banka']}\n"
-            f"🏷️ {M['kampanya_adi']}: {c['kampanya_adi']}\n"
-            f"📦 {M['kategori']}: {c['kat']}\n"
-            f"⚖️ {deger_etiketi}: {g_prefix}{gosterilen_deger}{g_suffix}\n"
-            f"🎯 {M['hedef_kitle']}: {c['kitle']}\n"
-            f"⏳ {M['bitis']}: {c['bitis']}\n"
-            f"🔗 {M['url']}: {c['url']}\n\n"
-            f"📝 {M['detaylar']}:\n{c['metin']}\n"
+            f"{M['kayit_basligi']}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"{M['banka']}: {c['banka']}\n"
+            f"{M['kampanya_adi']}: {c['kampanya_adi']}\n"
+            f"{M['kategori']}: {c['kat']}\n"
+            f"{deger_etiketi}: {g_prefix}{gosterilen_deger}{g_suffix}\n"
+            f"{M['hedef_kitle']}: {c['kitle']}\n"
+            f"{M['bitis']}: {c['bitis']}\n\n"
+            f"{M['detaylar']}:\n{c['metin']}\n"
         )
         full_texts.append(tam_metin)
 
@@ -997,17 +1345,41 @@ def grafigi_hazirla_mongo_dinamik(
     # davet ediyor. Artık ne yapılacağı TARİF ediliyor, örnek verilmiyor.
     kesit_notu = ""
     if db_context and uygun_toplam > len(labels):
+        # 🚨 İKİNCİ DÜZELTME — "ANLATMA" TALİMATI TERS TEPTİ.
+        #
+        # Bildirilen hata (ekran görüntüsü): alt başlık doğru şekilde
+        # "48 kampanya içinden ilk 10 tanesi gösteriliyor" derken, modelin
+        # metni "toplam 48 kampanya ekranda görüntülenen grafikte yer
+        # almaktadır... tüm fırsatlar bu görselde özetlenmiştir" diyordu.
+        # Yani ekrandaki iki bileşen birbiriyle açıkça çelişiyordu.
+        #
+        # Sebep: bir önceki düzeltmede (örnek cümlenin aynen kopyalanması
+        # sorunu) eklenen "Bu örnekleme sürecini cevabında ANLATMA" talimatı
+        # AŞIRI DÜZELTMEYDİ. Model 48 sayısını görüyor, ama kesmeden söz
+        # etmesi yasaklandığı için 48'i sanki hepsi ekrandaymış gibi sunuyordu.
+        # "Söz etme" demek, "yokmuş gibi davran" olarak anlaşıldı.
+        #
+        # Yeni yaklaşım: örnek cümle YİNE verilmiyor (o hata geri gelmesin),
+        # ama artık susmak değil, YANLIŞ İDDİA ETMEMEK isteniyor. Toplamı
+        # söylemek serbest; "hepsi ekranda/grafikte/görselde" demek yasak.
         if dil == "en":
             kesit_notu = (
                 f"The rows below are a SAMPLE: {len(labels)} of {uygun_toplam} matching "
-                "campaigns. Never present the sample size as the total. Do not describe "
-                "this sampling process in your answer — just keep your claims accurate."
+                f"campaigns. The chart/table on screen contains ONLY these {len(labels)} rows, "
+                f"NOT all {uygun_toplam}. You may state the true total ({uygun_toplam}); what you "
+                "must NEVER do is claim or imply that all of them are shown, charted, listed or "
+                "summarised in the visual. Do not narrate the sampling mechanics either — just "
+                "keep every claim about what is on screen literally true."
             )
         else:
             kesit_notu = (
                 f"Aşağıdaki satırlar bir ÖRNEKLEMDİR: {uygun_toplam} uygun kampanyadan "
-                f"{len(labels)} tanesi. Örneklem büyüklüğünü toplam gibi sunma. "
-                "Bu örnekleme sürecini cevabında ANLATMA, sadece iddialarını doğru tut."
+                f"{len(labels)} tanesi. Ekrandaki grafik/tablo YALNIZCA bu {len(labels)} satırı "
+                f"içeriyor, {uygun_toplam} kaydın tamamını DEĞİL. Gerçek toplamı ({uygun_toplam}) "
+                "söyleyebilirsin; ASLA yapmaman gereken şey, bunların hepsinin ekranda/grafikte/"
+                "görselde yer aldığını ya da orada özetlendiğini söylemek veya ima etmektir. "
+                "Örnekleme sürecini de anlatma — sadece ekranda ne olduğuna dair her iddian "
+                "harfiyen doğru olsun."
             )
 
     # 🆕 GERÇEK TOPLAMLAR — modelin kendi hesaplamasına gerek kalmıyor.
@@ -1043,6 +1415,40 @@ def grafigi_hazirla_mongo_dinamik(
                 f"farklı banka sayısı={ozet['banka_sayisi']} ({', '.join(ozet['bankalar'])}). "
                 "Bu değerleri satırlardan KENDİN HESAPLAMA."
             )
+    elif db_context and ozet_gruplar:
+        # 🚨 KARIŞIK BİRİM DURUMU — tek bir "en yüksek" sayısı YOK.
+        # Kayıtların bir kısmı TL ödül, bir kısmı % oran taşıyor. Eskiden ikisi
+        # tek listede toplanıp "ortalama 1627.76" gibi anlamsız bir sayı
+        # üretiliyordu; model de buna "%" etiketi uydurup sunuyordu. Artık
+        # modele birimler AYRI AYRI veriliyor ve tek sayıya indirmemesi
+        # açıkça söyleniyor.
+        _g = ozet_gruplar.get("gruplar") or []
+        _satirlar = "; ".join(
+            f"{x['birim']}: adet={x['adet']}, en yüksek={x['en_yuksek']}, "
+            f"en düşük={x['en_dusuk']}, ortalama={x['ortalama']}, toplam={x['toplam']}"
+            for x in _g
+        )
+        _bankalar = ", ".join(ozet_gruplar.get("bankalar") or [])
+        if dil == "en":
+            ozet_notu = (
+                f"COMPUTED SUMMARY over ALL {ozet_gruplar.get('adet')} matching campaigns "
+                f"(not just the rows shown). ⚠️ The records use DIFFERENT UNITS, so there "
+                f"is NO single 'highest' value — figures are given PER UNIT: {_satirlar}. "
+                f"Distinct banks={ozet_gruplar.get('banka_sayisi')} ({_bankalar}). "
+                "Never mix or average across units, and never present a figure without "
+                "its unit. If asked for a single overall maximum, explain that reward "
+                "amounts (TL) and profit rates (%) are not comparable."
+            )
+        else:
+            ozet_notu = (
+                f"HESAPLANMIŞ ÖZET — TÜM {ozet_gruplar.get('adet')} uygun kampanya üzerinden "
+                f"(yalnızca gösterilen satırlar değil). ⚠️ Kayıtlar FARKLI BİRİMLERDE, bu "
+                f"yüzden tek bir 'en yüksek' değeri YOK; rakamlar BİRİM BAŞINA veriliyor: "
+                f"{_satirlar}. Farklı banka sayısı={ozet_gruplar.get('banka_sayisi')} ({_bankalar}). "
+                "Birimleri BİRBİRİNE KARIŞTIRMA, aralarında ortalama ALMA ve hiçbir sayıyı "
+                "birimsiz yazma. Tek bir genel maksimum sorulursa, ödül tutarı (TL) ile "
+                "kâr payı oranının (%) kıyaslanabilir olmadığını açıkla."
+            )
 
     # 🆕 Ad aramasında modele "detay satırlarını kullan" talimatı.
     # Gerekçe: yapısal alanlar (kar_payi, odul) NLP çıkarımıyla dolduruluyor ve
@@ -1071,6 +1477,41 @@ def grafigi_hazirla_mongo_dinamik(
         onek = "SCOPE" if dil == "en" else "KAPSAM"
         notlar = " ".join(x for x in (kapsam_notu, kesit_notu, ozet_notu, ad_notu) if x)
         db_context = f"({onek}: {notlar})\n" + db_context
+
+    # 🆕 Banka kıyas profili EN BAŞA konuyor: kullanıcı genel bir karşılaştırma
+    # istediğinde modelin ilk gördüğü şey satır listesi değil, banka bazında
+    # toplulaştırılmış rakamlar olmalı. Satırlar örnek/kanıt işlevi görür.
+    if db_context and banka_profilleri:
+        db_context = _profil_notu_kur(banka_profilleri, dil) + "\n\n" + db_context
+
+    # 🆕 GENEL KIYASTA GÖRSEL = BANKA BAŞINA KAMPANYA DAĞILIMI.
+    #
+    # Kullanıcı "A ile B'yi kıyasla" dediğinde ekranda tek tek kampanyaları
+    # değil, bankaların BİRBİRİNE GÖRE durumunu görmek istiyor ("kampanya
+    # dağılımı" tam olarak bu). Belirli bir metrik sorulmadığında (is_specific
+    # False) satırları banka bazında toplayıp öyle çiziyoruz; tek tek kampanya
+    # listesi zaten aşağıdaki tabloda duruyor.
+    #
+    # ⚠️ Yalnızca GRAFİK istendiğinde devreye giriyor: tablo görünümünde
+    # kullanıcı kampanyaların kendisini görmek ister, banka sayaçlarını değil.
+    if (banka_profilleri and not is_specific and chart_type != "table"
+            and labels and cizim_yapilsin):
+        labels = [p["banka"] for p in banka_profilleri]
+        sub_labels = [
+            (f"{p['kampanya_sayisi']} campaigns" if dil == "en"
+             else f"{p['kampanya_sayisi']} kampanya")
+            for p in banka_profilleri
+        ]
+        values = [p["kampanya_sayisi"] for p in banka_profilleri]
+        categories = ["" for _ in banka_profilleri]
+        source_indices = list(range(1, len(banka_profilleri) + 1))
+        urls = ["" for _ in banka_profilleri]
+        full_texts = [_profil_kart_metni(p, dil) for p in banka_profilleri]
+        prefix, suffix, is_specific = "", "", True   # birim yok: adet sayıyoruz
+        zorla_baslik = ("Campaign Distribution by Bank" if dil == "en"
+                        else "Bankalara Göre Kampanya Dağılımı")
+        ozet, ozet_gruplar = None, None              # adet için istatistik kutusu anlamsız
+        uygun_toplam = len(banka_profilleri)
 
     chart_str = ""
     if labels and cizim_yapilsin:
@@ -1116,15 +1557,40 @@ def grafigi_hazirla_mongo_dinamik(
             "prefix": prefix if is_specific else "", "suffix": suffix if is_specific else "",
             "labels": labels, "sub_labels": sub_labels, "values": values,
             "source_indices": source_indices, "full_texts": full_texts, "categories": categories,
+            # 🔗 YENİ: labels/values ile aynı indekste, ön yüzün tabloda ve
+            # kıyaslama panelinde "kaynağa git" linki çizebilmesi için.
+            "urls": urls,
             # 🚨 İstatistikler KESİLMİŞ `values` yerine TÜM uygun küme üzerinden.
             # Eski hâlinde "77 kampanya içinden ilk 3" yazan bir tablonun yanında
             # 3 satırın ortalaması "ORTALAMA DEĞER" diye gösteriliyordu — alt
             # başlıkla açıkça çelişen bir sayı.
-            "stats": ({"avg": ozet["ortalama"], "min": ozet["en_dusuk"], "max": ozet["en_yuksek"]}
+            # 🚨 KARIŞIK BİRİMDE İSTATİSTİK GÖSTERİLMİYOR (stats=None).
+            # ozet_gruplar doluysa satırlar farklı birimlerde (TL ödül + % oran)
+            # demektir. Bu durumda tek bir "ORTALAMA DEĞER" kutusu YANLIŞ bilgi
+            # verir — ekrandaki "1627.76" tam olarak buydu: TL'lerle yüzdelerin
+            # ortalaması. Böyle bir sayı yerine hiç sayı göstermek doğrudur.
+            "stats": (None if ozet_gruplar else
+                      {"avg": ozet["ortalama"], "min": ozet["en_dusuk"], "max": ozet["en_yuksek"]}
                       if ozet else
                       {"avg": round(sum(values) / len(values), 2), "min": min(values), "max": max(values)}),
+            "stats_birim": (ozet or {}).get("birim", ""),
+            # Arayüz isterse "birimler karışık" uyarısı gösterebilsin.
+            "stats_karisik": bool(ozet_gruplar),
             # Kaç kayıt üzerinden hesaplandığı — arayüz isterse gösterebilir.
-            "stats_kapsam": (ozet or {}).get("adet", len(values)),
+            "stats_kapsam": (ozet or ozet_gruplar or {}).get("adet", len(values)),
+            # 🆕 "DEĞER" SÜTUNU GÖSTERİLSİN Mİ?
+            #
+            # Bildirilen hata: "tüm kampanyaları karşılaştır" sorusunda 155
+            # satırlık tablonun Değer sütunu neredeyse tamamen 0 doluydu.
+            # Sebep: kullanıcı bir metrik SORMADIĞINDA (is_specific=False) her
+            # satır kendi dolu alanını gösteriyor; kampanyaların çoğu indirim/
+            # taksit tipi olduğu için ne ödül ne oran taşıyor, dolayısıyla 0
+            # yazıyor. Bu sütun hem bilgi vermiyor hem de "bu kampanya
+            # değersiz" izlenimi yaratıyor.
+            #
+            # Metrik açıkça sorulduğunda (en yüksek ödül, kâr payı vb.) sütun
+            # anlamlı, o yüzden koşullu: is_specific ise göster.
+            "deger_sutunu": bool(is_specific),
         }
         chart_str = f'\n\n[CHART]{json.dumps(chart_data)}[/CHART]\n\n'
 
@@ -1439,6 +1905,21 @@ async def get_chatbot_response(
         q = asyncio.Queue()
 
         async def background_process():
+            # 📊 BU İSTEĞİN MALİYETİ — yarışma şartnamesindeki "çıkarım süresi ve
+            # kaynak kullanımı" raporunun kullanıcıya görünen tarafı.
+            #
+            # Neden global sayaç FARKI kullanılıyor da yalnızca ana LLM akışının
+            # usage'ı değil: tek bir kullanıcı sorusu arka planda BİRDEN ÇOK
+            # çağrı yapıyor (niyet sınıflandırma, sorgu embedding'i, rerank,
+            # gerekirse yedek non-stream çağrı). Kullanıcının ödediği bedel
+            # bunların TOPLAMI. Sadece son akışı saymak maliyeti olduğundan
+            # düşük gösterirdi.
+            #
+            # `_olcum_t0` duvar saati: API sürelerinin toplamından FARKLIDIR
+            # (arada Mongo sorgusu, filtreleme, Python işi var). Kullanıcının
+            # ekranda beklediği gerçek süre budur.
+            _olcum0 = kullanim_anlik()
+            _olcum_t0 = time.perf_counter()
             try:
                 final_res = ""
                 await q.put({"type": "status", "content": "Sorgu analiz ediliyor..."})
@@ -1750,6 +2231,14 @@ async def get_chatbot_response(
                                     "index": i + 1,
                                     "kampanya_id": doc.metadata.get("kampanya_id", "Qdrant"),
                                     "icerik": doc.page_content,
+                                    # 🔗 YENİ: indexing.py artık Qdrant metadata'sına
+                                    # kaynak_url yazıyor (bkz. o dosyadaki not) — bu
+                                    # sayede vektör-arama sonucu gelen kaynaklar da
+                                    # ön yüzde tıklanabilir link olarak gösterilebiliyor.
+                                    # Eski (yeniden indekslenmemiş) noktalarda alan
+                                    # boş dönebilir; ön yüz boş string'i "link yok"
+                                    # olarak ele alır.
+                                    "url": doc.metadata.get("kaynak_url", ""),
                                 })
                     except Exception as e:
                         logger.error(f"Belge getirme (retrieval) hatası: {e}\n{traceback.format_exc()}")
@@ -1941,9 +2430,13 @@ async def get_chatbot_response(
                     )
                     if len(labels_found) > 12:
                         kural_ext += (
-                            f"\nIMPORTANT RULE — LONG LIST ({len(labels_found)} campaigns found): Do NOT "
-                            "rewrite the campaigns one by one ('1. ..., 2. ...') — they are already fully "
-                            "visible in the table above; repeating them is unnecessary and causes the answer "
+                            # 🛠️ "they are already fully visible" İFADESİ KALDIRILDI: kesme
+                            # yapıldığında (bkz. kesit_notu) bu cümle YANLIŞ bir tamlık iddiası
+                            # oluyordu ve model bunu cevabına taşıyordu. Amaç satırları tek tek
+                            # tekrar YAZDIRMAMAK; bunu tamlık iddia etmeden söylüyoruz.
+                            f"\nIMPORTANT RULE — LONG LIST ({len(labels_found)} rows on screen): Do NOT "
+                            "rewrite the campaigns one by one ('1. ..., 2. ...') — those rows are already "
+                            "displayed in the table above; repeating them is unnecessary and causes the answer "
                             "to be cut off mid-sentence. Give only a SHORT SUMMARY: how many campaigns were "
                             "found, a few highest and lowest examples (with bank and figure), and the "
                             "standout banks/ranges in one short paragraph."
@@ -1986,9 +2479,14 @@ async def get_chatbot_response(
                     # belirli bir eşiği geçtiğinde modele bunu YAPMAMASI açıkça söyleniyor.
                     if len(labels_found) > 12:
                         kural_ext += (
-                            f"\nÖNEMLİ KURAL — ÇOK SATIRLI LİSTE ({len(labels_found)} kampanya "
-                            "bulundu): Tablodaki kampanyaları TEK TEK ('1. ..., 2. ..., 3. ...' "
-                            "gibi) yeniden YAZMA — hepsi zaten yukarıdaki tabloda eksiksiz "
+                            # 🛠️ "hepsi ... eksiksiz görünüyor" KALDIRILDI: kesme yapıldığında
+                            # (bkz. kesit_notu) bu YANLIŞ bir tamlık iddiasıydı ve model bunu
+                            # cevabına taşıyordu ("tüm fırsatlar bu görselde özetlenmiştir").
+                            # Ayrıca "{n} kampanya bulundu" da yanıltıcıydı: labels_found
+                            # KESİLMİŞ listedir, bulunan toplam değil.
+                            f"\nÖNEMLİ KURAL — ÇOK SATIRLI LİSTE (ekranda {len(labels_found)} "
+                            "satır var): Tablodaki kampanyaları TEK TEK ('1. ..., 2. ..., 3. ...' "
+                            "gibi) yeniden YAZMA — o satırlar zaten yukarıdaki tabloda "
                             "görünüyor, bunu tekrarlamak hem gereksiz hem de cevabın yarıda "
                             "kesilmesine yol açar. Bunun yerine SADECE kısa bir ÖZET ver: kaç "
                             "kampanya bulunduğunu, en yüksek ve en düşük birkaç örneği (bankası + "
@@ -2342,6 +2840,28 @@ async def get_chatbot_response(
                 logger.error(f"Hata: {err_msg}\n{traceback.format_exc()}")
                 await q.put({"type": "error", "content": "İşlem sırasında bir gecikme yaşandı."})
             finally:
+                # 📊 MALİYET ÖZETİ — "done"dan hemen önce, finally içinde:
+                # hata durumunda da gönderilir, çünkü başarısız bir istek de
+                # token ve süre harcamıştır; kullanıcıdan gizlemek yanıltıcı olur.
+                #
+                # 🚨 `final_res`'E EKLENMİYOR — BİLEREK.
+                # final_res yukarıda Redis'e önbelleğe yazılıyor. Bu işaret oraya
+                # karışsaydı, aynı soru ikinci kez sorulduğunda önbellekten dönen
+                # cevap İLK isteğin maliyetini gösterirdi — yani hiç API çağrısı
+                # yapılmadığı hâlde "8.327 token harcandı" yazardı. Sadece canlı
+                # akışa yazıyoruz; önbellekten gelen yanıtta bu blok doğal olarak
+                # 0 çağrı / 0 token gösterir ki bu da doğrudur.
+                try:
+                    _fark = kullanim_farki(_olcum0)
+                    _fark["sure_sn"] = round(time.perf_counter() - _olcum_t0, 2)
+                    _fark["onbellekten"] = _fark["cagri"] == 0
+                    await q.put({
+                        "type": "token",
+                        "content": f"\n\n[KULLANIM]{json.dumps(_fark)}[/KULLANIM]\n\n",
+                    })
+                except Exception as _e:
+                    # Ölçüm, ölçtüğü sistemi bozmamalı.
+                    logger.debug(f"Kullanım özeti gönderilemedi: {_e}")
                 await q.put({"type": "done"})
 
         asyncio.create_task(background_process())

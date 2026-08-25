@@ -29,8 +29,12 @@ const showToast = (msg) => {
 
 // TOKAT 5: TABLOYA TIKLANDIĞINDA KAYIT BULUNAMADI DEMEYECEK!
 // Direkt Python'un hazırladığı metni (full_texts) basacak.
-const openModalFromText = (text) => {
-    activeSource.value = { icerik: text || 'Detay bulunamadı.' }
+// 🔗 YENİ: ikinci parametre olarak url eklendi. Backend artık kaynak URL'sini
+// full_texts metninin İÇİNE basmıyor (bkz. generate_response.py) — ayrı bir
+// `urls` dizisinde taşıyor. Burada modalın üst kısmında ayrı, tıklanabilir bir
+// kutucuk olarak gösteriliyor (ham link metni yerine).
+const openModalFromText = (text, url = '') => {
+    activeSource.value = { icerik: text || 'Detay bulunamadı.', url: url || '' }
     activeModalType.value = 'source'
     showSourceModal.value = true
 }
@@ -136,7 +140,18 @@ const BILINEN_ETIKETLER = [
   '[SOURCES]', '[/SOURCES]',
   '[SUGGESTIONS]', '[/SUGGESTIONS]',
   '[SUGGESTION]', '[/SUGGESTION]',
+  // 📊 Bu istek için harcanan süre/token özeti (bkz. generate_response.py).
+  '[KULLANIM]', '[/KULLANIM]',
 ];
+
+// 📊 Token sayılarını binlik ayraçla okunur kılar (8327 -> "8.327").
+// Intl kullanılıyor ki seçili dile göre doğru ayraç çıksın (TR "." / EN ",").
+const sayiBicimle = (n) => {
+  const s = Number(n);
+  if (!Number.isFinite(s)) return '0';
+  try { return s.toLocaleString(locale.value === 'en' ? 'en-US' : 'tr-TR'); }
+  catch (e) { return String(s); }
+};
 
 const kismiEtiketMi = (buf) => {
   if (!buf) return false;
@@ -232,6 +247,8 @@ const cevabiDuzMetneCevir = (ham) => {
     .replace(/\[SOURCES\][\s\S]*?\[\/SOURCES\]/gi, '')
     .replace(/\[SUGGESTIONS?\][\s\S]*?\[\/SUGGESTIONS?\]/gi, '')
     .replace(/\[STATUS\][\s\S]*?\[\/STATUS\]/gi, '')
+    // 📊 Maliyet özeti de rapora/Excel'e sızmasın.
+    .replace(/\[KULLANIM\][\s\S]*?\[\/KULLANIM\]/gi, '')
     .replace(/```[a-zA-Z]*\n?([\s\S]*?)```/g, '$1')
     .replace(/^#{1,6}\s*/gm, '')
     .replace(/\*\*(.*?)\*\*/g, '$1')
@@ -655,11 +672,16 @@ const exportToExcel = async (index) => {
       // --- SAYFA 1: Kampanya verileri (yalnızca grafik varsa) ---
       if (chart) {
           const satirlar = grafikSatirlari(chart);
+          // 🆕 Ekrandaki tabloyla AYNI mantık: metrik sorulmadıysa Değer/Birim
+          // sütunları neredeyse tamamen 0 doluyor. O durumda Excel'e de
+          // Kategori yazılıyor — indirilen dosya ekranda görülenle tutarlı olsun.
+          const degerVar = chart.deger_sutunu !== false;
           const wsData = [[
               t('chat.bank_institution', 'Banka / Kurum'),
               t('chat.campaign_detail', 'Kampanya Detayı'),
-              t('chat.value', 'Değer'),
-              t('chat.unit', 'Birim'),
+              ...(degerVar
+                  ? [t('chat.value', 'Değer'), t('chat.unit', 'Birim')]
+                  : [t('chat.category', 'Kategori')]),
           ]];
 
           // Değerler artık METİN değil SAYI olarak yazılıyor.
@@ -667,11 +689,12 @@ const exportToExcel = async (index) => {
           // Excel bunları metin sayıp toplayamıyor, sıralayamıyor, grafik
           // çizemiyordu — yani tablo Excel'de işe yaramıyordu. Birim ayrı sütuna
           // alındı, sayı sayı olarak kaldı.
-          satirlar.forEach(r => wsData.push([
+          satirlar.forEach((r, i) => wsData.push([
               r.banka,
               r.kampanya,
-              r.hamDeger !== null ? r.hamDeger : r.metinDeger,
-              birimEtiketi(chart),
+              ...(degerVar
+                  ? [r.hamDeger !== null ? r.hamDeger : r.metinDeger, birimEtiketi(chart)]
+                  : [(chart.categories && chart.categories[i]) || '-']),
           ]));
 
           if (chart.stats) {
@@ -983,6 +1006,19 @@ const formatMessage = (text, hasChart = false) => {
   html = html.replace(/(<\/h[1-4]>|<\/li>|<\/blockquote>|<\/pre>|<\/div>)\n+/g, '$1\n');
   html = html.replace(/\n+(<h[1-4]|<li|<blockquote|<pre|<div class="overflow-x-auto)/g, '\n$1');
   html = html.replace(/&lt;br\s*\/?[&gt;]/gi, '<br>');
+
+  // 🔗 YENİ: Kampanya kaynak linkleri (ör. "URL: https://banka.com/...") artık
+  // düz metin olarak değil, tıklanabilir bağlantı olarak gösteriliyor. Zaten
+  // bir <a href="..."> içindeyse (target="_blank" ile biten href'ler) tekrar
+  // sarmalamamak için negatif lookbehind kullanıyoruz; sondaki noktalama
+  // işaretleri ("." "," ")" gibi) linke dahil edilmiyor.
+  html = html.replace(/(?<!href=")(https?:\/\/[^\s<>"']+)/g, (eslesme) => {
+    const sonEk = (eslesme.match(/[).,;:!?]+$/) || [''])[0];
+    const temizUrl = sonEk ? eslesme.slice(0, -sonEk.length) : eslesme;
+    if (!temizUrl) return eslesme;
+    return `<a href="${temizUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 underline decoration-blue-300 hover:decoration-blue-500 break-all">${temizUrl}</a>${sonEk}`;
+  });
+
   return html;
 }
 
@@ -1036,7 +1072,7 @@ const sendMessage = async () => {
   selectedFiles.value.forEach(file => formData.append('files', file))
 
   chatHistory.value.push({
-    role: 'assistant', content: '', sources: null, chart: null, statuses: [],
+    role: 'assistant', content: '', sources: null, chart: null, kullanim: null, statuses: [],
     currentStatus: null, activeTimer: '0.0', isStatusExpanded: false, isFinished: false,
     isSourcesExpanded: false, suggestions: [],
     // YENİ: "Detaylı Kampanya Kıyaslaması" bölümü için banka filtresi.
@@ -1152,6 +1188,19 @@ const sendMessage = async () => {
           } catch(e) { console.error("Öneri JSON parse hatası:", e) }
       }
       buffer = buffer.replace(/\[SUGGESTIONS?\][\s\S]*?\[\/SUGGESTIONS?\]/g, '');
+
+      // 📊 Bu isteğin maliyeti (süre + token). Backend bunu final_res'e
+      // EKLEMİYOR (önbelleğe karışmasın diye), sadece canlı akışa yolluyor.
+      let kulRegex = /\[KULLANIM\]([\s\S]*?)\[\/KULLANIM\]/g;
+      let matchKul;
+      while ((matchKul = kulRegex.exec(buffer)) !== null) {
+          try { chatHistory.value[aIdx].kullanim = JSON.parse(matchKul[1]); }
+          catch(e) { console.error("Kullanım JSON parse hatası:", e) }
+      }
+      buffer = buffer.replace(/\[KULLANIM\][\s\S]*?\[\/KULLANIM\]/g, '');
+
+      let pKulIdx = buffer.lastIndexOf('[KULLANIM');
+      if (pKulIdx !== -1 && buffer.indexOf('[/KULLANIM]', pKulIdx) === -1) continue;
 
       let pSourceIdx = buffer.lastIndexOf('[SOURCES');
       if (pSourceIdx !== -1 && buffer.indexOf('[/SOURCES]', pSourceIdx) === -1) continue;
@@ -1469,9 +1518,17 @@ const sendMessage = async () => {
                                                 </template>
                                                 <circle cx="50" cy="50" r="30" class="fill-white dark:fill-[#1e1e1e]" />
                                             </svg>
-                                            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                            <!-- 🚨 stats null olabilir: satırlar farklı birimlerde
+                                                 (TL ödül + % oran) olduğunda backend tek bir ortalama
+                                                 ÜRETMİYOR, çünkü öyle bir sayı yok. O durumda boş bir
+                                                 "Ortalama" etiketi göstermek yerine sayıyı hiç
+                                                 göstermiyoruz (bkz. stats_karisik). -->
+                                            <div v-if="msg.chart.stats" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                                                 <span class="block text-[10px] font-bold text-neutral-400">{{ t('chat.average', 'Ortalama') }}</span>
-                                                <span class="text-xl font-black text-neutral-800 dark:text-white">{{ msg.chart.prefix || '' }}{{ msg.chart.stats?.avg }}{{ msg.chart.suffix || '' }}</span>
+                                                <span class="text-xl font-black text-neutral-800 dark:text-white">{{ msg.chart.prefix || '' }}{{ msg.chart.stats.avg }}{{ msg.chart.suffix || '' }}</span>
+                                            </div>
+                                            <div v-else-if="msg.chart.stats_karisik" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-4 text-center">
+                                                <span class="block text-[9px] font-bold text-neutral-400 leading-tight">{{ t('chat.mixed_units', 'Birimler karışık (TL / %) — ortalama alınamaz') }}</span>
                                             </div>
                                         </div>
                                         
@@ -1504,13 +1561,23 @@ const sendMessage = async () => {
                                                 <div class="flex justify-between items-end mb-1.5">
                                                     <div class="flex flex-col min-w-0 pr-2">
                                                         <button 
-                                                            @click="openModalFromText(msg.chart.full_texts[i])"
+                                                            @click="openModalFromText(msg.chart.full_texts[i], msg.chart.urls && msg.chart.urls[i])"
                                                             class="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left"
                                                             :title="t('chat.view_db_source', 'Veritabanı kaynağını görüntüle')">
                                                             <span class="truncate">{{ msg.chart.labels[i] }}</span>
                                                             <svg class="w-3 h-3 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                                                         </button>
-                                                        <span class="text-[9px] text-neutral-400 font-medium truncate">{{ msg.chart.sub_labels ? msg.chart.sub_labels[i] : '' }}</span>
+                                                        <span class="text-[9px] text-neutral-400 font-medium truncate flex items-center gap-1">
+                                                            {{ msg.chart.sub_labels ? msg.chart.sub_labels[i] : '' }}
+                                                            <!-- 🔗 YENİ: kampanyanın orijinal banka sayfasına giden link. Satırın
+                                                                 kendisi zaten tıklanınca modal açıyor (openModalFromText); bu
+                                                                 yüzden @click.stop ile o tıklamayı bastırıp yeni sekmede açıyoruz. -->
+                                                            <a v-if="msg.chart.urls && msg.chart.urls[i]" :href="msg.chart.urls[i]" target="_blank" rel="noopener noreferrer" @click.stop
+                                                               :title="t('chat.visit_source', 'Kaynak sayfaya git')"
+                                                               class="text-blue-500 hover:text-blue-600 dark:hover:text-blue-400 shrink-0">
+                                                                <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                                            </a>
+                                                        </span>
                                                     </div>
                                                     <span class="text-[10px] font-black text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800/50 px-1.5 py-0.5 rounded shadow-sm shrink-0">{{ msg.chart.prefix || '' }}{{ msg.chart.values[i] }}{{ msg.chart.suffix || '' }}</span>
                                                 </div>
@@ -1536,17 +1603,34 @@ const sendMessage = async () => {
                                                 <tr class="bg-neutral-100/80 dark:bg-neutral-800/90 border-b border-neutral-200 dark:border-neutral-700">
                                                     <th class="px-3 py-2 font-bold text-neutral-800 dark:text-neutral-200 border-r border-neutral-200 dark:border-neutral-700 whitespace-nowrap min-w-[120px]">{{ t('chat.bank_institution', 'Banka / Kurum') }}</th>
                                                     <th class="px-3 py-2 font-bold text-neutral-800 dark:text-neutral-200 border-r border-neutral-200 dark:border-neutral-700 whitespace-nowrap min-w-[120px]">{{ t('chat.campaign_detail', 'Kampanya Detayı') }}</th>
-                                                    <th class="px-3 py-2 font-bold text-neutral-800 dark:text-neutral-200 text-right whitespace-nowrap">{{ t('chat.value', 'Değer') }}</th>
+                                                    <!-- 🆕 Metrik sorulmadıysa (deger_sutunu=false) "Değer" sütunu
+                                                         neredeyse tamamen 0 doluyordu; yerine kampanyanın kategorisi
+                                                         gösteriliyor (bkz. generate_response.py: deger_sutunu). -->
+                                                    <th v-if="msg.chart.deger_sutunu !== false" class="px-3 py-2 font-bold text-neutral-800 dark:text-neutral-200 text-right whitespace-nowrap">{{ t('chat.value', 'Değer') }}</th>
+                                                    <th v-else class="px-3 py-2 font-bold text-neutral-800 dark:text-neutral-200 whitespace-nowrap">{{ t('chat.category', 'Kategori') }}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 <tr v-for="(label, i) in msg.chart.labels" :key="'table-'+i" 
-                                                    @click="openModalFromText(msg.chart.full_texts[i])"
+                                                    @click="openModalFromText(msg.chart.full_texts[i], msg.chart.urls && msg.chart.urls[i])"
                                                     :style="gecikme(i, 35)"
                                                     class="anim-row border-b border-neutral-200 dark:border-neutral-700 hover:bg-blue-50 dark:hover:bg-neutral-800/40 last:border-0 transition-colors cursor-pointer group/tr">
                                                     <td class="px-3 py-2 text-neutral-600 dark:text-neutral-300 font-medium border-r border-neutral-200 dark:border-neutral-700 break-words min-w-[120px] group-hover/tr:text-blue-600 transition-colors">{{ label }}</td>
-                                                    <td class="px-3 py-2 text-neutral-500 dark:text-neutral-400 border-r border-neutral-200 dark:border-neutral-700 break-words min-w-[120px]">{{ msg.chart.sub_labels ? msg.chart.sub_labels[i] : '-' }}</td>
-                                                    <td class="px-3 py-2 font-bold text-blue-600 dark:text-blue-400 text-right whitespace-nowrap">{{ msg.chart.prefix || '' }}{{ msg.chart.values[i] }}{{ msg.chart.suffix || '' }}</td>
+                                                    <td class="px-3 py-2 text-neutral-500 dark:text-neutral-400 border-r border-neutral-200 dark:border-neutral-700 break-words min-w-[120px]">
+                                                        <span class="inline-flex items-center gap-1">
+                                                            {{ msg.chart.sub_labels ? msg.chart.sub_labels[i] : '-' }}
+                                                            <!-- 🔗 YENİ: satır zaten tıklanınca modal açıyor (openModalFromText),
+                                                                 bu yüzden @click.stop ile o davranışı bastırıp doğrudan
+                                                                 kampanyanın orijinal banka sayfasını yeni sekmede açıyoruz. -->
+                                                            <a v-if="msg.chart.urls && msg.chart.urls[i]" :href="msg.chart.urls[i]" target="_blank" rel="noopener noreferrer" @click.stop
+                                                               :title="t('chat.visit_source', 'Kaynak sayfaya git')"
+                                                               class="text-blue-500 hover:text-blue-600 dark:hover:text-blue-400 shrink-0">
+                                                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                                            </a>
+                                                        </span>
+                                                    </td>
+                                                    <td v-if="msg.chart.deger_sutunu !== false" class="px-3 py-2 font-bold text-blue-600 dark:text-blue-400 text-right whitespace-nowrap">{{ msg.chart.prefix || '' }}{{ msg.chart.values[i] }}{{ msg.chart.suffix || '' }}</td>
+                                                    <td v-else class="px-3 py-2 text-neutral-500 dark:text-neutral-400 whitespace-nowrap">{{ (msg.chart.categories && msg.chart.categories[i]) || '-' }}</td>
                                                 </tr>
                                             </tbody>
                                         </table>
@@ -1562,6 +1646,35 @@ const sendMessage = async () => {
                             <div :id="'message-content-' + index" class="whitespace-pre-wrap leading-relaxed text-[15px] relative z-10 markdown-body" v-html="formatMessage(msg.content, !!msg.chart)"></div>
 
                             <div class="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700/50 flex flex-col gap-4 relative z-10">
+                              <!-- 📊 BU YANITIN MALİYETİ — yarışma şartnamesindeki
+                                   "çıkarım süresi ve kaynak kullanımı" raporunun
+                                   kullanıcıya görünen tarafı. Backend bu bloğu
+                                   [KULLANIM]...[/KULLANIM] etiketiyle yolluyor ve
+                                   önbelleğe YAZMIYOR (bkz. generate_response.py). -->
+                              <div v-if="msg.kullanim" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-400 dark:text-neutral-500 font-medium">
+                                  <span class="inline-flex items-center gap-1" :title="t('chat.metric_time_title', 'Bu yanıtın uçtan uca süresi')">
+                                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                      {{ msg.kullanim.sure_sn }} sn
+                                  </span>
+                                  <!-- Önbellekten dönen yanıtta hiç API çağrısı yok:
+                                       "0 token" yazmak yerine sebebini söylüyoruz. -->
+                                  <span v-if="msg.kullanim.onbellekten" class="inline-flex items-center gap-1 text-amber-500 dark:text-amber-400" :title="t('chat.metric_cache_title', 'Bu yanıt önbellekten geldi, yeni token harcanmadı')">
+                                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                      {{ t('chat.metric_cached', 'önbellek') }}
+                                  </span>
+                                  <template v-else>
+                                      <span class="inline-flex items-center gap-1" :title="t('chat.metric_token_title', 'Girdi + çıktı token toplamı (tüm arka plan çağrıları dahil)')">
+                                          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path></svg>
+                                          {{ sayiBicimle(msg.kullanim.toplam_token) }} token
+                                      </span>
+                                      <span class="text-neutral-300 dark:text-neutral-600">
+                                          ({{ sayiBicimle(msg.kullanim.girdi_token) }} ↓ / {{ sayiBicimle(msg.kullanim.cikti_token) }} ↑)
+                                      </span>
+                                      <span :title="t('chat.metric_calls_title', 'Bu yanıt için yapılan API çağrısı sayısı')">
+                                          {{ msg.kullanim.cagri }} {{ t('chat.metric_calls', 'çağrı') }}
+                                      </span>
+                                  </template>
+                              </div>
                               <div class="flex items-center justify-end gap-2">
                                 <button v-if="msg.content.trim() !== ''" :disabled="isExportingExcel[index] || (isStreaming && index === chatHistory.length - 1)" @click="exportToExcel(index)" class="text-xs flex items-center gap-1.5 text-green-700 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 transition-all px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-lg shadow-sm hover:bg-green-100 dark:hover:bg-green-900/40 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
                                   <template v-if="!isExportingExcel[index]"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg> {{ t('chat.download_excel', 'Excel İndir') }}</template>
@@ -1597,6 +1710,15 @@ const sendMessage = async () => {
                                               <div class="space-y-2 mt-3">
                                                   <div v-for="(src, sIdx) in msg.sources" :key="sIdx" class="text-xs p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 font-mono text-neutral-600 dark:text-neutral-300">
                                                       {{ src.icerik }}
+                                                      <!-- 🔗 YENİ: Qdrant vektör-arama sonucu gelen kaynağın orijinal banka
+                                                           sayfası linki (indexing.py artık metadata.kaynak_url yazıyor).
+                                                           Eski/yeniden indekslenmemiş kayıtlarda boş dönebilir, bu yüzden
+                                                           v-if ile koruyoruz. -->
+                                                      <a v-if="src.url" :href="src.url" target="_blank" rel="noopener noreferrer"
+                                                         class="mt-2 flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline not-italic font-sans">
+                                                          <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                                          {{ t('chat.visit_source', 'Kaynak sayfaya git') }}
+                                                      </a>
                                                   </div>
                                               </div>
                                           </div>
@@ -1696,6 +1818,13 @@ const sendMessage = async () => {
                 </template>
                 <template v-else>
                     <div class="w-full h-full overflow-y-auto p-2 custom-scrollbar text-left">
+                        <!-- 🔗 YENİ: ham "URL: https://..." metni yerine, kaynak linki
+                             ayrı, tıklanabilir bir kutucuk olarak gösteriliyor. -->
+                        <a v-if="activeSource?.url" :href="activeSource.url" target="_blank" rel="noopener noreferrer"
+                           class="mb-4 flex items-center gap-2 px-3 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-xl text-sm font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors w-fit">
+                            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                            {{ t('chat.visit_source', 'Kaynak sayfaya git') }}
+                        </a>
                         <div class="whitespace-pre-wrap text-[13px] font-medium leading-relaxed text-neutral-800 dark:text-neutral-200 break-words" v-html="formatMessage(activeSource?.icerik || '{}')"></div>
                     </div>
                 </template>
