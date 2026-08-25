@@ -8,3 +8,4 @@ SQLAlchemy==2.0.50
 requests==2.34.2
 beautifulsoup4==4.15.0
 playwright==1.62.0
+openai>=1.0.0

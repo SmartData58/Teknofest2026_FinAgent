@@ -101,7 +101,7 @@ _KURALLAR: tuple[tuple[str, str, re.Pattern], ...] = (
         ),
     ),
     (
-        "alisveris_puani",
+        "alisveris_kampanyası",
         "erken",
         re.compile(
             r"parafpara|worldpuan|puan|\bmil\b|mil'e|\biade\b|bonus"
