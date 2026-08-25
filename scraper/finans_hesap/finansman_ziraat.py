@@ -108,7 +108,7 @@ def cerezli_context_al(syn):
     Playwright context/page döndürür. Sonraki tüm AJAX istekleri bu context
     üzerinden (page.request ile) atılacak."""
     browser = syn.chromium.launch(
-        headless=False,  # sorunsuz çalıştığını görünce True yapabilirsin
+        headless=True,  # sorunsuz çalıştığını görünce True yapabilirsin
         args=["--disable-blink-features=AutomationControlled"],
     )
     context = browser.new_context(

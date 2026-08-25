@@ -82,8 +82,8 @@ def finansmanAlbaraka():
 
     with sync_playwright() as syn:
         browser = syn.chromium.launch(
+            headless=True,
             slow_mo=1000,
-            headless=False,
             args=["--disable-blink-features=AutomationControlled"]
         )
         context = browser.new_context(

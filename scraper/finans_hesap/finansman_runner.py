@@ -15,11 +15,18 @@ yeterli. Kod, her bankayı bağımsız try/except içinde çalıştırır; biri
 hata verse dahi diğerleri çalışmaya devam eder.
 """
 import os
+import sys
 import importlib
 import traceback
 from datetime import datetime, timezone
 
+# Bulunduğu klasörü Python'un modül arama yollarına ekler
+mevcut_dizin = os.path.dirname(os.path.abspath(__file__))
+if mevcut_dizin not in sys.path:
+    sys.path.append(mevcut_dizin)
+
 from pymongo import MongoClient, UpdateOne, InsertOne
+# ... (kodun geri kalanı aynı kalacak) ...
 
 # --- MONGODB BAĞLANTI AYARLARI ---
 MONGO_USER = os.getenv("MONGO_USER", "admin")
@@ -75,13 +82,14 @@ def bankayi_calistir(banka_key: str, bilgi: dict) -> bool:
 
     print(f"\n=== [{banka_key}] {modul_adi}.{fonksiyon_adi}() calistiriliyor ===")
     try:
-        modul = importlib.import_module(modul_adi)
+        # Modülün paket içi (relative) import edilmesi için başına nokta (.) koyup package parametresini veriyoruz
+        modul = importlib.import_module(f".{modul_adi}", package=__package__) 
         fonksiyon = getattr(modul, fonksiyon_adi)
         fonksiyon()
         print(f"[{banka_key}] tamamlandi.")
         return True
-    except ModuleNotFoundError:
-        print(f"[{banka_key}] UYARI: '{modul_adi}.py' bulunamadi, atlaniyor.")
+    except ModuleNotFoundError as e:
+        print(f"[{banka_key}] UYARI: Modül yüklenirken hata oluştu! Gerçek Hata: {e}")
     except AttributeError:
         print(f"[{banka_key}] UYARI: '{fonksiyon_adi}' fonksiyonu '{modul_adi}' icinde bulunamadi, atlaniyor.")
     except Exception:
