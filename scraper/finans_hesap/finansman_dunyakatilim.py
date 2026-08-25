@@ -39,8 +39,8 @@ from pymongo import MongoClient
 from finansman_config import get_kombinasyonlar
 
 # Herhangi bir finansman sayfası token/cookie almak için yeterli
-HOMEPAGE_URL = "https://dunyakatilim.com.tr/kendim-icin/finansmanlar/ihtiyac-finansmani"
-AJAX_URL = "https://dunyakatilim.com.tr/LoanCheckRate?lang=tr"
+HOMEPAGE_URL = "https://www.dunyakatilim.com.tr/kendim-icin/finansmanlar/ihtiyac-finansmani"
+AJAX_URL = "https://www.dunyakatilim.com.tr/LoanCheckRate?lang=tr"
 
 # --- MONGODB BAĞLANTI AYARLARI ---
 MONGO_USER = os.getenv("MONGO_USER", "admin")
@@ -117,7 +117,7 @@ def urun_kombinasyonlarini_al(urun_key: str):
 def cerezli_context_al(syn):
     """Ana sayfayı açıp antiforgery cookie'sini + gizli form token'ını alır."""
     browser = syn.chromium.launch(
-        headless=False,  # sorunsuz çalıştığını görünce True yapabilirsin
+        headless=True,  # sorunsuz çalıştığını görünce True yapabilirsin
         args=["--disable-blink-features=AutomationControlled"],
     )
     context = browser.new_context(
@@ -154,7 +154,7 @@ def finansman_hesapla_istegi(page, token: str, urun_bilgi: dict, tutar, vade: in
         headers={
             "accept": "*/*",
             "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "origin": "https://dunyakatilim.com.tr",
+            "origin": "https://www.dunyakatilim.com.tr",
             "referer": HOMEPAGE_URL,
             "x-requested-with": "XMLHttpRequest",
         },

@@ -1760,7 +1760,7 @@ const mgmCampaigns = computed(() => {
         </div>
 
         <!-- YENİ: GRAFİKLİ KARŞILAŞTIRMA ALANI -->
-        <div id="chart-box-all-comparison" v-if="activeCompareBanks.length > 0" class="mt-8 rounded-3xl border border-blue-200 dark:border-blue-900/50 bg-neutral-50/50 dark:bg-neutral-900 shadow-sm animate-fade-in overflow-hidden">
+        <div id="chart-box-all-comparison" v-if="activeCompareBanks.length > 0" class="mt-8 rounded-3xl border border-blue-200 dark:border-blue-900/50 bg-neutral-50/50 dark:bg-neutral-900 shadow-sm animate-fade-in relative">
           
           <!-- Üst Bilgi Çubuğu (AI Butonu & İndirme Butonları) -->
           <div class="px-6 lg:px-8 py-5 border-b border-blue-100 dark:border-blue-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -1793,7 +1793,7 @@ const mgmCampaigns = computed(() => {
                   leave-from-class="opacity-100 scale-100 translate-y-0"
                   leave-to-class="opacity-0 scale-95 -translate-y-2"
                 >
-                  <div v-if="showAiPopover" class="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl z-50 p-4 space-y-3">
+                  <div v-if="showAiPopover" class="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-[calc(100vw-3.5rem)] max-w-[340px] sm:max-w-none sm:w-96 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl z-50 p-4 space-y-3">
                     
                     <!-- Balon Üst Başlığı -->
                     <div class="flex items-center justify-between pb-2.5 border-b border-neutral-100 dark:border-neutral-800">

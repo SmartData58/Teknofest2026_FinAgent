@@ -38,7 +38,7 @@ def finansmanVakif():
     with sync_playwright() as syn:
         browser = syn.chromium.launch(
             slow_mo=1500,
-            headless=False,
+            headless=True,
             args=["--disable-blink-features=AutomationControlled"]
         )
         context = browser.new_context(

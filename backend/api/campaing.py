@@ -24,6 +24,7 @@ client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client[DB_ADI]
 kampanyalar_col = db[KOLEKSIYON_ADI]
 bankalar_col = db["bankalar"]
+finansman_col = db["finansman_urun"]
 
 router = APIRouter(tags=["kampanyalar"])
 CACHE_ONEKI = "api:"
@@ -339,3 +340,208 @@ async def kampanya_detay(kampanya_id: str):
     uyumlu_sonuc = jsonable_encoder(_id_duzelt(k))
     await _redise_yaz(cache_key, uyumlu_sonuc)
     return uyumlu_sonuc
+
+
+BANK_CODE_MAP = {
+    "albaraka": "albaraka",
+    "kuveyt": "kuveytturk",
+    "kuveytturk": "kuveytturk",
+    "vakif": "vakif_katilim",
+    "vakif_katilim": "vakif_katilim",
+    "ziraat": "ziraat_katilim",
+    "ziraat_katilim": "ziraat_katilim",
+    "dunya_katilim": "dunya_katilim",
+    "turkiye_finans": "turkiye_finans",
+    "emlak_katilim": "emlak_katilim",
+    "hayat_finans": "hayat_finans",
+    "tom_katilim": "tom_katilim",
+    "adil_katilim": "adil_katilim"
+}
+
+def _parse_num(val: Any) -> float:
+    if val is None:
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip()
+    s = s.replace('TL', '').replace('tl', '').replace('%', '').replace('₺', '').strip()
+    if ',' in s and '.' in s:
+        s = s.replace('.', '').replace(',', '.')
+    elif ',' in s:
+        s = s.replace(',', '.')
+    try:
+        return float(s)
+    except Exception:
+        return 0.0
+
+@router.get("/finansman")
+async def get_finansman_urunleri(
+    banka: Optional[str] = Query(None, description="Banka kodu (virgülle ayrılmış çoklu olabilir)"),
+    urun: Optional[str] = Query(None, description="Ürün türü: ihtiyac, konut, tasit"),
+    tutar: Optional[float] = Query(None, description="Finansman tutarı"),
+    vade: Optional[int] = Query(None, description="Vade süresi (ay)"),
+    sort_by: Optional[str] = Query("kar_orani", description="Sıralama: kar_orani, aylik_taksit, toplam_tutar, vade, tutar"),
+    order: Optional[str] = Query("asc", description="Sıralama yönü: asc, desc")
+):
+    cache_key = _cache_key(f"finansman_{banka}_{urun}_{tutar}_{vade}_{sort_by}_{order}")
+    cached = await _redisten_al(cache_key)
+    if cached is not None:
+        return cached
+
+    # Bankalar sözlüğü
+    bankalar_cursor = bankalar_col.find({})
+    banka_dict = {b.get("_id"): b for b in bankalar_cursor}
+
+    # MongoDB Filtresi
+    q = {}
+    if banka:
+        b_list = [b.strip() for b in banka.split(',') if b.strip()]
+        matched_codes = []
+        for b_item in b_list:
+            matched_codes.append(b_item)
+            for k, v in BANK_CODE_MAP.items():
+                if b_item in (k, v):
+                    matched_codes.extend([k, v])
+        q["banka"] = {"$in": list(set(matched_codes))}
+
+    if urun:
+        u_list = [u.strip() for u in urun.split(',') if u.strip()]
+        q["urun"] = {"$in": u_list}
+
+    if tutar is not None and tutar > 0:
+        q["finansman_tutari"] = tutar
+
+    if vade is not None and vade > 0:
+        q["vade"] = vade
+
+    raw_docs = list(finansman_col.find(q))
+
+    # Dinamik filtre seçenekleri
+    all_raw = list(finansman_col.find({}, {"banka": 1, "urun": 1, "finansman_tutari": 1, "vade": 1}))
+    distinct_banks_raw = sorted(list(set(d.get("banka") for d in all_raw if d.get("banka"))))
+    distinct_products = sorted(list(set(d.get("urun") for d in all_raw if d.get("urun"))))
+    distinct_amounts = sorted(list(set(d.get("finansman_tutari") for d in all_raw if d.get("finansman_tutari") is not None)))
+    distinct_terms = sorted(list(set(d.get("vade") for d in all_raw if d.get("vade") is not None)))
+
+    # Banka filtrelerini zenginleştir
+    filters_banks = []
+    for b_raw in distinct_banks_raw:
+        b_id = BANK_CODE_MAP.get(b_raw, b_raw)
+        b_info = banka_dict.get(b_id, {})
+        filters_banks.append({
+            "code": b_raw,
+            "bank_id": b_id,
+            "name": b_info.get("kisa_ad", b_raw.replace('_', ' ').title()),
+            "logo_url": b_info.get("logo_url", "/logo.svg")
+        })
+
+    products = []
+    for doc in raw_docs:
+        doc_id = str(doc.get("_id"))
+        b_raw = doc.get("banka", "")
+        b_id = BANK_CODE_MAP.get(b_raw, b_raw)
+        b_info = banka_dict.get(b_id, {})
+
+        kar_orani_raw = doc.get("kar_orani")
+        kar_orani_val = _parse_num(kar_orani_raw)
+
+        taksit_raw = doc.get("aylik_taksit_tutari")
+        taksit_val = _parse_num(taksit_raw)
+
+        toplam_raw = doc.get("geri_odenecek_toplam_tutar")
+        toplam_val = _parse_num(toplam_raw)
+
+        tutar_val = doc.get("finansman_tutari") or 0
+        vade_val = doc.get("vade") or 0
+
+        tahsis_val = _parse_num(doc.get("tahsis_ucreti"))
+        ipotek_val = _parse_num(doc.get("ipotek_tesis_ucreti"))
+        ekspertiz_val = _parse_num(doc.get("ekspertiz_ucreti"))
+
+        guncellenme = doc.get("guncellenme_tarihi")
+        if isinstance(guncellenme, datetime):
+            guncellenme_str = guncellenme.strftime("%d.%m.%Y")
+        else:
+            guncellenme_str = str(guncellenme) if guncellenme else ""
+
+        products.append({
+            "id": doc_id,
+            "banka_kodu": b_raw,
+            "banka_id": b_id,
+            "banka_adi": b_info.get("kisa_ad", b_raw.replace('_', ' ').title()),
+            "resmi_ad": b_info.get("resmi_ad", ""),
+            "logo_url": b_info.get("logo_url", "/logo.svg"),
+            "tier": b_info.get("tier", "Tier 2"),
+            "urun": doc.get("urun", ""),
+            "urun_kodu": doc.get("urun_kodu", ""),
+            "finansman_tutari": tutar_val,
+            "vade": vade_val,
+            "kar_orani": kar_orani_val,
+            "kar_orani_str": kar_orani_raw or f"%{kar_orani_val:.2f}".replace('.', ','),
+            "aylik_taksit_tutari": taksit_val,
+            "aylik_taksit_str": taksit_raw or f"{taksit_val:,.2f} TL",
+            "geri_odenecek_toplam_tutar": toplam_val,
+            "geri_odenecek_toplam_str": toplam_raw or f"{toplam_val:,.2f} TL",
+            "tahsis_ucreti": tahsis_val,
+            "tahsis_ucreti_str": doc.get("tahsis_ucreti") or (f"{tahsis_val:,.2f} TL" if tahsis_val else "0,00 TL"),
+            "ipotek_tesis_ucreti": ipotek_val,
+            "ipotek_tesis_ucreti_str": doc.get("ipotek_tesis_ucreti") or "0,00 TL",
+            "ekspertiz_ucreti": ekspertiz_val,
+            "ekspertiz_ucreti_str": doc.get("ekspertiz_ucreti") or "0,00 TL",
+            "guncellenme_tarihi": guncellenme_str
+        })
+
+    # Sıralama
+    reverse_order = (order.lower() == "desc")
+    if sort_by == "kar_orani":
+        if not reverse_order:
+            key_fn = lambda x: (1 if x["kar_orani"] <= 0 else 0, x["kar_orani"])
+        else:
+            key_fn = lambda x: x["kar_orani"]
+    elif sort_by == "aylik_taksit":
+        key_fn = lambda x: (1 if x["aylik_taksit_tutari"] <= 0 else 0, x["aylik_taksit_tutari"]) if not reverse_order else lambda x: x["aylik_taksit_tutari"]
+    elif sort_by == "toplam_tutar":
+        key_fn = lambda x: (1 if x["geri_odenecek_toplam_tutar"] <= 0 else 0, x["geri_odenecek_toplam_tutar"]) if not reverse_order else lambda x: x["geri_odenecek_toplam_tutar"]
+    elif sort_by == "vade":
+        key_fn = lambda x: x["vade"]
+    elif sort_by == "tutar":
+        key_fn = lambda x: x["finansman_tutari"]
+    else:
+        key_fn = lambda x: (1 if x["kar_orani"] <= 0 else 0, x["kar_orani"])
+
+    products = sorted(products, key=key_fn, reverse=reverse_order)
+
+    # İstatistikler
+    valid_rates = [p["kar_orani"] for p in products if p["kar_orani"] > 0]
+    min_rate = min(valid_rates) if valid_rates else 0.0
+    avg_rate = (sum(valid_rates) / len(valid_rates)) if valid_rates else 0.0
+
+    valid_installments = [p["aylik_taksit_tutari"] for p in products if p["aylik_taksit_tutari"] > 0]
+    min_installment = min(valid_installments) if valid_installments else 0.0
+
+    valid_totals = [p["geri_odenecek_toplam_tutar"] for p in products if p["geri_odenecek_toplam_tutar"] > 0]
+    min_total = min(valid_totals) if valid_totals else 0.0
+
+    best_rate_product = next((p for p in products if p["kar_orani"] == min_rate), None) if min_rate > 0 else None
+
+    result = {
+        "total_count": len(products),
+        "products": products,
+        "filters": {
+            "banks": filters_banks,
+            "products": distinct_products,
+            "amounts": distinct_amounts,
+            "terms": distinct_terms
+        },
+        "stats": {
+            "min_rate": min_rate,
+            "avg_rate": round(avg_rate, 2),
+            "min_installment": min_installment,
+            "min_total": min_total,
+            "best_bank": best_rate_product.get("banka_adi") if best_rate_product else "-"
+        }
+    }
+
+    result_encoded = jsonable_encoder(result)
+    await _redise_yaz(cache_key, result_encoded, ttl=1800)
+    return result_encoded
