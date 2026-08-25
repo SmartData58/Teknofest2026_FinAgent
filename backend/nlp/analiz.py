@@ -5,7 +5,8 @@ from pymongo.errors import PyMongoError
 # --- MONGODB BAĞLANTI AYARLARI ---
 MONGO_USER = os.getenv("MONGO_USER", "admin")
 MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "admin123")
-MONGO_HOST = os.getenv("MONGO_HOST", "localhost")
+MONGO_HOST = os.getenv("MONGO_HOST", "mongodb")
+#MONGO_HOST = os.getenv("MONGO_HOST", "localhost")
 MONGO_PORT = os.getenv("MONGO_PORT", "27017")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "smartdata")
 

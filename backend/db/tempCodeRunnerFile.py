@@ -1,0 +1,1 @@
+banka_istatistiklerini_guncelle

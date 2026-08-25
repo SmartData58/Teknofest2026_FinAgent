@@ -4,6 +4,8 @@ from datetime import date, datetime, timezone
 from pymongo import MongoClient, UpdateOne
 from pymongo.errors import PyMongoError
 
+from backend.db.banka_istatistikleri import banka_istatistiklerini_guncelle
+
 # Göreceli Import
 from .hybrid import hibrit_cikar, _llm_var_mi
 
@@ -15,8 +17,11 @@ MONGO_HOST = os.getenv("MONGO_HOST", "mongodb")
 MONGO_PORT = os.getenv("MONGO_PORT", "27017")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "smartdata")
 
+
+
 DEFAULT_URI = f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
 MONGO_URI = os.getenv("MONGO_URI", DEFAULT_URI)
+
 
 GEÇERLİ_YÖNTEMLER = {"regex", "ner", "berturk_classifier", "llm"}
 
@@ -59,6 +64,28 @@ def _safe_float(val, default=None):
 def _safe_int(val, default=None):
     f_val = _safe_float(val)
     return int(f_val) if f_val is not None else default
+
+def _tarih_metni_ayristir(tarih_str):
+    """
+    '01.08.2026 - 31.08.2026' benzeri metinleri parse eder.
+    MongoDB uyumlu ISODate/datetime objesi veya string döndürür.
+    """
+    if not tarih_str or not isinstance(tarih_str, str):
+        return None, None
+    
+    # Tire, en-dash, em-dash karakterlerine göre böl
+    parcalar = re.split(r'\s*[-–—]\s*', tarih_str.strip())
+    
+    if len(parcalar) == 2:
+        try:
+            # DD.MM.YYYY formatını datetime objesine çevir
+            baslangic = datetime.strptime(parcalar[0].strip(), "%d.%m.%Y")
+            bitis = datetime.strptime(parcalar[1].strip(), "%d.%m.%Y")
+            return baslangic, bitis
+        except ValueError:
+            return None, None
+            
+    return None, None
 
 
 def _get_val(bulgular: dict, keys: str | list[str], default=None):
@@ -108,8 +135,17 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
     kampanya_adi = doc.get("baslik") or doc.get("kampanya_adi", "")
 
 
-    baslangic_tarihi = _get_val(bulgular, "baslangic_tarihi")
-    bitis_tarihi = _get_val(bulgular, "bitis_tarihi")
+    tarih_metni = doc.get("tarih_metni") or _get_val(bulgular, "tarih_metni")
+    tm_baslangic, tm_bitis = _tarih_metni_ayristir(tarih_metni)
+
+    if tm_baslangic and tm_bitis:
+        baslangic_tarihi = tm_baslangic
+        bitis_tarihi = tm_bitis
+    else:
+        # 2. Öncelik: tarih_metni yoksa veya ayrıştırılamadıysa
+        # Ham doc içindeki ISODate tarihlerine veya bulgulardan gelen tarihlere bakılır
+        baslangic_tarihi = doc.get("baslangic_tarihi") or _get_val(bulgular, "baslangic_tarihi")
+        bitis_tarihi = doc.get("bitis_tarihi") or _get_val(bulgular, "bitis_tarihi")
     sure_gun = _get_val(bulgular, "sure_gun") or doc.get("sure_gun")
     
     masraf_bilgi_val = _get_val(bulgular, "masraf_bilgi")
@@ -408,9 +444,13 @@ def temiz_verilerden_bilgi_cikar() -> None:
         # 1. KAMPANYALAR
         kampanya_sayisi, kampanya_kanit_sayisi = _kampanyalari_isle(db)
 
-        # 2. FİNANSMAN ÜRÜNLERİ (spider'ların urunleri_topla() ile topladığı ham_urun verisi)
+        # 2. FİNANSMAN ÜRÜNLERİ
         print()
         urun_sayisi, urun_kanit_sayisi = _urunleri_isle(db)
+
+        # 3. BANKA İSTATİSTİKLERİ (baskın kampanya türü / kategori)
+        print()
+        guncellenen_banka_sayisi = banka_istatistiklerini_guncelle(db)   # <-- burada, aynı db ile
 
         toplam_kanit_sayisi = kampanya_kanit_sayisi + urun_kanit_sayisi
 
@@ -418,6 +458,7 @@ def temiz_verilerden_bilgi_cikar() -> None:
         print(f"   • {kampanya_sayisi} kampanya 'islenmis_kampanyalar' koleksiyonuna kaydedildi.")
         print(f"   • {urun_sayisi} ürün 'islenmis_urunler' koleksiyonuna kaydedildi (spider kaynaklı).")
         print(f"   • {toplam_kanit_sayisi} alan kanıtı 'cıkarılan_alanlar' koleksiyonuna kaydedildi.")
+        print(f"   • {guncellenen_banka_sayisi} banka istatistiği güncellendi.")
 
     except PyMongoError as err:
         print(f"❌ MongoDB Hata: {err}")

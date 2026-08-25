@@ -82,7 +82,7 @@ def ham_kampanyalari_kaydet(
         kayit_dict["banka_adi"] = kisa_ad
 
         kayit_dict["cekilis_tarihi"] = datetime.now(timezone.utc).isoformat()
-        kayit_dict["is_processed"] = False
+        #kayit_dict["is_processed"] = False
 
         # URL / Link alan kontrolü
         kampanya_url = kayit_dict.get("url")
