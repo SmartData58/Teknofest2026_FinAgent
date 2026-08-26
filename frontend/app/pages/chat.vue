@@ -1,10 +1,14 @@
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import DotMatrix from "~/components/loaders/DotMatrix.vue"
 import { useChatStore } from '~/stores/chatStore'
 import { useI18n } from 'vue-i18n'
 
 const { locale, t } = useI18n()
+
+useHead({
+  title: computed(() => t('page_titles.chat', 'Yapay Zeka Asistanı'))
+})
 
 const mounted = ref(false)
 const chatHistory = ref([])
@@ -18,6 +22,9 @@ const showSourceModal = ref(false)
 const activeSource = ref(null)
 const activeFile = ref(null) 
 const activeModalType = ref('source') 
+
+const showBadApple = ref(false)
+const showNggyu = ref(false) 
 
 const toastMessage = ref('')
 const showToast = (msg) => {
@@ -1045,6 +1052,18 @@ const sendMessage = async () => {
   }
   if (!userMessage.value.trim() && selectedFiles.value.length === 0) return
 
+  const query = userMessage.value.trim().toLowerCase()
+  if (query === 'bad apple') {
+    showBadApple.value = true
+    userMessage.value = ''
+    return
+  }
+  if (query === 'nggyu' || query === 'never gonna give you up') {
+    showNggyu.value = true
+    userMessage.value = ''
+    return
+  }
+
   const text = userMessage.value || `${selectedFiles.value.length} ${t('chat.files_sent', 'dosya gönderildi.')}`
   
   const attachedFiles = selectedFiles.value.map(f => ({ name: f.name, type: f.type, isImage: f.type.startsWith('image/'), url: getObjectUrl(f) }))
@@ -1595,7 +1614,7 @@ const sendMessage = async () => {
                                 <div :class="msg.chart.type === 'table' ? 'p-5 sm:p-6' : 'mt-8 pt-4 border-t border-neutral-100 dark:border-neutral-700/50'">
                                      <h4 class="text-xs font-bold text-neutral-800 dark:text-neutral-200 mb-3 flex items-center gap-2">
                                         <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                                        {{ msg.chart.type === 'table' ? 'Kampanya Listesi (Tablo Görünümü)' : t('chat.full_data_table', 'Eksiksiz Veri Tablosu') }}
+                                        {{ msg.chart.type === 'table' ? t('chat.campaign_list_table', 'Kampanya Listesi (Tablo Görünümü)') : t('chat.full_data_table', 'Eksiksiz Veri Tablosu') }}
                                     </h4>
                                     <div class="overflow-x-auto shadow-sm rounded-xl border border-neutral-200 dark:border-neutral-700 hover:shadow-md transition-shadow duration-300">
                                         <table class="w-full text-xs text-left border-collapse bg-white dark:bg-neutral-800/80">
@@ -1699,14 +1718,14 @@ const sendMessage = async () => {
                                       <button type="button" @click="toggleSources(msg)" class="w-full flex justify-between items-center font-medium cursor-pointer px-4 py-3 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
                                           <div class="flex items-center gap-2.5">
                                               <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
-                                              <span class="font-bold tracking-wide text-emerald-600 dark:text-emerald-400">Kaynak</span>
+                                              <span class="font-bold tracking-wide text-emerald-600 dark:text-emerald-400">{{ t('chat.source_badge', 'Kaynak') }}</span>
                                           </div>
                                           <span class="transition-transform duration-300 bg-white dark:bg-neutral-700 rounded-full p-1 shadow-sm border border-neutral-200 dark:border-neutral-600" :class="msg.isSourcesExpanded ? 'rotate-180' : ''"><svg class="w-4 h-4 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></span>
                                       </button>
                                       <div class="grid transition-all duration-300 ease-in-out" :class="msg.isSourcesExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'">
                                         <div class="overflow-hidden">
                                           <div class="p-4 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700/80">
-                                              <div class="text-xs text-neutral-500 dark:text-neutral-400 mb-2">Sistemin analiz için kullandığı kaynak logları ve detayları:</div>
+                                              <div class="text-xs text-neutral-500 dark:text-neutral-400 mb-2">{{ t('chat.source_logs_desc', 'Sistemin analiz için kullandığı kaynak logları ve detayları:') }}</div>
                                               <div class="space-y-2 mt-3">
                                                   <div v-for="(src, sIdx) in msg.sources" :key="sIdx" class="text-xs p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 font-mono text-neutral-600 dark:text-neutral-300">
                                                       {{ src.icerik }}
@@ -1804,7 +1823,7 @@ const sendMessage = async () => {
                 <!-- Yukarıdaki kaynak bölümünün etiketiyle tutarlı olsun diye
                      ("Kaynak" düğmesine basınca burası hâlâ "MongoDB (NoSQL)" derse
                      kafa karıştırır) burası da aynı şekilde sadeleştirildi. -->
-                <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg> Kaynak Kaydı
+                <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg> {{ t('chat.source_record', 'Kaynak Kaydı') }}
               </template>
             </h3>
             <div class="flex items-center gap-2">
@@ -1832,6 +1851,12 @@ const sendMessage = async () => {
         </div>
       </Transition>
     </div>
+    
+    <!-- 🍎 Bad Apple & 🕺 NGGYU Easter Egg Overlays -->
+    <Teleport to="body">
+      <BadAppleAscii :show="showBadApple" @close="showBadApple = false" />
+      <NggyuAscii :show="showNggyu" @close="showNggyu = false" />
+    </Teleport>
   </div>
 </template>
 

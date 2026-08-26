@@ -1,10 +1,18 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '~/stores/chatStore'
 import { Chart as ChartJS, RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from 'chart.js'
 import { Radar, Bar, Line } from 'vue-chartjs'
+import { gsap } from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import Lenis from 'lenis'
+
+gsap.registerPlugin(ScrollTrigger)
+
+let lenis = null
+let lenisRafId = null
 
 
 ChartJS.register(RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend, BarElement, CategoryScale, LinearScale)
@@ -21,6 +29,7 @@ const router = useRouter()
 const chatStore = useChatStore()
 
 useHead({
+  title: computed(() => t('page_titles.dashboard', 'Sektörel Pazar Analizi & Dashboard')),
   link: [
     {
       rel: 'stylesheet',
@@ -766,12 +775,43 @@ onMounted(() => {
   fetchVeriler()
   if (process.client) {
     document.addEventListener('click', handleOutsideClick)
+
+    nextTick(() => {
+      const scrollerEl = document.getElementById('main-scroller')
+      if (scrollerEl) {
+        const content = scrollerEl.querySelector('main') || scrollerEl.firstElementChild
+        lenis = new Lenis({
+          wrapper: scrollerEl,
+          content: content,
+          duration: 1.15,
+          easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+          smoothWheel: true,
+          gestureOrientation: 'vertical',
+          touchMultiplier: 1.6
+        })
+        lenis.on('scroll', ScrollTrigger.update)
+        const raf = (time) => {
+          lenis?.raf(time)
+          lenisRafId = requestAnimationFrame(raf)
+        }
+        lenisRafId = requestAnimationFrame(raf)
+      }
+    })
   }
 })
 
 onBeforeUnmount(() => {
   if (process.client) {
     document.removeEventListener('click', handleOutsideClick)
+    if (lenisRafId) {
+      cancelAnimationFrame(lenisRafId)
+      lenisRafId = null
+    }
+    if (lenis) {
+      lenis.destroy()
+      lenis = null
+    }
+    ScrollTrigger.getAll().forEach(t => t.kill())
   }
 })
 
@@ -1604,14 +1644,14 @@ const mgmCampaigns = computed(() => {
     <div class="flex flex-col items-center text-center gap-3">
       <div class="flex flex-wrap items-center justify-center gap-3">
         <h1 class="reveal-title text-4xl md:text-5xl font-bold bg-clip-text text-transparent gradient-text pb-1">
-          {{ isBankaci ? 'Pazar & Rekabet Zekası' : 'Kampanya Karşılaştırması' }}
+          {{ isBankaci ? $t('dashboard.title_banker', 'Pazar & Rekabet Zekası') : $t('dashboard.title_customer', 'Kampanya Karşılaştırması') }}
         </h1>
         <span v-if="isBankaci" class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/40 rounded-full shrink-0">
-          Banka Çalışanı
+          {{ $t('dashboard.banker_badge', 'Banka Çalışanı') }}
         </span>
       </div>
       <p class="text-sm md:text-base text-neutral-500 dark:text-neutral-400 max-w-2xl">
-        {{ isBankaci ? 'Katılım bankacılığı sektöründeki kampanya hareketlerini ve pazar rekabetini takip edin.' : 'Tüm katılım bankalarındaki en güncel ve size en uygun oranları karşılaştırın.' }}
+        {{ isBankaci ? $t('dashboard.subtitle_banker', 'Katılım bankacılığı sektöründeki kampanya hareketlerini ve pazar rekabetini takip edin.') : $t('dashboard.subtitle_customer', 'Tüm katılım bankalarındaki en güncel ve size en uygun oranları karşılaştırın.') }}
       </p>
       <div class="h-1 w-24 rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 mt-1 title-underline"></div>
     </div>
@@ -1667,7 +1707,7 @@ const mgmCampaigns = computed(() => {
                     <div class="font-bold text-sm text-neutral-800 dark:text-neutral-100 line-clamp-2 group-hover:text-neutral-950 dark:group-hover:text-white transition-colors" :title="camp.baslik">{{ camp.baslik }}</div>
                   </div>
                   <div class="mt-4 pt-3 border-t border-neutral-100 dark:border-neutral-800 flex justify-between items-end">
-                    <span class="text-xs font-medium text-neutral-400">Değer</span>
+                    <span class="text-xs font-medium text-neutral-400">{{ $t('dashboard.value', 'Değer') }}</span>
                     <span :class="`text-xl font-black tracking-tight text-${category.color}-600 dark:text-${category.color}-400`">
                       <template v-if="category.isPrefix">{{ category.suffix }}{{ Number(camp.deger).toLocaleString('tr-TR') }} {{ category.unit }}</template>
                       <template v-else>{{ Number(camp.deger).toLocaleString('tr-TR') }} {{ category.suffix }} {{ category.unit }}</template>
@@ -1722,12 +1762,12 @@ const mgmCampaigns = computed(() => {
 
             <div>
               <h3 class="text-xl font-extrabold text-neutral-900 dark:text-white truncate tracking-tight" :title="b.resmi_ad">{{ b.kisa_ad || b.resmi_ad }}</h3>
-              <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1 font-medium">Aktif Büyüklük: <span class="font-bold text-neutral-800 dark:text-neutral-200">{{ b.aktif_buyukluk_milyar_tl }} Milyar ₺</span></p>
+              <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1 font-medium">{{ $t('dashboard.asset_size', 'Aktif Büyüklük') }}: <span class="font-bold text-neutral-800 dark:text-neutral-200">{{ b.aktif_buyukluk_milyar_tl }} Milyar ₺</span></p>
             </div>
 
             <div class="mt-6 pt-5 border-t border-neutral-100 dark:border-neutral-800 flex justify-between items-end">
               <div>
-                <p class="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-1.5">Baskın Kategori</p>
+                <p class="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-1.5">{{ $t('dashboard.dominant_category', 'Baskın Kategori') }}</p>
                 <p class="text-[13px] font-bold text-neutral-700 dark:text-neutral-300">
                   <span v-if="getBaskinKategori(b)">
                     {{ getBaskinKategori(b).ad }} 
@@ -1737,21 +1777,21 @@ const mgmCampaigns = computed(() => {
                 </p>
               </div>
               <div class="text-right">
-                <p class="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-1.5">Aktif Kampanya</p>
+                <p class="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-1.5">{{ $t('dashboard.active_campaign', 'Aktif Kampanya') }}</p>
                 <p class="text-3xl font-extrabold text-blue-600 dark:text-blue-400 tabular-nums tracking-tighter">{{ getBankCount(b) }}</p>
               </div>
             </div>
             
             <div class="mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800 flex justify-between items-center">
               <div>
-                <p class="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-0.5">Son Tarama</p>
+                <p class="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-0.5">{{ $t('dashboard.last_scan', 'Son Tarama') }}</p>
                 <p class="text-[11px] font-medium text-neutral-500 flex items-center gap-1">
                   <span :class="b.aktif === false ? 'w-1.5 h-1.5 rounded-full bg-red-500' : 'w-1.5 h-1.5 rounded-full bg-emerald-500'"></span>
                   {{ b.aktif === false ? 'Pasif' : 'Bugün' }}
                 </p>
               </div>
               <a v-if="b.web_sitesi" :href="b.web_sitesi" target="_blank" @click.stop class="flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 transition-colors">
-                Resmi Site
+                {{ $t('dashboard.official_site', 'Resmi Site') }}
                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
               </a>
             </div>
@@ -1774,11 +1814,11 @@ const mgmCampaigns = computed(() => {
               <div class="relative" ref="aiMenuRef" data-png-gizle>
                 <button 
                   @click="showAiPopover = !showAiPopover" 
-                  title="FinAgent Yapay Zeka Analizi" 
+                  :title="$t('dashboard.ask_finagent', 'FinAgent Yapay Zeka Analizi')" 
                   class="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 hover:from-blue-100 hover:to-indigo-100 dark:hover:from-blue-900/50 dark:hover:to-indigo-900/50 text-blue-600 dark:text-cyan-400 border border-blue-200 dark:border-blue-800/60 rounded-xl font-bold text-xs shadow-sm hover:shadow active:scale-95 transition-all duration-200 group"
                 >
                   <img src="/logo.svg" class="w-5 h-5 object-contain group-hover:scale-110 transition-transform duration-200" alt="FinAgent" />
-                  <span>FinAgent'a Sor</span>
+                  <span>{{ $t('dashboard.ask_finagent', "FinAgent'a Sor") }}</span>
                   <svg class="w-3.5 h-3.5 text-blue-500 transition-transform duration-200" :class="showAiPopover ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                   </svg>
@@ -1801,10 +1841,10 @@ const mgmCampaigns = computed(() => {
                         <div class="w-6 h-6 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center p-1">
                           <img src="/logo.svg" class="w-full h-full object-contain" alt="" />
                         </div>
-                        <span class="text-xs font-extrabold text-neutral-800 dark:text-white">FinAgent Pazar Zekası</span>
+                        <span class="text-xs font-extrabold text-neutral-800 dark:text-white">{{ $t('dashboard.market_intelligence', 'FinAgent Pazar Zekası') }}</span>
                       </div>
                       <span class="text-[11px] font-semibold text-neutral-400">
-                        {{ activeCompareBanks.length === 1 ? activeCompareBanks[0].kisa_ad : activeCompareBanks.length + ' Banka Seçili' }}
+                        {{ activeCompareBanks.length === 1 ? activeCompareBanks[0].kisa_ad : activeCompareBanks.length + ' ' + $t('dashboard.banks_selected', 'Banka Seçili') }}
                       </span>
                     </div>
 
@@ -1814,30 +1854,30 @@ const mgmCampaigns = computed(() => {
                       <!-- Tek Banka: 3 Soru -->
                       <template v-if="activeCompareBanks.length === 1">
                         <button @click="executePrompt('rekabet_durumu')" class="w-full text-left p-2.5 rounded-xl bg-neutral-50/70 dark:bg-neutral-800/40 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-neutral-200/70 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-800 transition-all text-xs font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 dark:hover:text-blue-400">
-                          Pazar konumunu ve rekabet stratejisini analiz et
+                          {{ $t('dashboard.ai_q_single_1', 'Pazar konumunu ve rekabet stratejisini analiz et') }}
                         </button>
 
                         <button @click="executePrompt('baskin_kategori')" class="w-full text-left p-2.5 rounded-xl bg-neutral-50/70 dark:bg-neutral-800/40 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-neutral-200/70 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-800 transition-all text-xs font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 dark:hover:text-blue-400">
-                          Baskın kategorideki ağırlığını ve büyüme fırsatlarını değerlendir
+                          {{ $t('dashboard.ai_q_single_2', 'Baskın kategorideki ağırlığını ve büyüme fırsatlarını değerlendir') }}
                         </button>
 
                         <button @click="executePrompt('trend_analizi')" class="w-full text-left p-2.5 rounded-xl bg-neutral-50/70 dark:bg-neutral-800/40 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-neutral-200/70 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-800 transition-all text-xs font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 dark:hover:text-blue-400">
-                          Son 6 aylık lansman trendini ve kampanya sürelerini sektöre göre incele
+                          {{ $t('dashboard.ai_q_single_3', 'Son 6 aylık lansman trendini ve kampanya sürelerini sektöre göre incele') }}
                         </button>
                       </template>
 
                       <!-- Çoklu Banka: 3 Soru -->
                       <template v-else>
                         <button @click="executePrompt('karsilastirma')" class="w-full text-left p-2.5 rounded-xl bg-neutral-50/70 dark:bg-neutral-800/40 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-neutral-200/70 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-800 transition-all text-xs font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 dark:hover:text-blue-400">
-                          Seçili bankaların kampanya portföylerini ve pazar rekabetini karşılaştır
+                          {{ $t('dashboard.ai_q_multi_1', 'Seçili bankaların kampanya portföylerini ve pazar rekabetini karşılaştır') }}
                         </button>
 
                         <button @click="executePrompt('pazar_lideri')" class="w-full text-left p-2.5 rounded-xl bg-neutral-50/70 dark:bg-neutral-800/40 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-neutral-200/70 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-800 transition-all text-xs font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 dark:hover:text-blue-400">
-                          Kampanya ivmesi ve çeşitlilik bakımından pazar lideri kimdir?
+                          {{ $t('dashboard.ai_q_multi_2', 'Kampanya ivmesi ve çeşitlilik bakımından pazar lideri kimdir?') }}
                         </button>
 
                         <button @click="executePrompt('kategori_ayrisim')" class="w-full text-left p-2.5 rounded-xl bg-neutral-50/70 dark:bg-neutral-800/40 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-neutral-200/70 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-800 transition-all text-xs font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 dark:hover:text-blue-400">
-                          Kategori bazında ortak ve ayrışan stratejileri analiz et
+                          {{ $t('dashboard.ai_q_multi_3', 'Kategori bazında ortak ve ayrışan stratejileri analiz et') }}
                         </button>
                       </template>
 
@@ -1848,14 +1888,14 @@ const mgmCampaigns = computed(() => {
                             v-model="customPrompt" 
                             @keyup.enter="executePrompt('custom')" 
                             type="text" 
-                            :placeholder="activeCompareBanks.length === 1 ? 'Bu banka hakkında soru yazın...' : 'Seçili bankalar hakkında soru yazın...'" 
+                            :placeholder="activeCompareBanks.length === 1 ? $t('dashboard.ai_placeholder_single', 'Bu banka hakkında soru yazın...') : $t('dashboard.ai_placeholder_multi', 'Seçili bankalar hakkında soru yazın...')" 
                             class="w-full text-xs px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-950 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all" 
                           />
                           <button 
                             @click="executePrompt('custom')" 
                             :disabled="!customPrompt.trim()" 
                             class="p-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-xl transition-all shrink-0 active:scale-95 shadow-sm"
-                            title="Gönder"
+                            :title="$t('chat.send', 'Gönder')"
                           >
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
@@ -1872,20 +1912,20 @@ const mgmCampaigns = computed(() => {
 
               <!-- İndirme Butonları -->
               <div class="flex items-center gap-1.5" data-png-gizle>
-                <button @click="exportChart('all-comparison', 'csv')" title="Tüm Analizi Excel Olarak İndir" class="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+                <button @click="exportChart('all-comparison', 'csv')" :title="$t('dashboard.export_all_excel', 'Tüm Analizi Excel Olarak İndir')" class="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
                   <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                 </button>
-                <button @click="exportChart('all-comparison', 'pdf')" title="Tüm Analizi PDF Olarak İndir" class="p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+                <button @click="exportChart('all-comparison', 'pdf')" :title="$t('dashboard.export_all_pdf', 'Tüm Analizi PDF Olarak İndir')" class="p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
                   <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                 </button>
-                <button @click="exportChart('all-comparison', 'png')" title="Tüm Analizi PNG Olarak Kaydet" class="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+                <button @click="exportChart('all-comparison', 'png')" :title="$t('dashboard.export_all_png', 'Tüm Analizi PNG Olarak Kaydet')" class="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
                   <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                 </button>
               </div>
 
               <!-- Seçimi Temizle -->
               <button v-if="selectedBanks.length > 0" @click="selectedBanks = []" class="text-sm font-bold text-neutral-400 hover:text-neutral-700 dark:hover:text-white transition-colors ml-1">
-                Seçimi Temizle
+                {{ $t('dashboard.clear_selection', 'Seçimi Temizle') }}
               </button>
             </div>
           </div>
@@ -1897,24 +1937,24 @@ const mgmCampaigns = computed(() => {
               <!-- Line Grafiği (Başlangıç Trendi) -->
               <div id="chart-box-lineChartRef" class="bg-white dark:bg-neutral-950 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm transition-all duration-300 flex flex-col justify-between">
                 <div class="flex justify-between items-center mb-1">
-                  <h3 class="text-base font-bold text-neutral-900 dark:text-white">Kampanya Başlangıç Trendi <span v-if="expandedCharts.line" class="text-blue-600 font-extrabold">(Genişletilmiş Görünüm)</span></h3>
+                  <h3 class="text-base font-bold text-neutral-900 dark:text-white">{{ $t('dashboard.trend_title', 'Kampanya Başlangıç Trendi') }} <span v-if="expandedCharts.line" class="text-blue-600 font-extrabold">({{ $t('dashboard.expanded_view', 'Genişletilmiş Görünüm') }})</span></h3>
                   
                   <div class="flex items-center gap-1.5" data-png-gizle>
-                    <button @click="exportChart('lineChartRef', 'csv')" title="Excel Olarak İndir" class="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+                    <button @click="exportChart('lineChartRef', 'csv')" :title="$t('dashboard.export_excel', 'Excel Olarak İndir')" class="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
                       <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                     </button>
-                    <button @click="exportChart('lineChartRef', 'pdf')" title="PDF Raporu Oluştur" class="p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+                    <button @click="exportChart('lineChartRef', 'pdf')" :title="$t('dashboard.export_pdf', 'PDF Raporu Oluştur')" class="p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
                       <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                     </button>
-                    <button @click="exportChart('lineChartRef', 'png')" title="PNG Olarak Kaydet" class="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+                    <button @click="exportChart('lineChartRef', 'png')" :title="$t('dashboard.export_png', 'PNG Olarak Kaydet')" class="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
                       <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                     </button>
                     <button @click="expandedCharts.line = !expandedCharts.line" class="outline-none ml-1">
-                      <span class="text-xs font-bold px-3 py-2 rounded-lg transition-colors inline-block" :class="expandedCharts.line ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700'">{{ expandedCharts.line ? 'Daralt' : 'Detay' }}</span>
+                      <span class="text-xs font-bold px-3 py-2 rounded-lg transition-colors inline-block" :class="expandedCharts.line ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700'">{{ expandedCharts.line ? $t('dashboard.collapse', 'Daralt') : $t('dashboard.detail', 'Detay') }}</span>
                     </button>
                   </div>
                 </div>
-                <p class="text-xs font-semibold text-neutral-500 mb-6">Son 6 ayda başlayan yeni kampanya ivmesi</p>
+                <p class="text-xs font-semibold text-neutral-500 mb-6">{{ $t('dashboard.trend_subtitle', 'Son 6 ayda başlayan yeni kampanya ivmesi') }}</p>
                 <div @click="chartInteracts.radar = true" @mouseleave="chartInteracts.radar = false" class="relative transition-all duration-300 w-full" :class="(expandedCharts.line || expandedCharts.radar) ? 'h-[550px]' : 'h-64'">
                    <Line ref="lineChartRef" v-if="expandedCharts.line" :data="lineChartData" :options="lineOptions" />
                    <Line ref="lineChartRef" v-else :data="lineChartData" :options="lineOptions" />
@@ -1924,24 +1964,24 @@ const mgmCampaigns = computed(() => {
               <!-- Radar Grafiği -->
               <div id="chart-box-radarChartRef" class="bg-white dark:bg-neutral-950 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm transition-all duration-300 flex flex-col justify-between">
                 <div class="flex justify-between items-center mb-1">
-                  <h3 class="text-base font-bold text-neutral-900 dark:text-white">Kampanya Dağılımı <span v-if="expandedCharts.radar" class="text-blue-600 font-extrabold">(Alt Kırılımlar)</span></h3>
+                  <h3 class="text-base font-bold text-neutral-900 dark:text-white">{{ $t('dashboard.distribution_title', 'Kampanya Dağılımı') }} <span v-if="expandedCharts.radar" class="text-blue-600 font-extrabold">({{ $t('dashboard.sub_breakdowns', 'Alt Kırılımlar') }})</span></h3>
                   
                   <div class="flex items-center gap-1.5" data-png-gizle>
-                    <button @click="exportChart('radarChartRef', 'csv')" title="Excel Olarak İndir" class="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+                    <button @click="exportChart('radarChartRef', 'csv')" :title="$t('dashboard.export_excel', 'Excel Olarak İndir')" class="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
                       <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                     </button>
-                    <button @click="exportChart('radarChartRef', 'pdf')" title="PDF Raporu Oluştur" class="p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+                    <button @click="exportChart('radarChartRef', 'pdf')" :title="$t('dashboard.export_pdf', 'PDF Raporu Oluştur')" class="p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
                       <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                     </button>
-                    <button @click="exportChart('radarChartRef', 'png')" title="PNG Olarak Kaydet" class="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+                    <button @click="exportChart('radarChartRef', 'png')" :title="$t('dashboard.export_png', 'PNG Olarak Kaydet')" class="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
                       <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                     </button>
                     <button @click="expandedCharts.radar = !expandedCharts.radar" class="outline-none ml-1">
-                      <span class="text-xs font-bold px-3 py-2 rounded-lg transition-colors inline-block" :class="expandedCharts.radar ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700'">{{ expandedCharts.radar ? 'Daralt' : 'Detay' }}</span>
+                      <span class="text-xs font-bold px-3 py-2 rounded-lg transition-colors inline-block" :class="expandedCharts.radar ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700'">{{ expandedCharts.radar ? $t('dashboard.collapse', 'Daralt') : $t('dashboard.detail', 'Detay') }}</span>
                     </button>
                   </div>
                 </div>
-                <p class="text-xs font-semibold text-neutral-500 mb-6">Banka vs Sektör Ortalaması - Çeşitlilik</p>
+                <p class="text-xs font-semibold text-neutral-500 mb-6">{{ $t('dashboard.distribution_subtitle', 'Banka vs Sektör Ortalaması - Çeşitlilik') }}</p>
                 <div @click="chartInteracts.line = true" @mouseleave="chartInteracts.line = false" class="relative transition-all duration-300 flex items-center justify-center w-full" :class="(expandedCharts.line || expandedCharts.radar) ? 'h-[550px]' : 'h-64'">
                    <Radar ref="radarChartRef" v-if="expandedCharts.radar" :data="detailedRadarData" :options="detailedRadarOptions" />
                    <Radar ref="radarChartRef" v-else :data="radarChartData" :options="radarOptions" />
@@ -1954,24 +1994,24 @@ const mgmCampaigns = computed(() => {
               <!-- Bar Grafiği -->
               <div id="chart-box-barChartRef" class="bg-white dark:bg-neutral-950 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm transition-all duration-300 flex flex-col justify-between">
                 <div class="flex justify-between items-center mb-1">
-                  <h3 class="text-base font-bold text-neutral-900 dark:text-white">Ortalama Kampanya Süresi & Hedef Kitle <span v-if="expandedCharts.duration" class="text-blue-600 font-extrabold">(Alt Kırılımlar)</span></h3>
+                  <h3 class="text-base font-bold text-neutral-900 dark:text-white">{{ $t('dashboard.duration_title', 'Ortalama Kampanya Süresi & Hedef Kitle') }} <span v-if="expandedCharts.duration" class="text-blue-600 font-extrabold">({{ $t('dashboard.sub_breakdowns', 'Alt Kırılımlar') }})</span></h3>
                   
                   <div class="flex items-center gap-1.5" data-png-gizle>
-                    <button @click="exportChart('barChartRef', 'csv')" title="Excel Olarak İndir" class="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+                    <button @click="exportChart('barChartRef', 'csv')" :title="$t('dashboard.export_excel', 'Excel Olarak İndir')" class="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
                       <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                     </button>
-                    <button @click="exportChart('barChartRef', 'pdf')" title="PDF Raporu Oluştur" class="p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+                    <button @click="exportChart('barChartRef', 'pdf')" :title="$t('dashboard.export_pdf', 'PDF Raporu Oluştur')" class="p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
                       <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                     </button>
-                    <button @click="exportChart('barChartRef', 'png')" title="PNG Olarak Kaydet" class="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+                    <button @click="exportChart('barChartRef', 'png')" :title="$t('dashboard.export_png', 'PNG Olarak Kaydet')" class="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
                       <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                     </button>
                     <button @click="expandedCharts.duration = !expandedCharts.duration" class="outline-none ml-1">
-                      <span class="text-xs font-bold px-3 py-2 rounded-lg transition-colors inline-block" :class="expandedCharts.duration ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700'">{{ expandedCharts.duration ? 'Daralt' : 'Detay' }}</span>
+                      <span class="text-xs font-bold px-3 py-2 rounded-lg transition-colors inline-block" :class="expandedCharts.duration ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700'">{{ expandedCharts.duration ? $t('dashboard.collapse', 'Daralt') : $t('dashboard.detail', 'Detay') }}</span>
                     </button>
                   </div>
                 </div>
-                <p class="text-xs font-semibold text-neutral-500 mb-6">Tür bazında kampanya yayın süresi dağılımı (ay)</p>
+                <p class="text-xs font-semibold text-neutral-500 mb-6">{{ $t('dashboard.duration_subtitle', 'Tür bazında kampanya yayın süresi dağılımı (ay)') }}</p>
                 <div @click="chartInteracts.duration = true" @mouseleave="chartInteracts.duration = false" class="relative transition-all duration-300" :class="expandedCharts.duration ? 'h-[550px]' : 'h-80'">
                    <Bar ref="barChartRef" v-if="expandedCharts.duration" :data="detailedBarData" :options="detailedBarOptions" />
                    <Bar ref="barChartRef" v-else :data="durationBarChartData" :options="durationBarOptions" />
@@ -1982,18 +2022,18 @@ const mgmCampaigns = computed(() => {
             <!-- Satır 3: MGM Analizi (Eğer Varsa) -->
             <div v-if="mgmCampaigns.length > 0" class="bg-white dark:bg-neutral-950 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm overflow-hidden">
               <div class="p-6 border-b border-neutral-100 dark:border-neutral-800">
-                <h3 class="text-base font-bold text-neutral-900 dark:text-white mb-1">Yakınını Davet Et / MGM Analizi</h3>
-                <p class="text-xs font-semibold text-neutral-500">Üye getir üye kazan kampanyalarının karşılaştırması</p>
+                <h3 class="text-base font-bold text-neutral-900 dark:text-white mb-1">{{ $t('dashboard.highest_mgm', 'Yakınını Davet Et / MGM Analizi') }}</h3>
+                <p class="text-xs font-semibold text-neutral-500">{{ $t('dashboard.mgm_subtitle', 'Üye getir üye kazan kampanyalarının karşılaştırması') }}</p>
               </div>
               <div class="overflow-x-auto">
                 <table class="w-full text-sm text-left">
                   <thead>
                     <tr class="text-[11px] font-extrabold text-neutral-400 dark:text-neutral-500 uppercase tracking-widest bg-neutral-50/50 dark:bg-neutral-900/50 border-b border-neutral-100 dark:border-neutral-800">
-                      <th class="py-4 px-6">Banka</th>
-                      <th class="py-4 px-6">Kampanya</th>
-                      <th class="py-4 px-6">Davet Başına Kazanç</th>
-                      <th class="py-4 px-6">Maksimum Limit</th>
-                      <th class="py-4 px-6">Şartlar</th>
+                      <th class="py-4 px-6">{{ $t('comparison.columns.banka', 'Banka') }}</th>
+                      <th class="py-4 px-6">{{ $t('comparison.columns.kampanya', 'Kampanya') }}</th>
+                      <th class="py-4 px-6">{{ $t('comparison.columns.mgm', 'Davet Başına Kazanç') }}</th>
+                      <th class="py-4 px-6">{{ $t('dashboard.highest_loan', 'Maksimum Limit') }}</th>
+                      <th class="py-4 px-6">{{ $t('comparison.columns.hedefKitle', 'Şartlar') }}</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -2004,8 +2044,8 @@ const mgmCampaigns = computed(() => {
                       </td>
                       <td class="py-4 px-6 font-semibold">{{ c.genel_bilgi?.kampanya_adi }}</td>
                       <td class="py-4 px-6 font-extrabold text-emerald-600 dark:text-emerald-400">{{ c.mgm_detay?.kisi_basi_kazanc ? c.mgm_detay.kisi_basi_kazanc + ' TL' : '-' }}</td>
-                      <td class="py-4 px-6 font-medium text-neutral-600 dark:text-neutral-300">{{ c.mgm_detay?.mgm_limit_tl ? c.mgm_detay.mgm_limit_tl + ' TL' : 'Sınırsız' }}</td>
-                      <td class="py-4 px-6 font-medium text-neutral-500 text-xs">{{ c.genel_bilgi?.hedef_kitle?.join(', ') || 'Belirtilmemiş' }}</td>
+                      <td class="py-4 px-6 font-medium text-neutral-600 dark:text-neutral-300">{{ c.mgm_detay?.mgm_limit_tl ? c.mgm_detay.mgm_limit_tl + ' TL' : ($t('dashboard.unlimited', 'Sınırsız')) }}</td>
+                      <td class="py-4 px-6 font-medium text-neutral-500 text-xs">{{ c.genel_bilgi?.hedef_kitle?.join(', ') || '-' }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -2035,10 +2075,10 @@ const mgmCampaigns = computed(() => {
         <div class="flex justify-between items-center p-4 border-b border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800">
           <h3 class="text-[14px] font-bold flex items-center gap-2 text-neutral-800 dark:text-white">
             <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
-            Kampanya Detayları
+            {{ $t('chat.campaign_detail', 'Kampanya Detayları') }}
           </h3>
           <div class="flex items-center gap-2">
-            <button @click="selectedModalCampaign = null" class="p-1 text-neutral-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors active:scale-90 transform duration-200" title="Kapat">
+            <button @click="selectedModalCampaign = null" class="p-1 text-neutral-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors active:scale-90 transform duration-200" :title="$t('chat.close', 'Kapat')">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
           </div>
@@ -2052,7 +2092,7 @@ const mgmCampaigns = computed(() => {
              :href="selectedModalCampaign.genel_bilgi.kaynak_url" target="_blank" rel="noopener noreferrer"
              class="flex items-center gap-2 px-3 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-xl text-sm font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors w-fit">
             <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-            Kaynak sayfaya git
+            {{ $t('chat.visit_source', 'Kaynak sayfaya git') }}
           </a>
           
           <!-- Banka & Kampanya Adı -->
@@ -2065,80 +2105,80 @@ const mgmCampaigns = computed(() => {
           <div class="grid grid-cols-2 gap-2.5">
             <!-- Tür -->
             <div v-if="hasValue(selectedModalCampaign.genel_bilgi?.kampanya_turu)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Tür</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.tur', 'Tür') }}</div>
               <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200 truncate">{{ selectedModalCampaign.genel_bilgi?.kampanya_turu }}</div>
             </div>
 
             <!-- Kategori -->
             <div v-if="hasValue(selectedModalCampaign.genel_bilgi?.kategori)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Kategori</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.kategori', 'Kategori') }}</div>
               <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200 truncate">{{ selectedModalCampaign.genel_bilgi?.kategori }}</div>
             </div>
 
             <!-- Kâr Payı -->
             <div v-if="hasValue(selectedModalCampaign.finansman_detay?.kar_payi_orani)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Kâr Payı</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.karPayi', 'Kâr Payı') }}</div>
               <div class="text-xs font-bold text-blue-600 dark:text-blue-400">%{{ selectedModalCampaign.finansman_detay?.kar_payi_orani }}</div>
             </div>
 
             <!-- Vade -->
             <div v-if="hasValue(selectedModalCampaign.finansman_detay?.vade_ay)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Vade</div>
-              <div class="text-xs font-bold text-indigo-600 dark:text-indigo-400">{{ selectedModalCampaign.finansman_detay?.vade_ay }} Ay</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('campaigns.columns.vade', 'Vade') }}</div>
+              <div class="text-xs font-bold text-indigo-600 dark:text-indigo-400">{{ selectedModalCampaign.finansman_detay?.vade_ay }} {{ $t('financing.term_months', 'Ay') }}</div>
             </div>
 
             <!-- Taksit -->
             <div v-if="hasValue(selectedModalCampaign.finansman_detay?.taksit)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Taksit</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.taksit', 'Taksit') }}</div>
               <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedModalCampaign.finansman_detay?.taksit }}</div>
             </div>
 
             <!-- Tahsis Ücreti -->
             <div v-if="hasValue(selectedModalCampaign.finansman_detay?.tahsis_ucreti)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Tahsis Ücreti</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.tahsisUcreti', 'Tahsis Ücreti') }}</div>
               <div class="text-xs font-bold text-orange-600 dark:text-orange-400">{{ Number(selectedModalCampaign.finansman_detay?.tahsis_ucreti).toLocaleString('tr-TR') }} ₺</div>
             </div>
 
             <!-- Finansman Tutarı -->
             <div v-if="hasValue(selectedModalCampaign.finansman_detay?.finansman_tutari)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Finansman Tutarı</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.finansmanTutari', 'Finansman Tutarı') }}</div>
               <div class="text-xs font-bold text-cyan-600 dark:text-cyan-400">{{ Number(selectedModalCampaign.finansman_detay?.finansman_tutari).toLocaleString('tr-TR') }} ₺</div>
             </div>
 
             <!-- Ödül -->
             <div v-if="hasValue(selectedModalCampaign.promosyon_detay?.odul_tutari)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Ödül</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.odul', 'Ödül') }}</div>
               <div class="text-xs font-bold text-emerald-600 dark:text-emerald-400">{{ Number(selectedModalCampaign.promosyon_detay?.odul_tutari).toLocaleString('tr-TR') }} ₺</div>
             </div>
 
             <!-- Ödül Tipi -->
             <div v-if="hasValue(selectedModalCampaign.promosyon_detay?.odul_tip)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Ödül Tipi</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.odul', 'Ödül Tipi') }}</div>
               <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200 truncate">{{ selectedModalCampaign.promosyon_detay?.odul_tip }}</div>
             </div>
 
             <!-- Nakit İade -->
             <div v-if="hasValue(selectedModalCampaign.promosyon_detay?.nakit_iade_yuzde)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Nakit İade</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('dashboard.highest_cashback', 'Nakit İade') }}</div>
               <div class="text-xs font-bold text-pink-600 dark:text-pink-400">%{{ selectedModalCampaign.promosyon_detay?.nakit_iade_yuzde }}</div>
             </div>
 
             <!-- MGM Kazanç -->
             <div v-if="hasValue(selectedModalCampaign.mgm_detay?.kisi_basi_kazanc)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">MGM Kazanç</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.mgm', 'MGM Kazanç') }}</div>
               <div class="text-xs font-bold text-purple-600 dark:text-purple-400">{{ Number(selectedModalCampaign.mgm_detay?.kisi_basi_kazanc).toLocaleString('tr-TR') }} ₺</div>
             </div>
 
             <!-- Bitiş Tarihi -->
             <div v-if="hasValue(selectedModalCampaign.genel_bilgi?.bitis_tarihi)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Bitiş Tarihi</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('campaigns.columns.bitisTarihi', 'Bitiş Tarihi') }}</div>
               <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200">{{ formatTarih(selectedModalCampaign.genel_bilgi?.bitis_tarihi) }}</div>
             </div>
           </div>
 
           <!-- Hedef Kitle -->
           <div v-if="hasValue(selectedModalCampaign.genel_bilgi?.hedef_kitle)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-            <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Hedef Kitle</div>
+            <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">{{ $t('comparison.columns.hedefKitle', 'Hedef Kitle') }}</div>
             <div class="text-xs font-medium text-neutral-700 dark:text-neutral-300">
               {{ Array.isArray(selectedModalCampaign.genel_bilgi.hedef_kitle) ? selectedModalCampaign.genel_bilgi.hedef_kitle.join(', ') : selectedModalCampaign.genel_bilgi.hedef_kitle }}
             </div>
@@ -2146,13 +2186,13 @@ const mgmCampaigns = computed(() => {
 
           <!-- Masraf Bilgisi -->
           <div v-if="hasValue(selectedModalCampaign.finansman_detay?.masraf_bilgi)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-            <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Masraf Bilgisi</div>
+            <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">{{ $t('comparison.columns.masrafBilgisi', 'Masraf Bilgisi') }}</div>
             <div class="text-xs font-medium text-neutral-700 dark:text-neutral-300">{{ selectedModalCampaign.finansman_detay.masraf_bilgi }}</div>
           </div>
 
           <!-- Kampanya Metni (chat.vue pre formatında) -->
           <div v-if="hasValue(selectedModalCampaign.genel_bilgi?.metin || selectedModalCampaign.metin || selectedModalCampaign.ham_metin)" class="pt-3 border-t border-neutral-200 dark:border-neutral-800">
-            <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2">Kampanya Metni</div>
+            <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2">{{ $t('comparison.columns.kampanyaMetni', 'Kampanya Metni') }}</div>
             <pre class="font-mono text-xs whitespace-pre-wrap leading-relaxed text-neutral-600 dark:text-neutral-300 break-words bg-neutral-50 dark:bg-neutral-900/80 p-3.5 rounded-xl border border-neutral-200/80 dark:border-neutral-800 max-h-72 overflow-y-auto custom-scrollbar">{{ selectedModalCampaign.genel_bilgi?.metin || selectedModalCampaign.metin || selectedModalCampaign.ham_metin }}</pre>
           </div>
         </div>

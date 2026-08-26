@@ -135,23 +135,9 @@ const menuItems = computed(() => [
 
     <aside :class="isSidebarOpen ? 'w-64 border-r' : 'w-0 border-none'" class="h-full transition-all duration-300 ease-in-out shrink-0 overflow-hidden bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 z-50 shadow-xl flex flex-col">
       <div class="flex-1 flex flex-col min-h-0">
-        <div class="h-14 flex items-center px-6 border-b border-neutral-200 dark:border-neutral-700 shrink-0">
-          <span class="text-xl font-bold tracking-wider brand-text">{{ t('brand', 'KatılımPazar') }}</span>
-        </div>
-
-        <!-- Menü İçi Görünüm Modu Seçici -->
-        <div class="px-4 py-3 border-b border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-900/30">
-          <div class="text-[10px] font-extrabold uppercase tracking-wider text-neutral-400 mb-2">Görünüm Modu</div>
-          <div class="grid grid-cols-2 gap-1 p-1 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-sm">
-            <button @click="setViewMode('musteri')" :class="viewMode === 'musteri' ? 'bg-blue-50 dark:bg-neutral-700 text-blue-600 dark:text-cyan-400 font-bold' : 'text-neutral-600 dark:text-neutral-400'" class="px-2 py-1.5 text-xs rounded-md transition-all flex items-center justify-center gap-1">
-              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-              <span>{{ t('header.customer', 'Müşteri') }}</span>
-            </button>
-            <button @click="setViewMode('bankaci')" :class="viewMode === 'bankaci' ? 'bg-blue-50 dark:bg-neutral-700 text-blue-600 dark:text-cyan-400 font-bold' : 'text-neutral-600 dark:text-neutral-400'" class="px-2 py-1.5 text-xs rounded-md transition-all flex items-center justify-center gap-1">
-              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-              <span>{{ t('header.bank_employee', 'Banka') }}</span>
-            </button>
-          </div>
+        <div class="h-14 flex items-center px-5 border-b border-neutral-200 dark:border-neutral-700 shrink-0 gap-2.5">
+          <img src="/logo.svg" alt="FinAgent Logo" class="w-6 h-6 object-contain" />
+          <span class="text-xl font-bold tracking-wider brand-text">{{ t('brand', 'FinAgent') }}</span>
         </div>
 
         <nav class="p-4 space-y-2 overflow-y-auto custom-scrollbar flex-1">
@@ -224,7 +210,7 @@ const menuItems = computed(() => [
               <button @click="setViewMode('bankaci')" :class="viewMode === 'bankaci' ? 'bg-white dark:bg-neutral-700 shadow-sm text-blue-600 dark:text-cyan-400' : 'text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white'" class="px-2 sm:px-3 py-1 sm:py-1.5 text-[11px] sm:text-xs font-bold rounded-md transition-all flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
                 <svg class="w-3.5 h-3.5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                 <span class="hidden sm:inline">{{ t('header.bank_employee', 'Banka Çalışanı') }}</span>
-                <span class="sm:hidden">Banka</span>
+                <span class="sm:hidden">{{ t('header.bank_short', 'Banka') }}</span>
               </button>
               <div class="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 text-xs font-medium bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900 rounded opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap shadow-lg z-50">
                 {{ t('header.bank_employee_info', 'Kurum içi ve gizli kampanyaları da içerir') }}

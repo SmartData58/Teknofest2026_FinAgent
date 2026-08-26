@@ -10,9 +10,9 @@ const logos = [
   '/emlakkatilim_logo.svg',
   '/hayatfinans_logo.svg',
   '/kuveytturk_logo.svg',
-  '/tombank_logo.svg',
+  '/tomkatilim_logo.svg',
   '/turkiyefinans_logo.svg',
-  '/vakıfkatilim_logo.svg',
+  '/vakifkatilim_logo.svg',
   '/ziraatkatilim_logo.svg'
 ]
 

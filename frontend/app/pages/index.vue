@@ -11,6 +11,10 @@ gsap.registerPlugin(ScrollTrigger)
 const router = useRouter()
 const { t } = useI18n()
 
+useHead({
+  title: computed(() => t('page_titles.home', 'Katılım Bankacılığı Kampanya & Finansman Asistanı'))
+})
+
 // Sohbet kutusu ve yönlendirme ayarları
 const chatBoxRef = ref(null)
 const isLoading = ref(true)

@@ -7,6 +7,22 @@ export default defineNuxtConfig({
     port: 3000
   },
   
+  app: {
+    head: {
+      title: 'FinAgent',
+      titleTemplate: '%s · FinAgent',
+      meta: [
+        { charset: 'utf-8' },
+        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+        { name: 'description', content: 'Katılım Bankacılığı Kampanya ve Finansman Analiz Asistanı' }
+      ],
+      link: [
+        { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' },
+        { rel: 'alternate icon', href: '/logo.svg' }
+      ]
+    }
+  },
+  
   modules: [
     '@nuxtjs/tailwindcss',
     '@nuxtjs/color-mode',

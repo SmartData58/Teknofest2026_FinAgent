@@ -4,10 +4,10 @@
     <!-- ================= ORTALANMIŞ BAŞLIK ================= -->
     <div class="flex flex-col items-center text-center gap-3">
       <h1 class="reveal-title text-4xl md:text-5xl font-bold bg-clip-text text-transparent gradient-text pb-1">
-        {{ $t('campaigns.title', 'Kampanyalar') }}
+        {{ $t('campaigns.title', 'Katılım Bankacılığı Kampanyaları') }}
       </h1>
       <p class="text-sm md:text-base text-neutral-500 dark:text-neutral-400 max-w-2xl">
-        Toplanan tüm kampanyalar, gelişmiş filtreler ve yapay zeka çıkarım kanıtları.
+        {{ $t('campaigns.subtitle', 'Toplanan tüm kampanyalar, gelişmiş filtreler ve yapay zeka çıkarım kanıtları.') }}
       </p>
       <div class="h-1 w-24 rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 mt-1 title-underline"></div>
     </div>
@@ -27,13 +27,13 @@
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 relative z-30">
 
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Ara</label>
+            <label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">{{ $t('campaigns.search_label', 'Ara') }}</label>
             <div class="relative">
               <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
               <input
                 v-model="search"
                 type="text"
-                placeholder="Kampanya veya banka ara..."
+                :placeholder="$t('campaigns.search_placeholder', 'Kampanya veya banka ara...')"
                 class="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg pl-9 pr-3 py-2.5 text-sm text-neutral-700 dark:text-neutral-200 focus:ring-2 focus:ring-cyan-500 outline-none transition-all"
               >
             </div>
@@ -59,7 +59,7 @@
                 v-model="filterQuery[def.key]"
                 @focus="openDropdown = def.key"
                 @keydown.backspace="onFilterBackspace(def.key)"
-                :placeholder="filters[def.key].length ? 'Ekle...' : 'Tümü'"
+                :placeholder="filters[def.key].length ? $t('campaigns.add_placeholder', 'Ekle...') : $t('campaigns.all_placeholder', 'Tümü')"
                 class="flex-1 min-w-[70px] bg-transparent outline-none text-sm text-neutral-700 dark:text-neutral-200 placeholder-neutral-400 py-0.5"
               >
               <svg class="w-4 h-4 text-neutral-400 flex-shrink-0 transition-transform pointer-events-none" :class="openDropdown === def.key ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
@@ -81,7 +81,7 @@
                   <img v-if="def.key === 'banka'" :src="getBankaLogo(opt)" class="w-4 h-4 object-contain shrink-0" @error="(e) => e.target.style.display = 'none'" />
                   <span class="text-neutral-700 dark:text-neutral-200">{{ def.key === 'banka' ? getBankaAd(opt) : opt }}</span>
                 </label>
-                <div v-if="filteredOptions(def).length === 0" class="px-3 py-2 text-xs text-neutral-400 italic">Sonuç bulunamadı</div>
+                <div v-if="filteredOptions(def).length === 0" class="px-3 py-2 text-xs text-neutral-400 italic">{{ $t('campaigns.no_search_results', 'Sonuç bulunamadı') }}</div>
               </div>
             </Transition>
           </div>
@@ -91,19 +91,19 @@
           <label class="flex items-center gap-2 cursor-pointer group">
             <input type="checkbox" v-model="filters.sadeceOranli" class="w-4 h-4 rounded border-neutral-300 text-cyan-600 focus:ring-cyan-500 dark:border-neutral-600 dark:bg-neutral-900 dark:checked:bg-cyan-500 transition-all cursor-pointer">
             <span class="text-sm font-medium text-neutral-600 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-white transition-colors">
-              Yalnızca kâr payı oranı olanlar
+              {{ $t('campaigns.only_with_rates', 'Yalnızca kâr payı oranı olanlar') }}
             </span>
           </label>
 
           <div class="flex items-center gap-3">
-            <span v-if="activeFilterCount" class="text-xs font-medium text-cyan-600 dark:text-cyan-400">{{ activeFilterCount }} aktif filtre</span>
+            <span v-if="activeFilterCount" class="text-xs font-medium text-cyan-600 dark:text-cyan-400">{{ activeFilterCount }} {{ $t('campaigns.active_filters', 'aktif filtre') }}</span>
             <button
               v-if="activeFilterCount"
               @click="clearFilters"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:text-rose-600 hover:border-rose-300 transition-all"
             >
               <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-              Filtreleri temizle
+              {{ $t('campaigns.clear_filters', 'Filtreleri temizle') }}
             </button>
           </div>
         </div>
@@ -117,9 +117,9 @@
         <span class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
           <span v-if="!pending">
             <span class="text-cyan-600 dark:text-cyan-400 font-bold">{{ displayedCampaigns.length }}</span>
-            kampanya gösteriliyor (toplam {{ totalCount }})
+            {{ $t('campaigns.showing_campaigns', { count: displayedCampaigns.length, total: totalCount }) }}
           </span>
-          <span v-else>Veriler yükleniyor...</span>
+          <span v-else>{{ $t('campaigns.loading_data', 'Veriler yükleniyor...') }}</span>
         </span>
       </div>
 
@@ -157,7 +157,7 @@
                 <td :colspan="columns.length" class="p-10 text-center text-neutral-500">
                   <div class="flex flex-col items-center gap-2">
                     <svg class="w-10 h-10 text-neutral-300 dark:text-neutral-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    Kriterlere uygun kampanya bulunamadı.
+                    {{ $t('campaigns.no_campaigns_found', 'Kriterlere uygun kampanya bulunamadı.') }}
                   </div>
                 </td>
               </tr>
@@ -201,17 +201,17 @@
     <div class="space-y-4 pt-4 pb-12">
       <div class="flex flex-col gap-1">
         <h2 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">
-          Çıkarım Kanıtları
+          {{ $t('campaigns.evidence_title', 'Çıkarım Kanıtları') }}
         </h2>
         <p class="text-sm text-neutral-500 dark:text-neutral-400">
-          Bir kampanya seçin: sistemin her değeri metindeki HANGİ ifadeden ve hangi yöntemle çıkardığını görün.
+          {{ $t('campaigns.evidence_desc', 'Bir kampanya seçin: sistemin her değeri metindeki HANGİ ifadeden ve hangi yöntemle çıkardığını görün.') }}
         </p>
       </div>
 
       <div class="bg-white/80 dark:bg-neutral-800/60 backdrop-blur-md border border-neutral-200/50 dark:border-neutral-700/50 rounded-2xl shadow-sm p-6 space-y-6">
 
         <div class="flex flex-col gap-2 relative">
-          <label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase">İncelenen Kampanya</label>
+          <label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase">{{ $t('campaigns.inspected_campaign', 'İncelenen Kampanya') }}</label>
 
           <button
             type="button"
@@ -228,7 +228,7 @@
           <Transition name="dropdown">
             <div v-if="campaignSelectOpen" class="absolute top-full left-0 right-0 mt-1 z-40 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-xl max-h-72 overflow-y-auto py-1 custom-scrollbar" data-lenis-prevent="true">
               <button type="button" @click="selectCampaign(null)" class="w-full text-left px-4 py-2.5 text-sm text-neutral-500 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 transition-colors">
-                Tablodan bir kampanya seçin...
+                {{ $t('campaigns.select_from_table', 'Tablodan bir kampanya seçin...') }}
               </button>
               <button
                 v-for="c in campaigns"
@@ -250,16 +250,16 @@
           <table class="w-full text-left border-collapse whitespace-nowrap">
             <thead>
               <tr class="bg-neutral-100/50 dark:bg-neutral-900/50 text-xs uppercase text-neutral-500 dark:text-neutral-400">
-                <th class="p-3 font-semibold border-b border-neutral-200/50 dark:border-neutral-700/50">Alan</th>
-                <th class="p-3 font-semibold border-b border-neutral-200/50 dark:border-neutral-700/50">Metindeki İfade</th>
-                <th class="p-3 font-semibold border-b border-neutral-200/50 dark:border-neutral-700/50">Normalize Değer</th>
-                <th class="p-3 font-semibold border-b border-neutral-200/50 dark:border-neutral-700/50">Yöntem</th>
-                <th class="p-3 font-semibold border-b border-neutral-200/50 dark:border-neutral-700/50 text-center">Güven</th>
+                <th class="p-3 font-semibold border-b border-neutral-200/50 dark:border-neutral-700/50">{{ $t('campaigns.evidence_fields.field', 'Alan') }}</th>
+                <th class="p-3 font-semibold border-b border-neutral-200/50 dark:border-neutral-700/50">{{ $t('campaigns.evidence_fields.text_phrase', 'Metindeki İfade') }}</th>
+                <th class="p-3 font-semibold border-b border-neutral-200/50 dark:border-neutral-700/50">{{ $t('campaigns.evidence_fields.normalized', 'Normalize Değer') }}</th>
+                <th class="p-3 font-semibold border-b border-neutral-200/50 dark:border-neutral-700/50">{{ $t('campaigns.evidence_fields.method', 'Yöntem') }}</th>
+                <th class="p-3 font-semibold border-b border-neutral-200/50 dark:border-neutral-700/50 text-center">{{ $t('campaigns.evidence_fields.confidence', 'Güven') }}</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-neutral-200/50 dark:divide-neutral-700/50 text-sm">
               <tr v-if="activeEvidences.length === 0">
-                <td colspan="5" class="p-6 text-center text-neutral-500">Bu kampanya için çıkarım kanıtı bulunamadı.</td>
+                <td colspan="5" class="p-6 text-center text-neutral-500">{{ $t('campaigns.no_evidence_found', 'Bu kampanya için çıkarım kanıtı bulunamadı.') }}</td>
               </tr>
               <tr v-for="(ev, idx) in activeEvidences" :key="idx"
                   :style="{ transitionDelay: `${idx * 60}ms` }"
@@ -289,12 +289,12 @@
         </Transition>
 
         <div v-if="selectedCampaignId && pendingEvidences" class="p-8 text-center text-neutral-500 animate-pulse bg-neutral-50/50 dark:bg-neutral-900/30 rounded-xl">
-          Kanıtlar yükleniyor...
+          {{ $t('campaigns.loading_evidences', 'Kanıtlar yükleniyor...') }}
         </div>
 
         <div v-if="selectedCampaignId" class="border border-neutral-200/50 dark:border-neutral-700/50 rounded-xl overflow-hidden">
           <button @click="isTextExpanded = !isTextExpanded" class="w-full p-4 flex justify-between items-center bg-neutral-50 dark:bg-neutral-900/50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
-            <span class="text-sm font-semibold text-neutral-700 dark:text-neutral-200">Kampanyanın işlenmiş metni</span>
+            <span class="text-sm font-semibold text-neutral-700 dark:text-neutral-200">{{ $t('campaigns.processed_text', 'Kampanyanın işlenmiş metni') }}</span>
             <svg class="w-5 h-5 text-neutral-500 transform transition-transform duration-300" :class="{'rotate-180': isTextExpanded}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
             </svg>
@@ -310,7 +310,7 @@
 
         <div v-if="selectedCampaignId" class="pt-2">
           <a :href="activeCampaignUrl" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700 hover:border-cyan-300 hover:-translate-y-0.5 transition-all shadow-sm">
-            Kaynak sayfayı aç
+            {{ $t('campaigns.open_source_page', 'Kaynak sayfayı aç') }}
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
           </a>
         </div>
@@ -326,6 +326,10 @@ import { useI18n } from 'vue-i18n'
 import Lenis from 'lenis'
 
 const { t } = useI18n()
+
+useHead({
+  title: computed(() => t('page_titles.campaigns', 'Katılım Bankacılığı Kampanyaları'))
+})
 
 const isValidVal = (val) => val !== null && val !== undefined && val !== '' && val !== 'None'
 const formatVal = (val) => isValidVal(val) ? val : '-'
@@ -420,9 +424,9 @@ const filterOptions = ref({
 })
 
 const filterDefs = computed(() => [
-  { key: 'banka', label: 'Banka', options: filterOptions.value.bankalar },
-  { key: 'tur', label: 'Tür', options: filterOptions.value.turler },
-  { key: 'kitle', label: 'Hedef Kitle', options: filterOptions.value.kitleler }
+  { key: 'banka', label: t('campaigns.columns.banka', 'Banka'), options: filterOptions.value.bankalar },
+  { key: 'tur', label: t('campaigns.columns.tur', 'Tür'), options: filterOptions.value.turler },
+  { key: 'kitle', label: t('campaigns.columns.hedefKitle', 'Hedef Kitle'), options: filterOptions.value.kitleler }
 ])
 
 const filters = ref({
