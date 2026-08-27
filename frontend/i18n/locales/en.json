@@ -6,21 +6,21 @@
     "dashboard": "Market Analysis",
     "comparison": "Comparison",
     "campaigns": "All Campaigns",
-    "financing": "Financing Rates",
-    "katilim_hesap": "Participation Accounts"
+    "financing": "Financing Comparisons",
+    "katilim_hesap": "Participation Account Comparisons"
   },
   "menu": {
     "home": "Home",
     "dashboard": "Market Analysis",
     "comparison": "Comparison",
-    "financing": "Financing Rates",
-    "katilim_hesap": "Participation Accounts",
+    "financing": "Financing Comparisons",
+    "katilim_hesap": "Participation Account Comparisons",
     "campaigns": "All Campaigns",
     "chat": "AI Assistant",
     "customer_view": "Home",
     "banks_markets": "Market Analysis",
     "campaigns_list": "Comparison",
-    "financing_rates": "Financing Rates",
+    "financing_rates": "Financing Comparisons",
     "data_validation": "All Campaigns",
     "ai_assistant": "AI Assistant"
   },
@@ -330,7 +330,7 @@
   },
   "dashboard": {
     "title_customer": "Market Analysis",
-    "title_banker": "Market Analysis",
+    "title_banker": "Benchmark",
     "subtitle_customer": "Compare the latest and most advantageous rates across all participation banks.",
     "subtitle_banker": "Track campaign activity and market competition across the participation banking sector.",
     "banker_badge": "Bank Employee",
@@ -384,16 +384,16 @@
     "ai_bridge_down": "Could not reach the analysis service, please try again."
   },
   "financing": {
-    "title": "Financing Rates",
+    "title": "Financing Comparisons",
     "subtitle": "Compare current profit rates, monthly installments, and total repayment costs of participation banks.",
     "all_categories": "All Categories",
     "ihtiyac": "Consumer Financing",
     "konut": "Mortgage Financing",
     "tasit": "Auto Financing",
-    "filter_bank": "Bank Filter",
-    "filter_tier": "Tier Filter",
+    "filter_bank": "Bank",
+    "filter_tier": "Tier",
     "filter_amount": "Financing Amount",
-    "filter_term": "Maturity Period",
+    "filter_term": "Maturity",
     "all_banks": "All Banks",
     "all_amounts": "All Amounts",
     "all_terms": "All Terms",
@@ -445,7 +445,7 @@
     "badge_min_total": "Lowest Total"
   },
   "katilim_hesap": {
-    "title": "Participation Accounts",
+    "title": "Participation Account Comparisons",
     "subtitle": "Compare current profit sharing rates, gross/net yield amounts and maturity balances across participation banks.",
     "stat_max_net_rate": "Highest Net Profit Rate",
     "stat_max_net_profit": "Highest Net Yield",
@@ -461,10 +461,10 @@
     "clear_filters": "Clear",
     "grid_view": "Card View",
     "table_view": "Table View",
-    "filter_bank": "Bank Filter",
-    "filter_tier": "Tier Filter",
+    "filter_bank": "Bank",
+    "filter_tier": "Tier",
     "filter_amount": "Deposit Amount",
-    "filter_term": "Maturity Term",
+    "filter_term": "Maturity",
     "filter_sort": "Sorting",
     "sort_net_rate_desc": "Net Profit Rate (Highest)",
     "sort_net_rate_asc": "Net Profit Rate (Lowest)",
@@ -507,5 +507,53 @@
     "badge_max_net_rate": "Highest Net Rate",
     "badge_max_net_profit": "Highest Net Yield",
     "badge_max_gross_rate": "Highest Gross Rate"
+  },
+  "taxonomy": {
+    "turler": {
+      "kart_kampanyasi": "Card",
+      "yatirim_urunu": "Investment",
+      "alisveris_kampanyasi": "Shopping",
+      "alisveris_kampanyası": "Shopping",
+      "finansman_diger": "Financing",
+      "tasit_finansmani": "Vehicle",
+      "ihtiyac_finansmani": "Consumer",
+      "konut_finansmani": "Housing",
+      "yeni_musteri": "New Customer",
+      "mgm_kampanyasi": "MGM / Referral",
+      "dijital": "Digital",
+      "kobi_ticari": "SME & Commercial",
+      "odeme": "Payment",
+      "sigorta": "Insurance",
+      "genel": "General",
+      "diger": "Other"
+    },
+    "hedef_kitleler": {
+      "mevcut_musteri": "Existing",
+      "yeni_musteri": "New Customer",
+      "maas_musterisi": "Payroll",
+      "tum_musteriler": "All",
+      "bireysel": "Retail",
+      "kobi": "SME",
+      "ticari": "Commercial",
+      "genc": "Youth",
+      "emekli": "Retiree",
+      "ozel": "Private"
+    },
+    "kategoriler": {
+      "alisveris": "Shopping",
+      "kart": "Card",
+      "finansman": "Financing",
+      "ihtiyac": "Consumer",
+      "tasit": "Vehicle",
+      "konut": "Housing",
+      "yatirim": "Investment",
+      "mgm": "MGM / Referral",
+      "dijital": "Digital",
+      "odeme": "Payment",
+      "seyahat": "Travel",
+      "pos": "POS",
+      "sigorta": "Insurance",
+      "diger": "Other"
+    }
   }
 }

@@ -865,38 +865,7 @@ class ZiraatKatilimSpider(
 
 
                 # ------------------------------------------------
-                # ARŞİVLENMİŞ KAMPANYA
-                # ------------------------------------------------
-
-                if "IsArchived=true" in href:
-
-                    temiz_href = (
-                        href
-                        .split("?")[0]
-                        .split("#")[0]
-                        .replace(
-                            TABAN_URL,
-                            ""
-                        )
-                        .rstrip("/")
-                    )
-
-
-                    if DETAY_DESENI.match(
-                        temiz_href
-                    ):
-
-                        suresi_gecmis_urller.add(
-                            TABAN_URL
-                            + temiz_href
-                        )
-
-
-                    continue
-
-
-                # ------------------------------------------------
-                # NORMAL KAMPANYA
+                # KAMPANYA LINKI (GÜNCEL & ARŞİV)
                 # ------------------------------------------------
 
                 temiz_href = (
@@ -910,18 +879,21 @@ class ZiraatKatilimSpider(
                     .rstrip("/")
                 )
 
+                if "IsArchived=true" in href:
+                    suresi_gecmis_urller.add(
+                        TABAN_URL
+                        + temiz_href
+                    )
 
                 if not DETAY_DESENI.match(
                     temiz_href
                 ):
                     continue
 
-
                 tam_url = (
                     TABAN_URL
                     + temiz_href
                 )
-
 
                 url_kategori_haritasi.setdefault(
                     tam_url,
@@ -931,7 +903,7 @@ class ZiraatKatilimSpider(
 
         print(
             f"\n  {len(url_kategori_haritasi)} "
-            f"tekil güncel kampanya linki bulundu"
+            f"tekil kampanya linki bulundu"
         )
 
 
@@ -950,14 +922,11 @@ class ZiraatKatilimSpider(
         ):
 
             if url in suresi_gecmis_urller:
-
                 print(
                     "    SÜRESİ GEÇMİŞ "
                     "(arşiv işaretli), "
-                    f"atlandı: {url}"
+                    f"işleniyor: {url}"
                 )
-
-                continue
 
 
             kategori = (

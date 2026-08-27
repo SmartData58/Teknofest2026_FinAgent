@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '~/stores/chatStore'
 import { Chart as ChartJS, RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from 'chart.js'
+import ChartDataLabels from 'chartjs-plugin-datalabels'
 import { Radar, Bar, Line } from 'vue-chartjs'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
@@ -15,7 +16,7 @@ let lenis = null
 let lenisRafId = null
 
 
-ChartJS.register(RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend, BarElement, CategoryScale, LinearScale)
+ChartJS.register(RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend, BarElement, CategoryScale, LinearScale, ChartDataLabels)
 
 if (process.client) {
   import('chartjs-plugin-zoom').then((module) => {
@@ -25,6 +26,8 @@ if (process.client) {
 
 
 const { t, locale } = useI18n()
+const { formatTur, formatHedefKitle, formatKategori } = useTaxonomy()
+const colorMode = useColorMode()
 const router = useRouter()
 const chatStore = useChatStore()
 
@@ -1199,7 +1202,7 @@ const colors = [
     return { labels: categories, datasets }
   })
   
-  const radarOptions = {
+  const radarOptions = computed(() => ({
     devicePixelRatio: 2.5,
     responsive: true,
     maintainAspectRatio: false,
@@ -1219,11 +1222,23 @@ const colors = [
         onClick: customLegendClickRadar,
         position: 'bottom',
         labels: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 11, weight: 'bold' }, usePointStyle: true, boxWidth: 8 }
+      },
+      datalabels: {
+        display: (context) => {
+          const val = context.dataset.data[context.dataIndex]
+          return val !== null && val !== undefined && val > 0
+        },
+        align: 'top',
+        anchor: 'center',
+        offset: 4,
+        color: () => colorMode.value === 'dark' ? '#94a3b8' : '#475569',
+        font: { family: "'Plus Jakarta Sans', sans-serif", size: 9, weight: 'bold' },
+        formatter: (value) => value
       }
     }
-  }
+  }))
 
-  const detailedRadarOptions = {
+  const detailedRadarOptions = computed(() => ({
     devicePixelRatio: 2.5,
     responsive: true,
     maintainAspectRatio: false,
@@ -1240,25 +1255,35 @@ const colors = [
     },
     plugins: {
       legend: { onClick: customLegendClickRadar, position: 'bottom', labels: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 12, weight: 'bold' }, usePointStyle: true, boxWidth: 10 } },
-
-    zoom: {
-      pan: {
-        enabled: true,
-        mode: 'xy'
+      datalabels: {
+        display: (context) => {
+          const val = context.dataset.data[context.dataIndex]
+          return val !== null && val !== undefined && val > 0
+        },
+        align: 'top',
+        anchor: 'center',
+        offset: 4,
+        color: () => colorMode.value === 'dark' ? '#94a3b8' : '#475569',
+        font: { family: "'Plus Jakarta Sans', sans-serif", size: 9, weight: 'bold' },
+        formatter: (value) => value
       },
       zoom: {
-        wheel: {
+        pan: {
           enabled: true,
+          mode: 'xy'
         },
-        pinch: {
-          enabled: true
-        },
-        mode: 'xy',
+        zoom: {
+          wheel: {
+            enabled: true,
+          },
+          pinch: {
+            enabled: true
+          },
+          mode: 'xy',
+        }
       }
-    },
-
     }
-  }
+  }))
 
   // 2. Bar Chart (Süre)
   const durationBarChartData = computed(() => {
@@ -1291,6 +1316,11 @@ const colors = [
     responsive: true,
     maintainAspectRatio: false,
     indexAxis: 'y',
+    layout: {
+      padding: {
+        right: 40
+      }
+    },
     scales: {
       x: { grid: { color: 'rgba(156, 163, 175, 0.1)' }, ticks: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 } } },
       y: { grid: { display: false }, ticks: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 11, weight: '600' } } }
@@ -1300,6 +1330,21 @@ const colors = [
         onClick: customLegendClickBar,
         position: 'bottom',
         labels: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 11, weight: 'bold' }, usePointStyle: true, boxWidth: 8 }
+      },
+      datalabels: {
+        display: (context) => {
+          const val = context.dataset.data[context.dataIndex]
+          return val !== null && val !== undefined && val > 0
+        },
+        align: 'right',
+        anchor: 'end',
+        offset: 4,
+        color: () => colorMode.value === 'dark' ? '#cbd5e1' : '#334155',
+        font: { family: "'Plus Jakarta Sans', sans-serif", size: 10, weight: 'bold' },
+        formatter: (value) => {
+          if (!value) return ''
+          return Number.isInteger(value) ? `${value} ay` : `${value.toFixed(1)} ay`
+        }
       },
       zoom: {
         pan: { enabled: true, mode: 'xy' },
@@ -1347,6 +1392,12 @@ const colors = [
     devicePixelRatio: 2.5,
     responsive: true,
     maintainAspectRatio: false,
+    layout: {
+      padding: {
+        top: 24,
+        right: 15
+      }
+    },
     scales: {
       x: { grid: { display: false }, ticks: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 11, weight: 'bold' } } },
       y: { grid: { color: 'rgba(156, 163, 175, 0.1)' }, ticks: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 } } }
@@ -1356,6 +1407,18 @@ const colors = [
         onClick: customLegendClickLine,
         position: 'bottom',
         labels: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 11, weight: 'bold' }, usePointStyle: true, boxWidth: 8 }
+      },
+      datalabels: {
+        display: (context) => {
+          const val = context.dataset.data[context.dataIndex]
+          return val !== null && val !== undefined && val > 0
+        },
+        align: 'top',
+        anchor: 'center',
+        offset: 6,
+        color: () => colorMode.value === 'dark' ? '#f1f5f9' : '#1e293b',
+        font: { family: "'Plus Jakarta Sans', sans-serif", size: 10, weight: 'bold' },
+        formatter: (value) => value
       },
       zoom: {
         pan: { enabled: true, mode: 'xy' },
@@ -1373,47 +1436,13 @@ const colors = [
   })
   
   const cleanMainCategory = (name) => {
-    if (!name || name === 'Bilinmiyor') return 'Genel'
-    let n = name.toLowerCase().replace(/_kampanyasi|_kampanyalari|_urunu/g, '').replace(/_/g, ' ')
-    const map = {
-      'alisveris puani': 'Alışveriş',
-      'finansman diger': 'Finansman',
-      'ihtiyac finansmani': 'İhtiyaç',
-      'kart': 'Kart',
-      'konut finansmani': 'Konut',
-      'mgm': 'MGM',
-      'tasit finansmani': 'Taşıt',
-      'yatirim': 'Yatırım',
-      'yeni musteri': 'Yeni Müşteri'
-    }
-    if (map[n]) return map[n]
-    return n.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+    if (!name || name === 'Bilinmiyor') return t('taxonomy.turler.genel', 'Genel')
+    return formatTur(name)
   }
 
   const cleanCategoryName = (name) => {
-    if (!name) return 'Diğer'
-    let n = name.toLowerCase()
-    n = n.replace(/_kampanyalari|_kampanyasi|-fon/g, '')
-    n = n.replace(/_/g, ' ')
-    
-    const map = {
-      'yatirim': 'Yatırım',
-      'ticari': 'Ticari',
-      'kobi': 'KOBİ',
-      'bireysel': 'Bireysel',
-      'dijital': 'Dijital',
-      'finansman': 'Finansman',
-      'odeme': 'Ödeme',
-      'musteri ol': 'Müşteri Ol',
-      'seyahat': 'Seyahat',
-      'pos': 'POS',
-      'sigorta': 'Sigorta',
-      'kart': 'Kart',
-      'ihtiyac': 'İhtiyaç'
-    }
-    
-    if (map[n]) return map[n]
-    return n.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+    if (!name) return t('taxonomy.kategoriler.diger', 'Diğer')
+    return formatKategori(name)
   }
 
   const getCombinedCategory = (turu, alt) => {
@@ -1598,39 +1627,61 @@ const colors = [
     devicePixelRatio: 2.5,
     responsive: true,
     maintainAspectRatio: false,
+    layout: {
+      padding: {
+        top: 24,
+        right: 20
+      }
+    },
     plugins: {
       legend: { onClick: customLegendClickBar, position: 'bottom', labels: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 12, weight: 'bold' }, usePointStyle: true, boxWidth: 10 } },
+      datalabels: {
+        display: (context) => {
+          const val = context.dataset.data[context.dataIndex]
+          return val !== null && val !== undefined && val > 0
+        },
+        align: 'top',
+        anchor: 'center',
+        offset: 4,
+        color: () => colorMode.value === 'dark' ? '#f1f5f9' : '#1e293b',
+        font: { family: "'Plus Jakarta Sans', sans-serif", size: 10, weight: 'bold' },
+        formatter: (value) => value
+      },
       zoom: {
         pan: { enabled: true, mode: 'xy' },
         zoom: { wheel: { enabled: chartInteracts.value.line }, pinch: { enabled: true }, mode: 'xy' }
       }
     }
   }))
-  const temp_detailedChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { onClick: customLegendClickBar, position: 'bottom', labels: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 12, weight: 'bold' }, usePointStyle: true, boxWidth: 10 } },
 
-    zoom: {
-      pan: {
-        enabled: true,
-        mode: 'xy'
-      },
-      zoom: {
-        wheel: {
-          enabled: true,
-        },
-        pinch: {
-          enabled: true
-        },
-        mode: 'xy',
+  const detailedBarOptions = computed(() => ({
+    ...detailedChartOptions.value,
+    indexAxis: 'y',
+    layout: {
+      padding: {
+        right: 40
       }
     },
-
+    plugins: {
+      ...detailedChartOptions.value.plugins,
+      datalabels: {
+        display: (context) => {
+          const val = context.dataset.data[context.dataIndex]
+          return val !== null && val !== undefined && val > 0
+        },
+        align: 'right',
+        anchor: 'end',
+        offset: 4,
+        color: () => colorMode.value === 'dark' ? '#cbd5e1' : '#334155',
+        font: { family: "'Plus Jakarta Sans', sans-serif", size: 10, weight: 'bold' },
+        formatter: (value) => {
+          if (!value) return ''
+          return Number.isInteger(value) ? `${value} ay` : `${value.toFixed(1)} ay`
+        }
+      },
+      zoom: { pan: { enabled: true, mode: 'xy' }, zoom: { wheel: { enabled: chartInteracts.value.duration }, pinch: { enabled: true }, mode: 'xy' } }
     }
-  }
-  const detailedBarOptions = computed(() => ({ ...detailedChartOptions.value, indexAxis: 'y', plugins: { ...detailedChartOptions.value.plugins, zoom: { pan: { enabled: true, mode: 'xy' }, zoom: { wheel: { enabled: chartInteracts.value.duration }, pinch: { enabled: true }, mode: 'xy' } } } }))
+  }))
 
 // MGM Kampanyaları
 // MGM Kampanyaları
@@ -1658,7 +1709,7 @@ const mgmCampaigns = computed(() => {
     <div class="flex flex-col items-center text-center gap-3">
       <div class="flex flex-wrap items-center justify-center gap-3">
         <h1 class="reveal-title text-4xl md:text-5xl font-bold bg-clip-text text-transparent gradient-text pb-1">
-          {{ isBankaci ? $t('dashboard.title_banker', 'Pazar Analizi') : $t('dashboard.title_customer', 'Pazar Analizi') }}
+          {{ isBankaci ? $t('dashboard.title_banker', 'Kıyaslama') : $t('dashboard.title_customer', 'Pazar Analizi') }}
         </h1>
         <span v-if="isBankaci" class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/40 rounded-full shrink-0">
           {{ $t('dashboard.banker_badge', 'Banka Çalışanı') }}
@@ -1759,7 +1810,7 @@ const mgmCampaigns = computed(() => {
           >
             
             <div class="flex justify-between items-start mb-6">
-              <div class="w-14 h-14 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex items-center justify-center p-2 shadow-sm group-hover:scale-105 transition-transform duration-300">
+              <div class="w-14 h-14 rounded-xl bg-white border border-neutral-200/80 dark:border-white/20 flex items-center justify-center p-2.5 shadow-sm group-hover:scale-105 transition-transform duration-300">
                 <img v-if="b.logo_url" :src="b.logo_url" class="w-full h-full object-contain" />
                 <span v-else class="text-xl font-extrabold text-neutral-400">{{ b.kisa_ad?.charAt(0) }}</span>
               </div>
@@ -2064,7 +2115,9 @@ const mgmCampaigns = computed(() => {
                   <tbody class="divide-y divide-neutral-100 dark:divide-neutral-800">
                     <tr v-for="c in mgmCampaigns" :key="c._id" class="hover:bg-blue-50/30 dark:hover:bg-blue-900/10">
                       <td class="py-4 px-6 font-bold flex items-center gap-3">
-                        <img v-if="getBankaLogo(c.genel_bilgi?.banka_id)" :src="getBankaLogo(c.genel_bilgi?.banka_id)" class="w-6 h-6 object-contain" />
+                        <div v-if="getBankaLogo(c.genel_bilgi?.banka_id)" class="w-7 h-7 rounded-lg bg-white p-1 flex items-center justify-center shrink-0 border border-neutral-200/60 dark:border-white/20 shadow-2xs">
+                          <img :src="getBankaLogo(c.genel_bilgi?.banka_id)" class="w-full h-full object-contain" />
+                        </div>
                         {{ getBankaAd(c.genel_bilgi?.banka_id) }}
                       </td>
                       <td class="py-4 px-6 font-semibold">{{ c.genel_bilgi?.kampanya_adi }}</td>

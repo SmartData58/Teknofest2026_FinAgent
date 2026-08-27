@@ -1,0 +1,134 @@
+# SmartData FinAgent Taxonomy / İsimlendirme Yapılandırması
+# Veritabanında alt tireli ve küçük harfli tutulan tür, hedef kitle ve kategori etiketlerinin
+# Türkçe (TR) ve İngilizce (EN) özet karşılıkları.
+
+turler:
+  kart_kampanyasi:
+    tr: "Kart"
+    en: "Card"
+  yatirim_urunu:
+    tr: "Yatırım"
+    en: "Investment"
+  alisveris_kampanyasi:
+    tr: "Alışveriş"
+    en: "Shopping"
+  alisveris_kampanyası:
+    tr: "Alışveriş"
+    en: "Shopping"
+  finansman_diger:
+    tr: "Finansman"
+    en: "Financing"
+  tasit_finansmani:
+    tr: "Taşıt"
+    en: "Vehicle"
+  ihtiyac_finansmani:
+    tr: "İhtiyaç"
+    en: "Consumer"
+  konut_finansmani:
+    tr: "Konut"
+    en: "Housing"
+  yeni_musteri:
+    tr: "Yeni Müşteri"
+    en: "New Customer"
+  mgm_kampanyasi:
+    tr: "MGM / Davet"
+    en: "MGM / Referral"
+  dijital:
+    tr: "Dijital"
+    en: "Digital"
+  kobi_ticari:
+    tr: "KOBİ & Ticari"
+    en: "SME & Commercial"
+  odeme:
+    tr: "Ödeme"
+    en: "Payment"
+  sigorta:
+    tr: "Sigorta"
+    en: "Insurance"
+  genel:
+    tr: "Genel"
+    en: "General"
+  diger:
+    tr: "Diğer"
+    en: "Other"
+
+hedef_kitleler:
+  mevcut_musteri:
+    tr: "Mevcut"
+    en: "Existing"
+  yeni_musteri:
+    tr: "Yeni Müşteri"
+    en: "New Customer"
+  maas_musterisi:
+    tr: "Maaş"
+    en: "Payroll" 
+  tum_musteriler:
+    tr: "Tüm"
+    en: "All"
+  bireysel:
+    tr: "Bireysel"
+    en: "Retail"
+  kobi:
+    tr: "KOBİ"
+    en: "SME"
+  ticari:
+    tr: "Ticari"
+    en: "Commercial"
+  genc:
+    tr: "Genç"
+    en: "Youth"
+  emekli:
+    tr: "Emekli"
+    en: "Retiree"
+  ozel:
+    tr: "Özel"
+    en: "Private"
+
+kategoriler:
+  alisveris:
+    tr: "Alışveriş"
+    en: "Shopping"
+  kart:
+    tr: "Kart"
+    en: "Card"
+  finansman:
+    tr: "Finansman"
+    en: "Financing"
+  ihtiyac:
+    tr: "İhtiyaç"
+    en: "Consumer"
+  tasit:
+    tr: "Taşıt"
+    en: "Vehicle"
+  konut:
+    tr: "Konut"
+    en: "Housing"
+  yatirim:
+    tr: "Yatırım"
+    en: "Investment"
+  mgm:
+    tr: "MGM / Davet"
+    en: "MGM / Referral"
+  dijital:
+    tr: "Dijital"
+    en: "Digital"
+  odeme:
+    tr: "Ödeme"
+    en: "Payment"
+  seyahat:
+    tr: "Seyahat"
+    en: "Travel"
+  pos:
+    tr: "POS"
+    en: "POS"
+  sigorta:
+    tr: "Sigorta"
+    en: "Insurance"
+  diger:
+    tr: "Diğer"
+    en: "Other"
+
+
+
+#ürün kategorisi 5 değişken, kampanyalar hedef kitle 4 değişken, kampanya türü 9 değişken
+#kampanya sektör 7 değişken                           

@@ -1086,13 +1086,10 @@ class DunyaKatilimSpider(TabanScraper):
                             "süresi dolmuştur"
                             in baslik.lower()
                         ):
-
                             print(
                                 "    Süresi dolmuş "
-                                "kampanya, atlandı."
+                                "kampanya, işleniyor."
                             )
-
-                            continue
 
 
                         # --------------------------------------

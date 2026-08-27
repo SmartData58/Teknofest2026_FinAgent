@@ -366,7 +366,7 @@ onUnmounted(() => {
                       <!-- Yollar canlı /openapi.json ile doğrulandı.
                            Önceki liste /api/campaigns/compare diyordu; kampanya
                            router'ında prefix YOK, gerçek yol /campaigns/compare. -->
-                      <span class="text-xs font-mono text-white/80">/api/chat, /api/analiz-koprusu, /campaigns/compare, /campaigns/top-advantageous, /finansman, /katilim-hesap, /banks, /admin/reindex, /health</span>
+                      <span class="text-xs font-mono text-white/80">/api/chat, /api/analiz-koprusu, /campaigns/compare, /campaigns/top-advantageous, /finansman, /katilim-hesap, /banks, /taxonomy, /admin/reindex, /health</span>
                     </div>
                   </div>
                 </div>

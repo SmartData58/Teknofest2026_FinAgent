@@ -1,5 +1,5 @@
 <template>
-  <div class="p-6 md:p-8 space-y-8 w-full max-w-[1400px] mx-auto min-h-full">
+  <div class="p-4 sm:p-6 lg:p-8 space-y-6 lg:space-y-8 w-full max-w-[1600px] mx-auto min-h-full">
 
     <!-- ================= ORTALANMIŞ BAŞLIK ================= -->
     <div class="flex flex-col items-center text-center gap-3">
@@ -51,7 +51,7 @@
                 :key="val"
                 class="chip inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-cyan-500 text-white shadow-sm"
               >
-                {{ val }}
+                {{ getFilterOptionLabel(def.key, val) }}
                 <span @click.stop="toggleValue(def.key, val)" class="hover:text-cyan-100 cursor-pointer leading-none">✕</span>
               </span>
               <input
@@ -78,8 +78,10 @@
                     @change="toggleValue(def.key, opt)"
                     class="w-4 h-4 rounded border-neutral-300 text-cyan-600 focus:ring-cyan-500 dark:border-neutral-600 dark:bg-neutral-800"
                   >
-                  <img v-if="def.key === 'banka'" :src="getBankaLogo(opt)" class="w-4 h-4 object-contain shrink-0" @error="(e) => e.target.style.display = 'none'" />
-                  <span class="text-neutral-700 dark:text-neutral-200">{{ def.key === 'banka' ? getBankaAd(opt) : opt }}</span>
+                  <div v-if="def.key === 'banka'" class="w-5 h-5 rounded-md bg-white p-0.5 flex items-center justify-center shrink-0 border border-neutral-200/60 dark:border-white/20 shadow-2xs">
+                    <img :src="getBankaLogo(opt)" class="w-full h-full object-contain" @error="(e) => e.target.style.display = 'none'" />
+                  </div>
+                  <span class="text-neutral-700 dark:text-neutral-200">{{ getFilterOptionLabel(def.key, opt) }}</span>
                 </label>
                 <div v-if="filteredOptions(def).length === 0" class="px-3 py-2 text-xs text-neutral-400 italic">{{ $t('campaigns.no_search_results', 'Sonuç bulunamadı') }}</div>
               </div>
@@ -123,18 +125,22 @@
         </span>
       </div>
 
-      <div class="overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar rounded-b-2xl relative" data-lenis-prevent="true">
-        <table class="w-full text-left border-collapse whitespace-nowrap min-w-max">
+      <div class="overflow-y-auto max-h-[580px] custom-scrollbar rounded-b-2xl relative" data-lenis-prevent="true">
+        <table class="w-full text-left border-collapse table-fixed">
           
           <thead class="sticky top-0 z-10 bg-neutral-100/95 dark:bg-neutral-900/95 backdrop-blur-md shadow-sm">
             <tr class="text-xs uppercase text-neutral-500 dark:text-neutral-400">
               <th v-for="col in columns" :key="col.key"
                   @click="col.sortable && setSort(col.key)"
-                  class="p-4 font-semibold border-b border-neutral-200/50 dark:border-neutral-700/50 select-none"
-                  :class="col.sortable ? 'cursor-pointer hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors' : ''">
-                <span class="inline-flex items-center gap-1">
-                  {{ col.label }}
-                  <span v-if="col.sortable" class="text-[10px]" :class="sortKey === col.key ? 'text-cyan-500' : 'text-neutral-300 dark:text-neutral-600'">
+                  class="px-2.5 py-3 font-semibold border-b border-neutral-200/50 dark:border-neutral-700/50 select-none"
+                  :class="[
+                    col.width || '',
+                    col.sortable ? 'cursor-pointer hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors' : '',
+                    col.align === 'center' ? 'text-center' : 'text-left'
+                  ]">
+                <span class="inline-flex items-center gap-1" :class="col.align === 'center' ? 'justify-center' : ''">
+                  <span class="truncate">{{ col.label }}</span>
+                  <span v-if="col.sortable" class="text-[10px] shrink-0" :class="sortKey === col.key ? 'text-cyan-500' : 'text-neutral-300 dark:text-neutral-600'">
                     {{ sortKey === col.key ? (sortDir === 'asc' ? '▲' : '▼') : '↕' }}
                   </span>
                 </span>
@@ -146,8 +152,8 @@
 
             <template v-if="pending">
               <tr v-for="i in 10" :key="`skel-row-${i}`">
-                <td v-for="col in columns" :key="`skel-col-${col.key}`" class="p-4">
-                  <div class="h-4 bg-neutral-200 dark:bg-neutral-700 rounded shimmer" :class="c === 2 ? 'w-48' : 'w-16'"></div>
+                <td v-for="col in columns" :key="`skel-col-${col.key}`" class="px-2.5 py-3">
+                  <div class="h-4 bg-neutral-200 dark:bg-neutral-700 rounded shimmer" :class="col.key === 'baslik' ? 'w-48' : 'w-16'"></div>
                 </td>
               </tr>
             </template>
@@ -170,26 +176,32 @@
                   ]"
                   class="row-anim hover:bg-cyan-50/50 dark:hover:bg-cyan-900/20 transition-all duration-300 cursor-pointer">
                 
-                <td v-if="isColumnVisible('banka')" class="p-4 font-medium text-neutral-800 dark:text-neutral-200">
-                  <div class="flex items-center gap-2.5">
-                    <div class="w-7 h-7 rounded-lg bg-neutral-100 dark:bg-neutral-800 p-1 flex items-center justify-center shrink-0 border border-neutral-200/60 dark:border-neutral-700/60 shadow-2xs">
+                <td v-if="isColumnVisible('banka')" class="px-2.5 py-2.5 font-medium text-neutral-800 dark:text-neutral-200">
+                  <div class="flex items-center gap-1.5 min-w-0">
+                    <div class="w-5 h-5 rounded-md bg-white p-0.5 flex items-center justify-center shrink-0 border border-neutral-200/60 dark:border-white/20 shadow-2xs">
                       <img :src="getBankaLogo(camp.banka)" :alt="getBankaAd(camp.banka)" class="w-full h-full object-contain" @error="(e) => e.target.style.display = 'none'" />
                     </div>
-                    <span class="font-semibold whitespace-nowrap">{{ getBankaAd(camp.banka) }}</span>
+                    <span class="font-semibold text-xs truncate" :title="getBankaAd(camp.banka)">{{ getBankaAd(camp.banka) }}</span>
                   </div>
                 </td>
-                <td v-if="isColumnVisible('baslik')" class="p-4 text-neutral-600 dark:text-neutral-300 truncate max-w-xs">{{ camp.baslik }}</td>
+                <td v-if="isColumnVisible('baslik')" class="px-2.5 py-2.5 text-xs text-neutral-700 dark:text-neutral-300">
+                  <div class="truncate font-medium" :title="camp.baslik">{{ camp.baslik }}</div>
+                </td>
                 
-                <td v-if="isColumnVisible('tur')" class="p-4"><span class="px-2 py-0.5 rounded-md text-xs font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300">{{ formatVal(camp.tur) }}</span></td>
+                <td v-if="isColumnVisible('tur')" class="px-1.5 py-2.5 text-center">
+                  <span class="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 truncate inline-block max-w-full" :title="formatTur(camp.tur)">{{ formatTur(camp.tur) }}</span>
+                </td>
                 
-                <td v-if="isColumnVisible('karPayi')" class="p-4 text-neutral-600 dark:text-neutral-300" :class="{'text-neutral-300 dark:text-neutral-600 italic': !isValidVal(camp.karPayi)}">{{ formatVal(camp.karPayi) }}</td>
-                <td v-if="isColumnVisible('vade')" class="p-4 text-neutral-600 dark:text-neutral-300" :class="{'text-neutral-300 dark:text-neutral-600 italic': !isValidVal(camp.vade)}">{{ formatVal(camp.vade) }}</td>
-                <td v-if="isColumnVisible('taksit')" class="p-4 text-neutral-600 dark:text-neutral-300" :class="{'text-neutral-300 dark:text-neutral-600 italic': !isValidVal(camp.taksit)}">{{ formatVal(camp.taksit) }}</td>
+                <td v-if="isColumnVisible('karPayi')" class="px-1.5 py-2.5 text-center text-xs text-neutral-600 dark:text-neutral-300" :class="{'text-neutral-300 dark:text-neutral-600 italic': !isValidVal(camp.karPayi)}">{{ formatVal(camp.karPayi) }}</td>
+                <td v-if="isColumnVisible('vade')" class="px-1.5 py-2.5 text-center text-xs text-neutral-600 dark:text-neutral-300" :class="{'text-neutral-300 dark:text-neutral-600 italic': !isValidVal(camp.vade)}">{{ formatVal(camp.vade) }}</td>
+                <td v-if="isColumnVisible('taksit')" class="px-1.5 py-2.5 text-center text-xs text-neutral-600 dark:text-neutral-300" :class="{'text-neutral-300 dark:text-neutral-600 italic': !isValidVal(camp.taksit)}">{{ formatVal(camp.taksit) }}</td>
                 
-                <td v-if="isColumnVisible('odul')" class="p-4 font-medium" :class="isValidVal(camp.odul) ? 'text-emerald-600 dark:text-emerald-400' : 'text-neutral-300 dark:text-neutral-600 italic'">{{ isValidVal(camp.odul) ? Number(camp.odul).toLocaleString('tr-TR') : '-' }}</td>
+                <td v-if="isColumnVisible('odul')" class="px-1.5 py-2.5 text-center text-xs font-bold" :class="isValidVal(camp.odul) ? 'text-emerald-600 dark:text-emerald-400' : 'text-neutral-300 dark:text-neutral-600 italic'">{{ isValidVal(camp.odul) ? Number(camp.odul).toLocaleString('tr-TR') : '-' }}</td>
                 
-                <td v-if="isColumnVisible('bitisTarihi')" class="p-4 text-neutral-600 dark:text-neutral-300">{{ formatVal(camp.bitisTarihi) }}</td>
-                <td v-if="isColumnVisible('hedefKitle')" class="p-4 text-neutral-600 dark:text-neutral-300">{{ formatVal(camp.hedefKitle) }}</td>
+                <td v-if="isColumnVisible('bitisTarihi')" class="px-1.5 py-2.5 text-center text-xs text-neutral-600 dark:text-neutral-300 font-mono">{{ formatTarih(camp.bitisTarihi) }}</td>
+                <td v-if="isColumnVisible('hedefKitle')" class="px-2 py-2.5 text-xs text-neutral-600 dark:text-neutral-300">
+                  <div class="truncate" :title="formatHedefKitle(camp.hedefKitle)">{{ formatHedefKitle(camp.hedefKitle) }}</div>
+                </td>
               </tr>
             </template>
           </tbody>
@@ -208,15 +220,18 @@
         </p>
       </div>
 
-      <div class="bg-white/80 dark:bg-neutral-800/60 backdrop-blur-md border border-neutral-200/50 dark:border-neutral-700/50 rounded-2xl shadow-sm p-6 space-y-6">
-
-        <div class="flex flex-col gap-2 relative">
-          <label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase">{{ $t('campaigns.inspected_campaign', 'İncelenen Kampanya') }}</label>
-
+      <!-- Kampanya Seçici Kartı -->
+      <div class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md p-4 rounded-xl border border-neutral-200/60 dark:border-neutral-700/60 shadow-sm relative z-30">
+        <label class="block text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2">
+          {{ $t('campaigns.select_campaign_label', 'İncelenecek Kampanyayı Seçin') }}
+        </label>
+        
+        <!-- Özel Seçim Açılır Menüsü -->
+        <div class="relative">
           <button
             type="button"
             @click="campaignSelectOpen = !campaignSelectOpen"
-            class="w-full bg-neutral-50 dark:bg-neutral-900 border rounded-lg px-4 py-3 text-sm text-left flex items-center justify-between gap-2 transition-all focus:outline-none"
+            class="w-full bg-neutral-50 dark:bg-neutral-900 border rounded-lg px-4 py-3 text-left text-sm flex items-center justify-between transition-all"
             :class="campaignSelectOpen ? 'border-cyan-500 ring-2 ring-cyan-500/30' : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600'"
           >
             <span :class="selectedCampaignId ? 'text-neutral-800 dark:text-neutral-200' : 'text-neutral-400'">{{ selectedCampaignLabel }}</span>
@@ -238,7 +253,9 @@
                 class="w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2.5"
                 :class="selectedCampaignId === c.id ? 'bg-cyan-50 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 font-medium' : 'text-neutral-700 dark:text-neutral-200 hover:bg-cyan-50 dark:hover:bg-cyan-900/20'"
               >
-                <img :src="getBankaLogo(c.banka)" class="w-4 h-4 object-contain shrink-0" @error="(e) => e.target.style.display = 'none'" />
+                <div class="w-5 h-5 rounded-md bg-white p-0.5 flex items-center justify-center shrink-0 border border-neutral-200/60 dark:border-white/20 shadow-2xs">
+                  <img :src="getBankaLogo(c.banka)" class="w-full h-full object-contain" @error="(e) => e.target.style.display = 'none'" />
+                </div>
                 <span class="truncate">{{ getBankaAd(c.banka) }} — {{ c.baslik }}</span>
               </button>
             </div>
@@ -324,8 +341,18 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Lenis from 'lenis'
+import { useTaxonomy } from '~/composables/useTaxonomy'
 
 const { t } = useI18n()
+const { formatTur, formatHedefKitle, formatKategori } = useTaxonomy()
+
+const getFilterOptionLabel = (key, opt) => {
+  if (!opt) return '-'
+  if (key === 'banka') return getBankaAd(opt)
+  if (key === 'tur') return formatTur(opt)
+  if (key === 'kitle') return formatHedefKitle(opt)
+  return opt
+}
 
 useHead({
   title: computed(() => t('page_titles.campaigns', 'Tüm Kampanyalar'))
@@ -333,6 +360,19 @@ useHead({
 
 const isValidVal = (val) => val !== null && val !== undefined && val !== '' && val !== 'None'
 const formatVal = (val) => isValidVal(val) ? val : '-'
+const formatTarih = (val) => {
+  if (!isValidVal(val)) return '-'
+  try {
+    const d = new Date(val)
+    if (isNaN(d.getTime())) return String(val).replace(/T.*$/, '')
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const year = d.getFullYear()
+    return `${day}.${month}.${year}`
+  } catch {
+    return String(val).replace(/T.*$/, '')
+  }
+}
 
 const pending = ref(true)
 const pendingEvidences = ref(false)
@@ -391,23 +431,23 @@ const columns = computed(() => {
   }
 
   const cols = [
-    { key: 'banka', label: t('campaigns.columns.banka', 'Banka'), sortable: true },
-    { key: 'baslik', label: t('campaigns.columns.kampanya', 'Kampanya'), sortable: true },
-    { key: 'tur', label: t('campaigns.columns.tur', 'Tür'), sortable: true }
+    { key: 'banka', label: t('campaigns.columns.banka', 'Banka'), sortable: true, align: 'left', width: 'w-[15%]' },
+    { key: 'baslik', label: t('campaigns.columns.kampanya', 'Kampanya'), sortable: true, align: 'left', width: hideFinansman && hideOdul ? 'w-[45%]' : hideFinansman ? 'w-[36%]' : hideOdul ? 'w-[32%]' : 'w-[27%]' },
+    { key: 'tur', label: t('campaigns.columns.tur', 'Tür'), sortable: true, align: 'center', width: 'w-[8%]' }
   ]
   
   if (!hideFinansman) {
-    cols.push({ key: 'karPayi', label: t('campaigns.columns.karPayi', 'Kâr Payı (%)'), sortable: true })
-    cols.push({ key: 'vade', label: t('campaigns.columns.vade', 'Vade (ay)'), sortable: true })
-    cols.push({ key: 'taksit', label: t('campaigns.columns.taksit', 'Taksit'), sortable: true })
+    cols.push({ key: 'karPayi', label: t('campaigns.columns.karPayi', 'Kâr Payı (%)'), sortable: true, align: 'center', width: 'w-[9%]' })
+    cols.push({ key: 'vade', label: t('campaigns.columns.vade', 'Vade (ay)'), sortable: true, align: 'center', width: 'w-[7%]' })
+    cols.push({ key: 'taksit', label: t('campaigns.columns.taksit', 'Taksit'), sortable: true, align: 'center', width: 'w-[7%]' })
   }
   
   if (!hideOdul) {
-    cols.push({ key: 'odul', label: t('campaigns.columns.odul', 'Ödül (TL)'), sortable: true })
+    cols.push({ key: 'odul', label: t('campaigns.columns.odul', 'Ödül (TL)'), sortable: true, align: 'center', width: 'w-[8%]' })
   }
   
-  cols.push({ key: 'bitisTarihi', label: t('campaigns.columns.bitisTarihi', 'Bitiş'), sortable: true })
-  cols.push({ key: 'hedefKitle', label: t('campaigns.columns.hedefKitle', 'Hedef Kitle'), sortable: true })
+  cols.push({ key: 'bitisTarihi', label: t('campaigns.columns.bitisTarihi', 'Bitiş'), sortable: true, align: 'center', width: 'w-[9%]' })
+  cols.push({ key: 'hedefKitle', label: t('campaigns.columns.hedefKitle', 'Hedef Kitle'), sortable: true, align: 'left', width: 'w-[10%]' })
   
   return cols
 })
@@ -452,7 +492,11 @@ const focusFilter = (key) => {
 const filteredOptions = (def) => {
   const q = (filterQuery.value[def.key] || '').trim().toLocaleLowerCase('tr')
   if (!q) return def.options
-  return def.options.filter(o => o.toLocaleLowerCase('tr').includes(q))
+  return def.options.filter(o => {
+    const rawMatch = String(o).toLocaleLowerCase('tr').includes(q)
+    const labelMatch = String(getFilterOptionLabel(def.key, o)).toLocaleLowerCase('tr').includes(q)
+    return rawMatch || labelMatch
+  })
 }
 
 const onFilterBackspace = (key) => {
@@ -554,7 +598,15 @@ const fetchCampaigns = async () => {
 
     filterOptions.value.bankalar = [...new Set(campaigns.value.map(c => c.banka).filter(isValidVal))]
     filterOptions.value.turler = [...new Set(campaigns.value.map(c => c.tur).filter(isValidVal))]
-    filterOptions.value.kitleler = [...new Set(campaigns.value.map(c => c.hedefKitle).filter(isValidVal))]
+    
+    const allKitleTokens = campaigns.value.flatMap(c => {
+      const raw = c.hedefKitle
+      if (!raw) return []
+      if (Array.isArray(raw)) return raw
+      return String(raw).split(',').map(s => s.trim())
+    }).filter(k => k && k !== '-' && k.toLowerCase() !== 'segment' && k.toLowerCase() !== 'segment_esnaf' && isValidVal(k))
+
+    filterOptions.value.kitleler = [...new Set(allKitleTokens)]
 
   } catch (err) {
     console.error("Kampanyalar API'den çekilemedi:", err)
@@ -601,7 +653,10 @@ const filteredCampaigns = computed(() => {
   return campaigns.value.filter(camp => {
     const matchBanka = filters.value.banka.length === 0 || filters.value.banka.includes(camp.banka)
     const matchTur = filters.value.tur.length === 0 || filters.value.tur.includes(camp.tur)
-    const matchKitle = filters.value.kitle.length === 0 || filters.value.kitle.includes(camp.hedefKitle)
+    const matchKitle = filters.value.kitle.length === 0 || filters.value.kitle.some(k => {
+      const campKitle = String(camp.hedefKitle || '').toLowerCase()
+      return campKitle.includes(String(k).toLowerCase())
+    })
     
     // 🚀 TOKAT: Sadece null olmayanları değil, aynı zamanda 0'dan BÜYÜK olanları alıyoruz!
     const matchOran = !filters.value.sadeceOranli || (isValidVal(camp.karPayi) && parseFloat(camp.karPayi) > 0)

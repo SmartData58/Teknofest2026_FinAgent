@@ -6,21 +6,21 @@
     "dashboard": "Pazar Analizi",
     "comparison": "Karşılaştırma",
     "campaigns": "Tüm Kampanyalar",
-    "financing": "Finansman Oranları",
-    "katilim_hesap": "Katılım Hesapları"
+    "financing": "Finansman Karşılaştırmaları",
+    "katilim_hesap": "Katılım Hesabı Karşılaştırmaları"
   },
   "menu": {
     "home": "Ana Sayfa",
     "dashboard": "Pazar Analizi",
     "comparison": "Karşılaştırma",
-    "financing": "Finansman Oranları",
-    "katilim_hesap": "Katılım Hesapları",
+    "financing": "Finansman Karşılaştırmaları",
+    "katilim_hesap": "Katılım Hesabı Karşılaştırmaları",
     "campaigns": "Tüm Kampanyalar",
     "chat": "AI Asistan",
     "customer_view": "Ana Sayfa",
     "banks_markets": "Pazar Analizi",
     "campaigns_list": "Karşılaştırma",
-    "financing_rates": "Finansman Oranları",
+    "financing_rates": "Finansman Karşılaştırmaları",
     "data_validation": "Tüm Kampanyalar",
     "ai_assistant": "AI Asistan"
   },
@@ -330,7 +330,7 @@
   },
   "dashboard": {
     "title_customer": "Pazar Analizi",
-    "title_banker": "Pazar Analizi",
+    "title_banker": "Kıyaslama",
     "subtitle_customer": "Tüm katılım bankalarındaki en güncel ve size en uygun oranları karşılaştırın.",
     "subtitle_banker": "Katılım bankacılığı sektöründeki kampanya hareketlerini ve pazar rekabetini takip edin.",
     "banker_badge": "Banka Çalışanı",
@@ -384,16 +384,16 @@
     "ai_bridge_down": "Analiz servisine ulaşılamadı, lütfen tekrar deneyin."
   },
   "financing": {
-    "title": "Finansman Oranları",
+    "title": "Finansman Karşılaştırmaları",
     "subtitle": "Katılım bankalarının güncel kâr payı oranları, taksit tutarları ve toplam geri ödeme maliyetlerini karşılaştırın.",
     "all_categories": "Tüm Kategoriler",
     "ihtiyac": "İhtiyaç Finansmanı",
     "konut": "Konut Finansmanı",
     "tasit": "Taşıt Finansmanı",
-    "filter_bank": "Banka Filtresi",
-    "filter_tier": "Tier Filtresi",
+    "filter_bank": "Banka",
+    "filter_tier": "Tier",
     "filter_amount": "Finansman Tutarı",
-    "filter_term": "Vade Süresi",
+    "filter_term": "Vade",
     "all_banks": "Tüm Bankalar",
     "all_amounts": "Tüm Tutarlar",
     "all_terms": "Tüm Vadeler",
@@ -445,7 +445,7 @@
     "badge_min_total": "En Düşük Toplam"
   },
   "katilim_hesap": {
-    "title": "Katılım Hesapları",
+    "title": "Katılım Hesabı Karşılaştırmaları",
     "subtitle": "Katılım bankalarının güncel kâr payı dağıtım oranları, brüt/net getiri tutarları ve vade sonu birikimlerini karşılaştırın.",
     "stat_max_net_rate": "En Yüksek Net Kâr Oranı",
     "stat_max_net_profit": "En Yüksek Net Getiri",
@@ -461,10 +461,10 @@
     "clear_filters": "Temizle",
     "grid_view": "Kart Görünümü",
     "table_view": "Tablo Görünümü",
-    "filter_bank": "Banka Filtresi",
-    "filter_tier": "Tier Filtresi",
+    "filter_bank": "Banka",
+    "filter_tier": "Tier",
     "filter_amount": "Yatırılan Tutar",
-    "filter_term": "Vade Süresi",
+    "filter_term": "Vade",
     "filter_sort": "Sıralama",
     "sort_net_rate_desc": "Net Kâr Oranı (En Yüksek)",
     "sort_net_rate_asc": "Net Kâr Oranı (En Düşük)",
@@ -507,5 +507,53 @@
     "badge_max_net_rate": "En Yüksek Net Oran",
     "badge_max_net_profit": "En Yüksek Getiri",
     "badge_max_gross_rate": "En Yüksek Brüt Oran"
+  },
+  "taxonomy": {
+    "turler": {
+      "kart_kampanyasi": "Kart",
+      "yatirim_urunu": "Yatırım",
+      "alisveris_kampanyasi": "Alışveriş",
+      "alisveris_kampanyası": "Alışveriş",
+      "finansman_diger": "Finansman",
+      "tasit_finansmani": "Taşıt",
+      "ihtiyac_finansmani": "İhtiyaç",
+      "konut_finansmani": "Konut",
+      "yeni_musteri": "Yeni Müşteri",
+      "mgm_kampanyasi": "MGM / Davet",
+      "dijital": "Dijital",
+      "kobi_ticari": "KOBİ & Ticari",
+      "odeme": "Ödeme",
+      "sigorta": "Sigorta",
+      "genel": "Genel",
+      "diger": "Diğer"
+    },
+    "hedef_kitleler": {
+      "mevcut_musteri": "Mevcut",
+      "yeni_musteri": "Yeni Müşteri",
+      "maas_musterisi": "Maaş",
+      "tum_musteriler": "Tüm",
+      "bireysel": "Bireysel",
+      "kobi": "KOBİ",
+      "ticari": "Ticari",
+      "genc": "Genç",
+      "emekli": "Emekli",
+      "ozel": "Özel"
+    },
+    "kategoriler": {
+      "alisveris": "Alışveriş",
+      "kart": "Kart",
+      "finansman": "Finansman",
+      "ihtiyac": "İhtiyaç",
+      "tasit": "Taşıt",
+      "konut": "Konut",
+      "yatirim": "Yatırım",
+      "mgm": "MGM / Davet",
+      "dijital": "Dijital",
+      "odeme": "Ödeme",
+      "seyahat": "Seyahat",
+      "pos": "POS",
+      "sigorta": "Sigorta",
+      "diger": "Diğer"
+    }
   }
 }
