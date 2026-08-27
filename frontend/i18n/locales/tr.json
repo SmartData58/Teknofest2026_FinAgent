@@ -2,19 +2,25 @@
   "brand": "FinAgent",
   "page_titles": {
     "home": "Katılım Bankacılığı Kampanya & Finansman Asistanı",
-    "chat": "Yapay Zeka Asistanı",
-    "dashboard": "Sektörel Pazar Analizi & Dashboard",
-    "comparison": "Kampanya & Banka Karşılaştırma",
-    "campaigns": "Katılım Bankacılığı Kampanyaları",
-    "financing": "Katılım Finansman Kâr Oranları"
+    "chat": "FinAgent AI Asistan · Yapay Zeka Sohbeti",
+    "dashboard": "Pazar & Rekabet Analizi · Sektörel Dashboard",
+    "comparison": "Kampanya Karşılaştırma · Karşılaştırma Matrisi",
+    "campaigns": "Tüm Kampanyalar & Veri Doğrulama",
+    "financing": "Katılım Finansman Oranları"
   },
   "menu": {
+    "home": "Ana Sayfa",
+    "dashboard": "Pazar & Rekabet Analizi",
+    "comparison": "Kampanya Karşılaştırma",
+    "financing": "Finansman Oranları",
+    "campaigns": "Tüm Kampanyalar & Veri Doğrulama",
+    "chat": "FinAgent AI Asistan",
     "customer_view": "Ana Sayfa",
-    "banks_markets": "Bankalar & Pazarlar",
-    "campaigns_list": "Kampanyalar",
+    "banks_markets": "Pazar & Rekabet Analizi",
+    "campaigns_list": "Kampanya Karşılaştırma",
     "financing_rates": "Finansman Oranları",
-    "data_validation": "Veri Doğrulama",
-    "ai_assistant": "AI Asistan (Bot)"
+    "data_validation": "Tüm Kampanyalar & Veri Doğrulama",
+    "ai_assistant": "FinAgent AI Asistan"
   },
   "header": {
     "menu": "Menü",
@@ -370,7 +376,10 @@
     "sub_breakdowns": "Alt Kırılımlar",
     "collapse": "Daralt",
     "detail": "Detay",
-    "unlimited": "Sınırsız"
+    "unlimited": "Sınırsız",
+    "ai_verifying": "Veriler doğrulanıyor...",
+    "ai_error": "Analiz isteği doğrulanamadı.",
+    "ai_bridge_down": "Analiz servisine ulaşılamadı, lütfen tekrar deneyin."
   },
   "financing": {
     "title": "Katılım Finansman Oranları",

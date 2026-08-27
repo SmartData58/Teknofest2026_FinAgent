@@ -2,19 +2,25 @@
   "brand": "FinAgent",
   "page_titles": {
     "home": "Participation Banking Campaign & Financing Assistant",
-    "chat": "AI Assistant",
-    "dashboard": "Sectoral Market Analysis & Dashboard",
-    "comparison": "Campaign & Bank Comparison",
-    "campaigns": "Participation Banking Campaigns",
-    "financing": "Participation Financing Profit Rates"
+    "chat": "FinAgent AI Assistant · Conversational AI",
+    "dashboard": "Market & Competitive Analysis · Sector Dashboard",
+    "comparison": "Campaign Comparison · Comparison Matrix",
+    "campaigns": "All Campaigns & Data Validation",
+    "financing": "Participation Financing Rates"
   },
   "menu": {
-    "customer_view": "Main Page",
-    "banks_markets": "Banks & Markets",
-    "campaigns_list": "Campaigns",
+    "home": "Home",
+    "dashboard": "Market & Competitive Analysis",
+    "comparison": "Campaign Comparison",
+    "financing": "Financing Rates",
+    "campaigns": "All Campaigns & Data Validation",
+    "chat": "FinAgent AI Assistant",
+    "customer_view": "Home",
+    "banks_markets": "Market & Competitive Analysis",
+    "campaigns_list": "Campaign Comparison",
     "financing_rates": "Financing Rates",
-    "data_validation": "Data Validation",
-    "ai_assistant": "AI Assistant (Bot)"
+    "data_validation": "All Campaigns & Data Validation",
+    "ai_assistant": "FinAgent AI Assistant"
   },
   "header": {
     "menu": "Menu",
@@ -370,7 +376,10 @@
     "sub_breakdowns": "Sub Breakdowns",
     "collapse": "Collapse",
     "detail": "Detail",
-    "unlimited": "Unlimited"
+    "unlimited": "Unlimited",
+    "ai_verifying": "Verifying data...",
+    "ai_error": "The analysis request could not be verified.",
+    "ai_bridge_down": "Could not reach the analysis service, please try again."
   },
   "financing": {
     "title": "Participation Financing Rates",

@@ -159,6 +159,30 @@ for kod, takmalar in BANKA_TAKMA_ADLARI.items():
         pattern = re.compile(rf"\b{re.escape(takma)}[\w']*", re.IGNORECASE)
         _BANKA_PATTERNS.append((kod, pattern))
 
+# 🆕 KISALTMALAR — takma ad listesinden AYRI tutuluyor.
+#
+# 500'lük koşuda üç senaryo aynı sebepten düştü:
+#     "KT'nin kampanyalarını listele" / "kt kampanyalari nelerdir" /
+#     "show KT campaigns"
+# Hiçbirinde banka tespit EDİLEMEDİ; banka filtresi hiç uygulanmadı ve
+# kullanıcı Kuveyt Türk isterken 311 kaydın tamamından 50 satırlık bir tablo
+# aldı (tabloda Albaraka Türk de vardı).
+#
+# Neden yukarıdaki listeye eklenemez: orada her takma ad `\b{ad}[\w']*`
+# kalıbına çevriliyor. "kt" için bu `\bkt[\w']*` olurdu ve "kt" ile BAŞLAYAN
+# her kelimeye yapışırdı. Kısaltmalar TAM TOKEN olarak eşleşmeli; ek gelirse
+# yalnızca kesme işaretiyle gelir ("KT'nin", "KT'ye").
+_BANKA_KISALTMALARI: dict[str, tuple[str, ...]] = {
+    "kuveytturk": ("kt", "kvt"),
+    "turkiye_finans": ("tf",),
+}
+for _kod, _kisaltmalar in _BANKA_KISALTMALARI.items():
+    for _kisa in _kisaltmalar:
+        _BANKA_PATTERNS.append((
+            _kod,
+            re.compile(rf"\b{re.escape(_kisa)}(?:['’]\w+)?\b", re.IGNORECASE),
+        ))
+
 # -----------------------------------------------------------------------------
 # 3. KALIP YARDIMCILARI
 # -----------------------------------------------------------------------------
@@ -301,7 +325,19 @@ ACIKLAYICI_SORU = re.compile(
     r"|\bbitince\b|\bbitti[ğg]inde\b|\bsonra\s+ne\s+ol\w*"
     r"|\bfark[ıi]\s+nedir\b|\baras[ıi]ndaki\s+fark\w*"
     r"|\bwhat\s+(is|are|does)\s+\w+\s+mean\b|\bwhat\s+do\s+you\s+mean\b"
-    r"|\bin\s+your\s+opinion\b|\bdo\s+you\s+think\b|\bwhat\s+is\s+the\s+difference\b",
+    r"|\bin\s+your\s+opinion\b|\bdo\s+you\s+think\b|\bwhat\s+is\s+the\s+difference\b"
+    # 🛠️ 500'lük koşuda EKLENDİ — İNGİLİZCE TANIM SORUSU.
+    #     "what is profit rate in participation banking"
+    # Türkçesi ("kâr payı nedir") \bnedir\b ile zaten yakalanıyordu, İngilizcesi
+    # HİÇBİR kalıba uymuyordu: soru VERI_SORUSU'na ("rate", "profit") düşüp
+    # tablo üretiyordu. Kullanıcı bir TANIM istedi, veri listesi değil.
+    #
+    # "what is/are ..." tek başına alınamaz: "what is the highest reward" da aynı
+    # kalıba uyar ama o bir VERİ sorusudur. Ayrım, cümlede üstünlük/agrega
+    # kelimesi olup olmaması; negatif ileri-bakış onları dışarıda bırakıyor.
+    r"|\bwhat\s+(?:is|are)\s+"
+    r"(?![^?.!]*\b(?:highest|lowest|best|worst|cheapest|top|most|least|largest|"
+    r"longest|shortest|biggest|maximum|minimum|total|average|sum|count)\b)",
     re.IGNORECASE,
 )
 
@@ -352,8 +388,8 @@ _KARSILASTIRMA_ALANLARI: tuple[tuple[str, re.Pattern], ...] = (
         r"|oran[ıi]?\s+en\s+düşük\w*"
         r"|(lowest|best|cheapest)\s+(profit\s+)?(rate|interest|margin)s?", re.IGNORECASE)),
     ("odul_miktari", re.compile(
-        r"en\s+(yüksek\w*|çok|fazla\w*|büyük\w*)\s+(ödül\w*|iade\w*|hediye\w*|nakit|parafpara|puan\w*)"
-        r"|(highest|biggest|largest|most)\s+(reward|cashback|bonus|gift|prize)s?", re.IGNORECASE)),
+        r"en\s+(yüksek\w*|çok|fazla\w*|büyük\w*)\s+(ödül\w*|iade\w*|hediye\w*|nakit|parafpara|puan\w*|kazan[çc]\w*)"
+        r"|(highest|biggest|largest|most)\s+(reward|cashback|bonus|gift|prize|earning)s?", re.IGNORECASE)),
     ("vade_ay", re.compile(
         r"en\s+(uzun\w*|yüksek\w*|fazla\w*)\s+vade\w*"
         r"|(longest|highest)\s+(maturity|term|tenor)s?", re.IGNORECASE)),
@@ -362,9 +398,14 @@ _KARSILASTIRMA_ALANLARI: tuple[tuple[str, re.Pattern], ...] = (
         r"|(most|highest)\s+installments?", re.IGNORECASE)),
 )
 
+# 🛠️ "Dünya Katılım'da hangi FIRSATLAR var" 500'lük koşuda hiç tablo almadı:
+# kalıp yalnızca "hangi KAMPANYA" diyordu. Kullanıcı aynı şeyi "fırsat",
+# "seçenek", "imkân" diye de soruyor. Genel "hangi <şey> var" kalıbı eklendi.
 _LISTE = re.compile(
     _kok("kampanyalar", "listele", "liste", "göster", "goster", "campaign", "list", "show") +
-    r"|hangi\s+kampanya\w*|neler\s+var|what\s+campaigns?|which\s+campaigns?",
+    r"|hangi\s+kampanya\w*|neler\s+var|nelerdir\b|hangi\s+\w+\s+var\b"
+    r"|\bf[ıi]rsat\w*|\bse[çc]enek\w*|\bimk[âa]n\w*"
+    r"|what\s+campaigns?|which\s+campaigns?|what.{0,12}available",
     re.IGNORECASE)
 
 # Taksit hesaplama sorularından tutar / vade / oran çıkarmak için kullanılır.
@@ -383,11 +424,57 @@ _ORAN_DESENI = re.compile(
 )
 
 _DEVAM = re.compile(
-    r"^\s*(peki|pekala|o\s+zaman|ya\s+\S)|\bpeki\b|\bayn[ıi](s[ıi])?\b|\bonun\b|\bbunun\b|\bşunun\b"
+    # 🛠️ EK SORUNU — `\bayn[ıi](s[ıi])?\b` "aynısıNI" kelimesini KAÇIRIYORDU:
+    # kök "aynısı" eşleşse bile sonundaki \b, ek yüzünden hiç oluşmuyor.
+    # Bildirilen etki: "Albaraka Türk için de AYNISINI yap" bir takip sorusu
+    # sayılmıyor, önceki turda çizilen tablo devralınmıyor ve kullanıcı hiç
+    # tablo göremiyordu. Kök artık `\w*` ile serbest bırakıldı.
+    r"^\s*(peki|pekala|o\s+zaman|ya\s+\S)|\bpeki\b|\bayn[ıi]\w*|\bonun\b|\bbunun\b|\bşunun\b"
     r"|\b(o|bu|şu)\s+(kampanya\w*|banka\w*|hesap\w*|plan\w*|oran\w*)|\bolsa(yd[ıi])?\b|\bolursa\b"
     r"|\bbir\s+de\b"
     r"|^\s*(and|what\s+about|how\s+about|then)\b|\bthat\s+(campaign|bank|offer)\b|\bthe\s+same\b",
     re.IGNORECASE)
+# 🆕 "ŞUNU DA EKLE" KALIBI — banka kümesini GENİŞLETİR (değiştirmez).
+#
+# 500'lük koşuda bulundu:
+#     1) "Kuveyt Türk kampanyalarını listele"  -> tablo geldi
+#     2) "Albaraka'yı da ekle"                 -> HİÇ tablo gelmedi
+# Kullanıcı iki bankayı YAN YANA görmek istiyor. Eski davranışta ikinci mesaj
+# ne devam sayılıyordu (çünkü _DEVAM'a uymuyor) ne de kendi başına bir liste
+# isteğiydi; sonuçta ne tablo çizildi ne de Kuveyt Türk korundu.
+_EKLEME = re.compile(
+    r"\b(?:de|da|ayr[ıi]ca|bir\s+de)\s+ekle\w*|\bekle\w*\s*[.!]?\s*$"
+    r"|\byan[ıi]na\s+ekle\w*|\bkat\s*$"
+    r"|\balso\s+(?:add|include)\b|\badd\s+\w+\s+(?:too|as\s+well)\b",
+    re.IGNORECASE)
+
+# 🆕 BANKA DÜZEYİNDE KIYAS SORUSU — yorum/açıklama filtresini EZER.
+#
+# 500'lük koşuda `kiyas` kategorisinde beş senaryo hiç tablo alamadı:
+#     "hangi bankanın kampanyaları daha avantajlı"
+#     "hangi banka en az avantaj sunuyor"
+#     "Albaraka Türk sektörde nerede duruyor"
+#     "kendi bankamız Emlak Katılım, rakiplere göre nasıl"
+# Hepsi ACIKLAYICI_SORU'ya takılıyor ("avantaj", "nasıl") ve gorsel=None
+# oluyor. Ama bunlar yorum sorusu DEĞİL: cevabı ancak bankaların verisini yan
+# yana koyarak verilebilir. Yorum çerçevesi veriyi gereksiz kılmaz.
+#
+# ⚠️ Kalıp BİLEREK dar: "rakiplerle kıyaslandığında hangi segmentlerde daha
+# yüksek getiri sağlıyor?" gibi gerçek yorum soruları DIŞARIDA kalmalı — o
+# yüzden "rakiplerle" değil yalnızca "rakiplere göre" eşleşiyor.
+BANKA_KIYAS_SORUSU = re.compile(
+    r"\bhangi\s+banka\w*"
+    # 🛠️ Araya kelime girebilir: "bankaları ÖDÜL TUTARINA GÖRE kıyasla".
+    # Bitişik yazım şartı, gerçek bir kıyas sorusunu 3 satırlık özete
+    # düşürüyordu (bkz. generate_response._BANKA_DUZEYINDE_KIYAS notu).
+    r"|\bbankalar[ıi]\s+(?:\S+\s+){0,4}(?:k[ıi]yasla|kar[şs][ıi]la[şs]t[ıi]r|s[ıi]rala)\w*"
+    r"|\bbankalar\s+aras[ıi]\w*|\bbankalara\s+g[öo]re\b"
+    r"|\bbankalar[ıi]n\s+\w*(?:da[ğg][ıi]l[ıi]m|kar[şs][ıi]la[şs]t[ıi]rma|tablo)"
+    r"|\bsekt[öo]rde\s+nerede\b|\bsekt[öo]rdeki\s+(?:yer|konum)\w*"
+    r"|\brakip\w*\s+g[öo]re\b|\brekabet\w*|\bkim\s+(?:daha\s+iyi|[öo]nde)\b"
+    r"|\bwhich\s+bank\w*|\bpeer\s+comparison\b|\bcompare\s+(?:the\s+)?banks?\b",
+    re.IGNORECASE)
+
 # 🛠️ "RAKİPLERLE KIYASLA" KALIBI — banka filtresini KAPATIR.
 # Analist "Ben Kuveyt Türk'te çalışıyorum, rakiplerimizin ödüllerini bizimkiyle
 # kıyasla" dediğinde eski kod banka filtresini 'kuveytturk'e kilitliyor ve
@@ -651,19 +738,44 @@ def hesaplama_parametreleri_cikar(soru: str):
 # "100.000 TL" sorusunda 100'ü limit sanıp tabloyu 2 ya da 100 satıra kırpıyordu.
 # Artık yüzdelerin, ondalıkların, para tutarlarının ve ay/yıl gibi birimlerin
 # parçası olan sayılar limit olarak KABUL EDİLMİYOR.
+# 🛠️ "BANKA" SAYISI, SATIR SAYISI DEĞİLDİR.
+# Dashboard'dan gelen "Seçili 4 bankanın her birini ele al" ifadesinde 4,
+# kaç satır gösterileceğini değil kaç banka seçildiğini anlatıyor; eski
+# kalıp bunu limit sanıp 4 bankalık kıyası 4 SATIRA kırpıyordu. Aynı tuzak
+# kullanıcının kendi yazdığı "3 bankayı karşılaştır" cümlesinde de vardı.
+# (Aynı gerekçeyle "tüm bankalar" da kapsam sayılıyor — bkz.
+# _TUMU_BANKA_KAPSAMI.)
 _LIMIT_SAYI_DESENI = re.compile(
     r'(?<![%\d.,])\b(\d{1,4})\b'
     r'(?![.,]?\d)'
-    r'(?!\s*(?:%|ay\w*|y[ıi]l\w*|month|year|tl|try|lira|₺))',
+    r'(?!\s*(?:%|ay\w*|y[ıi]l\w*|month|year|tl|try|lira|₺'
+    r'|banka\w*|bank\w*|adet\s+banka))',
     re.IGNORECASE,
 )
+
+
+# 🛠️ "TÜMÜ" NEYİ KAPSIYOR — satırları mı, bankaları mı?
+#
+# 500'lük koşuda ölçüldü: "peki tüm bankalarda durum ne" sorusuna 311 SATIRLIK
+# bir tablo geldi. Sebep: TUMU_ISTEGI cümledeki "tüm" kelimesini görüp
+# istenen_limit'i -1 ("hepsini listele") yapıyor. Oysa kullanıcı satır sayısı
+# değil KAPSAM belirtti: "tüm bankalar" = filtre yok demek, "her kampanyayı tek
+# tek göster" demek değil. Aradaki fark ekranda 311 satır ile 40 satır farkı.
+#
+# Bu kalıp yalnızca niceleyicinin BANKA'yı nitelediği hâlleri temizliyor;
+# "tüm kampanyaları listele" -1 olmaya devam ediyor.
+_TUMU_BANKA_KAPSAMI = re.compile(
+    r"\b(?:t[üu]m|b[üu]t[üu]n|her|hepsi)\s*(?:bir\s+)?banka\w*"
+    r"|\ball\s+(?:the\s+)?banks?\b|\bevery\s+bank\b|\bacross\s+(?:all\s+)?banks?\b",
+    re.IGNORECASE)
 
 
 def istenen_limit(soru: str) -> Optional[int]:
     """Kullanıcının açıkça istediği satır sayısını çıkarır.
     "150 tanesini göster" -> 150 | "tüm kampanyalar" -> -1 (tümü) | yoksa None.
     """
-    if TUMU_ISTEGI.search(soru):
+    # "tüm BANKALAR" bir kapsam ifadesidir, satır sayısı isteği değil.
+    if TUMU_ISTEGI.search(_TUMU_BANKA_KAPSAMI.sub(" ", soru or "")):
         return -1
     for m in _LIMIT_SAYI_DESENI.finditer(soru):
         deger = int(m.group(1))
@@ -731,6 +843,22 @@ def gorsel_karari(soru: str, aciklayici: bool = False, kod_sorusu: bool = False)
         return "tablo"
     if kod_sorusu:
         return None
+    # 🆕 BANKA DÜZEYİNDE KIYAS — açıklayıcı kontrolünden ÖNCE.
+    #
+    # 500'lük koşuda bu soru sınıfı İKİ ayrı yoldan tablosuz kalıyordu:
+    #   • "hangi bankanın kampanyaları daha avantajlı" -> ACIKLAYICI_SORU'ya
+    #     ("avantaj") takılıp None dönüyordu;
+    #   • "Albaraka Türk sektörde nerede duruyor"      -> hiçbir kalıba
+    #     uymadığı için None kalıp melez LLM katmanına düşüyordu, o da
+    #     çoğunlukla "görsel gerekmiyor" diyordu.
+    # İkisinin de cevabı tanım gereği bir KIYAS TABLOSUDUR; yorum metni zaten
+    # tablonun yanında üretiliyor. Bu yüzden kontrol ortak bir adım.
+    #
+    # ⚠️ Kalıp BİLEREK dar tutuldu: "rakiplerle kıyaslandığında hangi
+    # segmentlerde daha yüksek getiri sağlıyor?" gibi GERÇEK yorum soruları
+    # dışarıda kalmalı (bkz. BANKA_KIYAS_SORUSU notu).
+    if BANKA_KIYAS_SORUSU.search(soru):
+        return "tablo"
     if aciklayici:
         return None
     if SIRALAMA_ISTEGI.search(soru) or KARSILASTIRMA_ISTEGI.search(soru):
@@ -825,8 +953,15 @@ def gorsel_karari_tam(soru: str) -> Optional[str]:
 # =============================================================================
 _METRIK_ALANLARI: tuple = (
     ("odul_miktari", re.compile(
+        # 🛠️ "kazanç" EKLENDİ: "en yüksek KAZANÇ sağlayan kampanyalar" sorusunda
+        # metrik hiç tespit edilemiyor, tablo "Değer" sütununu birimsiz
+        # gösteriyordu (500'lük koşuda YANLIŞ METRİK olarak yakalandı).
+        # "getiri" BİLEREK yok: kâr payı oranı anlamında da kullanılıyor,
+        # eklemek onu ödül sütununa çekerdi.
         r"\b[öo]d[üu]l\w*|\bhediye\w*|\biade\w*|\bnakit\b|\bpuan\w*|\bikramiye\w*"
-        r"|\breward\w*|\bcashback\b|\bbonus\w*|\bprize\w*|\bgift\w*", re.IGNORECASE)),
+        r"|\bkazan[çc]\w*|\bkazan[ıi]m\w*"
+        r"|\breward\w*|\bcashback\b|\bbonus\w*|\bprize\w*|\bgift\w*"
+        r"|\bearning\w*|\bpayout\w*", re.IGNORECASE)),
     ("vade_ay", re.compile(
         r"\bvade\w*|\btaksit\w*|\bs[üu]re\w*|\bmaturity\w*|\bterm\w*|\binstallment\w*",
         re.IGNORECASE)),
@@ -952,6 +1087,20 @@ def niyet_bul(soru: str, gecmis: Sequence[Mesaj] = (), dil: str = "tr") -> Niyet
     # aşağıdaki filtreleme bu bayrağa bakarak devre dışı kalıyor.
     kiyas_genis = bool(RAKIP_KIYAS.search(soru))
 
+    # 🚨 ADI GEÇEN KÜME, "rakip/sektör" KELİMESİNDEN ÜSTÜNDÜR.
+    #
+    # `kiyas_genis` banka filtresini TAMAMEN kapatıyor. Amacı "biz Kuveyt
+    # Türk'üz, RAKİPLERLE kıyasla" durumu: tek banka adı geçer, kıyas için
+    # diğerleri de gerekir. Ama kullanıcı İKİ YA DA DAHA FAZLA bankayı ADIYLA
+    # saydıysa kıyas kümesini zaten kendisi tanımlamıştır; cümlede "sektör"
+    # ya da "rakip" geçmesi bu seçimi silmemeli.
+    #
+    # Ölçülen etki: dashboard'dan 2 banka seçilip gelen istekte cümlenin
+    # sonundaki "...sektördeki konumlarını yorumla" ifadesi filtreyi kapatıyor,
+    # tabloya 5 banka geliyordu — kullanıcı 2 banka işaretlemişken.
+    if kiyas_genis and len(banka_kodlari) > 1:
+        kiyas_genis = False
+
     if banka is None and bool(gecmis) and not _BANKA_SORGUSU.search(soru) and not kiyas_genis:
         for m in reversed(gecmis):
             if m.rol == "user":
@@ -991,14 +1140,64 @@ def niyet_bul(soru: str, gecmis: Sequence[Mesaj] = (), dil: str = "tr") -> Niyet
         GRAFIK_ISTEGI.search(soru) or TABLO_ISTEGI.search(soru))
     aciklayici = _ret or (bool(ACIKLAYICI_SORU.search(soru)) and not acik_gorsel_istegi)
 
+    # 🆕 BANKA EKLEME — "Albaraka'yı da ekle" kümeyi GENİŞLETİR.
+    # Yukarıdaki banka mirası yalnızca mevcut mesajda HİÇ banka geçmediğinde
+    # çalışıyor. "Albaraka'yı da ekle" cümlesinde banka GEÇİYOR, dolayısıyla
+    # miras devreye girmiyor ve önceki bankayı (Kuveyt Türk) sessizce
+    # düşürüyorduk — oysa kullanıcı "ekle" dedi, "değiştir" değil.
+    if banka_kodlari and gecmis and _EKLEME.search(soru) and not kiyas_genis:
+        for _m in reversed(gecmis):
+            if _m.rol != "user":
+                continue
+            _onceki = bankalari_bul(_m.icerik)
+            if _onceki:
+                _birlesik = list(dict.fromkeys(_onceki + banka_kodlari))
+                if len(_birlesik) > len(banka_kodlari):
+                    banka_kodlari = _birlesik
+                    banka = banka_kodlari[0]
+                break
+
     gorsel = gorsel_karari(soru, aciklayici=aciklayici, kod_sorusu=kod_sorusu)
+
+    # 🆕 GÖRSEL MİRASI — takip sorularında.
+    #
+    # 500'lük koşuda üç senaryo aynı sebepten hiç tablo alamadı:
+    #     "Albaraka Türk için de aynısını yap"
+    #     "Albaraka'yı da ekle"
+    #     "yanlış anladın, Albaraka demek istedim"
+    # Üçünde de önceki turda tablo çizilmişti. Bu mesajlarda "listele/tablo/
+    # göster" gibi bir kelime YOK; deterministik katman haklı olarak karar
+    # veremiyor, melez LLM ajanı da (geçmişi görmediği için) "görsel
+    # gerekmiyor" diyor. Oysa kullanıcı EKRANDA AZ ÖNCE GÖRDÜĞÜ şeyi
+    # kastediyor ve yalnızca odağı değiştiriyor.
+    #
+    # Kural: mesaj kendi başına karar üretmiyorsa ve (a) bir devam/ekleme
+    # ifadesiyse ya da (b) bir banka adı geçiriyorsa, geçmişte gerçekten
+    # görsel ÜRETMİŞ en son kullanıcı mesajının kararı devralınır.
+    # Yorum ve kod sorularında devralma YAPILMAZ — "peki bunu açıklar mısın"
+    # dendiğinde aynı tabloyu tekrar basmak kullanıcıyı boğar.
+    _gorsel_kaynagi = "regex"
+    if (gorsel is None and gecmis and not aciklayici and not kod_sorusu
+            and (_DEVAM.search(soru) or _EKLEME.search(soru) or bankalari_bul(soru))):
+        for _m in reversed(gecmis):
+            if _m.rol != "user":
+                continue
+            _miras = gorsel_karari_tam(_m.icerik or "")
+            if _miras:
+                gorsel = _miras
+                # Kaynağı işaretle: generate_response satır limitini buna göre
+                # seçiyor. Devralınan görsel AÇIK bir liste isteğinden geliyorsa
+                # 3 satırlık özete kırpmak yanlış olur (bkz. gorsel_kaynagi).
+                _gorsel_kaynagi = "miras"
+                break
+
     limit = istenen_limit(soru)
 
     ortak = dict(
         banka_kodu=banka, banka_kodlari=banka_kodlari, kiyas_genis=kiyas_genis,
         ham_soru=soru, baglam_soru=baglam_soru,
         gorsel=gorsel, limit_istegi=limit, aciklayici=aciklayici,
-        kod_sorusu=kod_sorusu, dil=dil,
+        kod_sorusu=kod_sorusu, dil=dil, gorsel_kaynagi=_gorsel_kaynagi,
     )
 
     # 🛠️ Karşılaştırma alanı (kar_payi/odul/vade) YALNIZCA gerçekten bir
@@ -1018,6 +1217,13 @@ def niyet_bul(soru: str, gecmis: Sequence[Mesaj] = (), dil: str = "tr") -> Niyet
             return Niyet("karsilastirma", alan=metrik_bul(soru), **ortak)
 
     if banka and _LISTE.search(soru):
+        # 🛠️ "Türkiye Finans'ta neler var" niyeti banka_listesi olarak DOĞRU
+        # sınıflandırılıyordu ama gorsel=None kalıyordu: cümlede "listele/
+        # tablo" geçmiyor, VERI_SORUSU kalıbına da uymuyor. Sonuç: bir LİSTE
+        # niyeti tespit edilmiş olmasına rağmen ekrana hiçbir liste gelmiyordu.
+        # Niyetin adı "banka_listesi" ise görselin tablo olması gerekir.
+        if ortak["gorsel"] is None:
+            ortak["gorsel"] = "tablo"
         return Niyet("banka_listesi", **ortak)
 
     return Niyet("kampanya_soru", **ortak)

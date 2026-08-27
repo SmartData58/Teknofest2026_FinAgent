@@ -24,7 +24,7 @@ if (process.client) {
 }
 
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const router = useRouter()
 const chatStore = useChatStore()
 
@@ -907,6 +907,10 @@ const showAiPopover = ref(false)
 const aiMenuRef = ref(null)
 const selectedAiPrompt = ref('rekabet_durumu')
 const customPrompt = ref('')
+// Analiz koprusunun dondurdugu dogrulama sonuclari (kullaniciya gosterilir)
+const aiHata = ref('')
+const aiUyarilar = ref([])
+const aiYukleniyor = ref(false)
 
 const handleOutsideClick = (e) => {
   if (aiMenuRef.value && !aiMenuRef.value.contains(e.target)) {
@@ -922,70 +926,80 @@ watch(activeCompareBanks, (newVal) => {
   }
 }, { immediate: true })
 
-const executePrompt = (promptKey) => {
+const executePrompt = async (promptKey) => {
   selectedAiPrompt.value = promptKey
-  showAiPopover.value = false
-  goToChat()
+  aiHata.value = ''
+  aiUyarilar.value = []
+  await goToChat()
 }
 
-const goToChat = () => {
+/*
+ * FinAgent'a Sor — ARTIK PROMPT BURADA KURULMUYOR.
+ *
+ * Eski hâli, sohbete gidecek metnin tamamını burada üretiyordu ve içine bu
+ * sayfanın KENDİ hesapladığı rakamları (kampanya sayısı, kategori dağılımı,
+ * 6 aylık trend) gömüyordu. İki sorun vardı:
+ *
+ *   1) O rakamlar backend'in Mongo verisiyle çakışabiliyordu — örneğin
+ *      getCategoryCounts() kategoriyi kampanya ADINDA "konut"/"taşıt" arayarak
+ *      tahmin ediyor, backend ise gerçek `kampanya_turu` alanını okuyor.
+ *      Çakıştığında model, YANLIŞ bir rakamı "kesin veri" diye sunulmuş hâlde
+ *      alıp güvenle tekrarlıyordu.
+ *   2) 500+ karakterlik veri bloğu bir SORU gibi görünmediği için niyet motoru
+ *      onu sınıflandıramıyor, dolayısıyla sohbette tablo/grafik hiç
+ *      üretilmiyordu — yani butonun vaat ettiği analiz gelmiyordu.
+ *
+ * Artık yalnızca YAPILANDIRILMIŞ istek gönderiliyor (analiz türü + banka
+ * kodları). Backend (/api/analiz-koprusu) bankaları kendi verisiyle doğrular,
+ * tanımadığını reddeder ve kısa/doğal bir soru döner; tabloyu ve piyasa
+ * analizini /api/chat kendi doğrulanmış verisinden üretir.
+ */
+const goToChat = async () => {
   if (activeCompareBanks.value.length === 0) return
 
-  let questionText = ''
-  if (selectedAiPrompt.value === 'custom' && customPrompt.value.trim()) {
-    questionText = customPrompt.value.trim()
-  } else if (selectedAiPrompt.value === 'rekabet_durumu') {
-    questionText = "Bu bankanın pazar konumunu ve rekabet stratejisini analiz et."
-  } else if (selectedAiPrompt.value === 'baskin_kategori') {
-    questionText = "Baskın kategorideki ağırlığını ve büyüme fırsatlarını değerlendir."
-  } else if (selectedAiPrompt.value === 'trend_analizi') {
-    questionText = "Son 6 aylık lansman trendini ve kampanya sürelerini sektöre göre incele."
-  } else if (selectedAiPrompt.value === 'karsilastirma') {
-    questionText = "Seçili bankaların kampanya portföylerini ve pazar rekabetini karşılaştır."
-  } else if (selectedAiPrompt.value === 'pazar_lideri') {
-    questionText = "Kampanya ivmesi ve çeşitlilik bakımından pazar lideri kimdir?"
-  } else if (selectedAiPrompt.value === 'kategori_ayrisim') {
-    questionText = "Kategori bazında ortak ve ayrışan stratejileri analiz et."
-  } else {
-    questionText = "Seçili bankaların kampanya stratejilerini ve sektördeki konumlarını analiz et."
+  const tur = selectedAiPrompt.value === 'custom' ? 'serbest' : (selectedAiPrompt.value || 'karsilastirma')
+  const bankalar = activeCompareBanks.value
+    .map(b => b?.id || b?._id || b?.kisa_ad)
+    .filter(Boolean)
+
+  aiYukleniyor.value = true
+  try {
+    const res = await fetch('http://localhost:8003/api/analiz-koprusu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kaynak: 'dashboard',
+        tur,
+        bankalar,
+        soru: customPrompt.value?.trim() || null,
+        dil: (locale?.value || 'tr').startsWith('en') ? 'en' : 'tr'
+      })
+    })
+    if (!res.ok) throw new Error('HTTP ' + res.status)
+    const veri = await res.json()
+
+    aiUyarilar.value = veri?.dogrulama?.uyarilar || []
+
+    if (!veri?.dogrulama?.gecerli || !veri?.prompt) {
+      // Doğrulama başarısızsa SOHBETE GİTMİYORUZ. Doğrulanmamış bir soruyu
+      // yine de göndermek, tam olarak kaçındığımız şeydir.
+      aiHata.value = aiUyarilar.value.join(' ') ||
+        t('dashboard.ai_error', 'Analiz isteği doğrulanamadı.')
+      return
+    }
+
+    showAiPopover.value = false
+    chatStore.setChatData(veri.prompt, [])
+    router.push('/chat')
+  } catch (e) {
+    // Köprüye ulaşılamadıysa SESSİZCE eski davranışa dönmüyoruz: kullanıcı
+    // doğrulanmamış bir analiz aldığını bilmeli.
+    console.error('Analiz köprüsü hatası:', e)
+    aiHata.value = t('dashboard.ai_bridge_down',
+      'Analiz servisine ulaşılamadı, lütfen tekrar deneyin.')
+  } finally {
+    aiYukleniyor.value = false
   }
-
-  let finalPrompt = ''
-
-  if (activeCompareBanks.value.length === 1) {
-    const b = activeCompareBanks.value[0]
-    const bCamps = getBankCampaigns(b)
-    const baskin = getBaskinKategori(b)
-    const catCounts = getCategoryCounts(bCamps)
-    const catDurs = getCategoryDurations(bCamps)
-    const trend = getBankTrend(bCamps)
-
-    const catSummary = categories.map((cat, i) => `${cat}: ${catCounts[i]} adet (Ort. Süre: ${catDurs[i]} ay - Sektör: ${sektorDurations.value[i] || 0} ay)`).join(', ')
-    const trendSummary = last6Months.value.map((m, i) => `${m}: ${trend[i] || 0}`).join(', ')
-
-    finalPrompt = `${b.kisa_ad} için aşağıdaki güncel pazar ve kampanya analitiği verilerini inceleyerek detaylı bir stratejik analiz gerçekleştir:\n\n` +
-      `• Banka: ${b.kisa_ad} (${b.tier || 'Tier 2'}, ${b.mulkiyet_turu || 'Özel'} Mülkiyet, Aktif Büyüklük: ${b.aktif_buyukluk_milyar_tl || 0} Milyar ₺)\n` +
-      `• Toplam Aktif Kampanya Sayısı: ${bCamps.length}\n` +
-      `• Baskın Kategori: ${baskin?.ad || 'Kart'} (%${baskin?.yuzde || 0})\n` +
-      `• Kategori Dağılımı ve Yayın Süreleri: ${catSummary}\n` +
-      `• Son 6 Aylık Lansman Trendi: ${trendSummary} (Sektör Son Ay Ortalaması: ${sektorAverages.value[sektorAverages.value.length - 1] || 0})\n\n` +
-      `Analiz Talebi / Soru: ${questionText}`
-  } else {
-    const bankDetails = activeCompareBanks.value.map((b, idx) => {
-      const bCamps = getBankCampaigns(b)
-      const baskin = getBaskinKategori(b)
-      const catCounts = getCategoryCounts(bCamps)
-      const topCats = categories.map((cat, i) => ({ cat, count: catCounts[i] })).filter(x => x.count > 0).map(x => `${x.cat} (${x.count})`).join(', ')
-      return `${idx + 1}. ${b.kisa_ad}: ${bCamps.length} aktif kampanya, Baskın Kategori: ${baskin?.ad || 'Kart'} (%${baskin?.yuzde || 0}), Aktif Büyüklük: ${b.aktif_buyukluk_milyar_tl || 0} Milyar ₺ | Kategori Dağılımı: ${topCats || 'Genel'}`
-    }).join('\n')
-
-    finalPrompt = `Aşağıdaki seçili katılım bankalarının kampanya portföylerini ve pazar rekabetini karşılaştır:\n\n` +
-      `${bankDetails}\n\n` +
-      `Kıyaslama Talebi / Soru: ${questionText}`
-  }
-
-  chatStore.setChatData(finalPrompt, [])
-  router.push('/chat')
 }
 
 // --- Grafikler İçin Veri ---
@@ -1880,6 +1894,17 @@ const mgmCampaigns = computed(() => {
                           {{ $t('dashboard.ai_q_multi_3', 'Kategori bazında ortak ve ayrışan stratejileri analiz et') }}
                         </button>
                       </template>
+
+                      <!-- Doğrulama geri bildirimi (analiz köprüsünden) -->
+                      <div v-if="aiHata" class="p-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-[11px] font-semibold text-red-700 dark:text-red-300">
+                        {{ aiHata }}
+                      </div>
+                      <div v-else-if="aiUyarilar.length" class="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 text-[11px] font-medium text-amber-800 dark:text-amber-300 space-y-1">
+                        <div v-for="(u, i) in aiUyarilar" :key="i">• {{ u }}</div>
+                      </div>
+                      <div v-if="aiYukleniyor" class="text-[11px] font-semibold text-neutral-500 px-1">
+                        {{ $t('dashboard.ai_verifying', 'Veriler doğrulanıyor...') }}
+                      </div>
 
                       <!-- Soru Girme Yeri -->
                       <div class="pt-2 border-t border-neutral-100 dark:border-neutral-800">

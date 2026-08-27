@@ -442,6 +442,17 @@ DESEN_STATUS = re.compile(r"\[STATUS\](.*?)\[/STATUS\]", re.DOTALL)
 DESEN_CHART = re.compile(r"\[CHART\](.*?)\[/CHART\]", re.DOTALL)
 DESEN_SOURCES = re.compile(r"\[SOURCES\](.*?)\[/SOURCES\]", re.DOTALL)
 DESEN_SUGGEST = re.compile(r"\[SUGGESTIONS?\](.*?)\[/SUGGESTIONS?\]", re.DOTALL)
+# 🛠️ TEST ARACININ KENDİ HATASI — [KULLANIM] BLOĞU METNE SIZIYORDU.
+# Backend her cevabın SONUNA maliyet özetini
+#     [KULLANIM]{"cagri": 6, "toplam_token": 8327, ...}[/KULLANIM]
+# olarak yazıyor ve chat.vue bunu ekrana basmadan ayıklıyor
+# (chat.vue:258). Bu dosya ise ayıklamıyordu: JSON gövdesi
+# sonuc["metin"] içinde kalıyor, dolayısıyla
+#   • "kapsam dışı soruya N karakterlik cevap" ölçümü ~300 karakter şişiyor,
+#   • dil sezgisi (ingilizce_mi) kod anahtarlarını sayıyor,
+#   • --detay çıktısında insan gözüyle inceleme kirleniyor.
+# "Frontend gibi ayrıştırıyoruz" iddiası ancak bu blok da atılırsa doğru.
+DESEN_KULLANIM = re.compile(r"\[KULLANIM\](.*?)\[/KULLANIM\]", re.DOTALL)
 
 
 def akisi_ayristir(ham: str, zaman_cizelgesi):
@@ -467,8 +478,19 @@ def akisi_ayristir(ham: str, zaman_cizelgesi):
         except Exception:
             pass
 
+    # Maliyet özeti (backend her cevabın sonunda gönderiyor). Metinden
+    # ayıklanıyor ama ATILMIYOR — "çıkarım süresi ve kaynak kullanımı"
+    # ölçümünün ham verisi bu.
+    kullanim = None
+    for m in DESEN_KULLANIM.finditer(ham):
+        try:
+            kullanim = json.loads(m.group(1).strip())
+        except Exception:
+            pass
+
     metin = ham
-    for desen in (DESEN_STATUS, DESEN_CHART, DESEN_SOURCES, DESEN_SUGGEST):
+    for desen in (DESEN_STATUS, DESEN_CHART, DESEN_SOURCES, DESEN_SUGGEST,
+                  DESEN_KULLANIM):
         metin = desen.sub("", metin)
     metin = re.sub(r"\n{3,}", "\n\n", metin).strip()
 
@@ -477,6 +499,7 @@ def akisi_ayristir(ham: str, zaman_cizelgesi):
         "chart": chart,
         "kaynaklar": kaynaklar,
         "oneriler": oneriler,
+        "kullanim": kullanim,
         "durumlar": zaman_cizelgesi,
     }
 
@@ -491,9 +514,11 @@ def _gorunur_metin(ham: str) -> str:
     t = DESEN_CHART.sub("", t)
     t = DESEN_SOURCES.sub("", t)
     t = DESEN_SUGGEST.sub("", t)
+    t = DESEN_KULLANIM.sub("", t)
     t = _YARIM_ETIKET.sub("", t)
     # Kapanmamış bir blok varsa (ör. [CHART] geldi ama [/CHART] gelmedi) onu da at
-    for etiket in ("[CHART]", "[STATUS]", "[SOURCES]", "[SUGGESTIONS]", "[SUGGESTION]"):
+    for etiket in ("[CHART]", "[STATUS]", "[SOURCES]", "[SUGGESTIONS]", "[SUGGESTION]",
+                   "[KULLANIM]"):
         i = t.rfind(etiket)
         if i != -1:
             t = t[:i]

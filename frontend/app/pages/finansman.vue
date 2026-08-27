@@ -746,7 +746,7 @@ let lenis = null
 let lenisRafId = null
 
 const router = useRouter()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 useHead({
   title: computed(() => t('page_titles.financing', 'Katılım Finansman Kâr Oranları'))
@@ -970,15 +970,59 @@ const formatCompactNumber = (val) => {
   return new Intl.NumberFormat('tr-TR').format(val)
 }
 
-// FinAgent Sohbetine Yönlendirme
-const askAiAboutProduct = (product) => {
-  const prompt = `${product.banka_adi} bankasının ${product.finansman_tutari.toLocaleString('tr-TR')} TL tutarındaki ${product.vade} ay vadeli ${getCategoryLabel(product.urun)} Finansmanı kâr oranını (%${product.kar_orani.toFixed(2).replace('.', ',')}) ve aylık ${product.aylik_taksit_str} taksit seçeneğini sektördeki diğer katılım bankalarıyla karşılaştırarak detaylı analiz et.`
-  
-  if (process.client) {
-    sessionStorage.setItem('finagent_direct_prompt', prompt)
-    sessionStorage.setItem('finagent_auto_send', 'true')
+/*
+ * FinAgent ile Analiz Et — SORU ARTIK BACKEND'DE DOĞRULANIYOR.
+ *
+ * Eski hâli, tablodaki satırın rakamlarını (kâr oranı, taksit) doğrudan
+ * prompt'a gömüyordu. Bu rakamlar arayüzün elindeki listeden geliyordu;
+ * kayıtla çakışırsa model YANLIŞ oranı "kesin veri" gibi sunulmuş hâlde
+ * alıyordu. Bir finansman oranında bu, kullanıcıyı yanlış bankaya yönlendirir.
+ *
+ * Artık ürün KİMLİĞİ gönderiliyor; backend (/api/analiz-koprusu) kaydı
+ * `finansman_urun` koleksiyonunda bulur, arayüzün gösterdiği oranla
+ * karşılaştırır, uyuşmazsa KAYITLI değeri kullanır ve aynı tutar/vadedeki
+ * emsal teklifleri de doğrulanmış olarak ekler.
+ */
+const askAiAboutProduct = async (product) => {
+  try {
+    const res = await fetch('http://localhost:8003/api/analiz-koprusu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kaynak: 'finansman',
+        tur: 'urun_analizi',
+        bankalar: [product.banka || product.banka_adi],
+        urun: {
+          banka: product.banka || product.banka_adi,
+          urun: product.urun,
+          tutar: product.finansman_tutari,
+          vade: product.vade,
+          kar_orani: product.kar_orani,
+          aylik_taksit: product.aylik_taksit_str
+        },
+        dil: (locale?.value || 'tr').startsWith('en') ? 'en' : 'tr'
+      })
+    })
+    if (!res.ok) throw new Error('HTTP ' + res.status)
+    const veri = await res.json()
+    if (!veri?.prompt) throw new Error('bos prompt')
+
+    if (process.client) {
+      sessionStorage.setItem('finagent_direct_prompt', veri.prompt)
+      sessionStorage.setItem('finagent_auto_send', 'true')
+    }
+    router.push('/chat')
+  } catch (e) {
+    // Köprü çalışmıyorsa doğrulanmamış rakam GÖNDERMİYORUZ; ürünü yalnızca
+    // kimliğiyle soruyoruz, oranı sohbet kendi kaydından okusun.
+    console.error('Analiz köprüsü hatası:', e)
+    const yedek = `${product.banka_adi} bankasının ${product.vade} ay vadeli ${getCategoryLabel(product.urun)} finansmanını diğer katılım bankalarıyla karşılaştır.`
+    if (process.client) {
+      sessionStorage.setItem('finagent_direct_prompt', yedek)
+      sessionStorage.setItem('finagent_auto_send', 'true')
+    }
+    router.push('/chat')
   }
-  router.push('/chat')
 }
 
 const escapeHtml = (unsafe) => {

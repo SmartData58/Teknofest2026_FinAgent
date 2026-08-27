@@ -363,7 +363,10 @@ onUnmounted(() => {
                       <span class="text-xs text-white/70">{{ t('landing.architecture.backend.engine_desc', 'Getirme (Retrieve) + Üretim (Generate)') }}</span>
                     </div>
                     <div class="px-6 py-3 bg-white/10 border border-white/10 rounded-xl text-sm font-medium text-white w-full sm:w-1/2 flex items-center justify-center">
-                      <span class="text-xs font-mono text-white/80">/api/chat, /api/campaigns/compare, /api/campaigns/top-advantageous, /admin/reindex, /health</span>
+                      <!-- Yollar canlı /openapi.json ile doğrulandı.
+                           Önceki liste /api/campaigns/compare diyordu; kampanya
+                           router'ında prefix YOK, gerçek yol /campaigns/compare. -->
+                      <span class="text-xs font-mono text-white/80">/api/chat, /api/analiz-koprusu, /campaigns/compare, /campaigns/top-advantageous, /finansman, /banks, /admin/reindex, /health</span>
                     </div>
                   </div>
                 </div>

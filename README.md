@@ -88,7 +88,7 @@ Proje 5 ana işlem adımından (pipeline) oluşmaktadır:
 ```
 Teknofest2026_FinAgent/
 ├── backend/                  # FastAPI Backend Servisi ve Chatbot Mantığı
-│   ├── api/                  # REST Uç Noktaları (campaing.py vb.)
+│   ├── api/                  # REST Uç Noktaları (campaing.py, analiz.py)
 │   ├── chatbot/              # RAG Motoru, Niyet Analizi, Evren Client, Önbellek
 │   │   ├── agents.py         # Supervisor ve Görsel Ajanlar
 │   │   ├── evren_client.py   # Evren API İstemcisi
@@ -98,9 +98,9 @@ Teknofest2026_FinAgent/
 │   │   └── redis_cache.py    # Redis Önbellek Yönetimi
 │   ├── configs/              # Banka Yapılandırmaları (banks.yaml)
 │   ├── db/                   # MongoDB Bağlantı ve Seed İşlemleri
-│   ├── document_processor/   # Doküman ve Görsel Ayrıştırma (PDF, Word, Excel, Image)
+│   ├── document_processor/   # Belge Ayrıştırma (PDF, Word, Excel, Görsel, düz metin/CSV/Markdown)
 │   ├── nlp/                  # NLP Temizleme, Normalizasyon ve Bilgi Çıkarımı
-│   └── test/                 # 19+ Teşhis ve Test Scripti
+│   └── test/                 # 19+ Teşhis ve Test Scripti (test_belgeleri/ karma belge fikstürleri)
 ├── frontend/                 # Nuxt 3 / Vue 3 Kullanıcı Arayüzü
 │   ├── app/
 │   │   ├── pages/            # chat.vue, dashboard.vue, campaigns.vue, comparison.vue, finansman.vue
@@ -142,10 +142,40 @@ Sistemin ihtiyaç duyduğu temel ağ ve yazılım bağımlılıkları şunlardı
 ## 📚 API Dokümantasyonu (Swagger UI)
 
 Backend servisi ayağa kalktıktan sonra, FastAPI tarafından otomatik olarak oluşturulan API dokümantasyonuna şu adresten ulaşabilirsiniz:
-- **Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
+- **Swagger UI:** [http://localhost:8003/docs](http://localhost:8003/docs)
+- **ReDoc:** [http://localhost:8003/redoc](http://localhost:8003/redoc)
 
-Buradan `/api/chat` (Sohbet), `/api/kaziyiciyi-baslat` (Manuel scraping tetikleme) ve `/admin/reindex` (Vektörleri sıfırlama) endpoint'lerini doğrudan test edebilirsiniz.
+> ⚠️ Konteyner içinde servis **8000** portunda çalışır; `docker-compose.override.yml` bunu host'ta **8003**'e eşler (`8003:8000`). Tarayıcıdan erişirken **8003** kullanın. Prod override'ında bu eşleme farklı olabilir.
+
+### Uç Noktalar (canlı `/openapi.json` ile doğrulandı)
+
+| Yöntem | Yol | Ne yapar |
+|---|---|---|
+| POST | `/api/chat` | Sohbet akışı (`multipart/form-data`; dosya/görsel eki destekler) |
+| POST | `/api/analiz-koprusu` | **Arayüzdeki "FinAgent'a Sor" butonlarının arkası.** Yapılandırılmış analiz isteğini (analiz türü + banka kodları / finansman ürünü) alır, kendi verimizle **doğrular** ve `/api/chat`'e gönderilecek güvenli soruyu döner |
+| GET | `/banks` | Banka listesi ve istatistikleri |
+| GET | `/campaigns` | Kampanya listesi (filtreli) |
+| GET | `/campaigns/compare` | Kampanya karşılaştırma |
+| GET | `/campaigns/top-advantageous` | En avantajlı kampanyalar |
+| GET | `/campaigns/{kampanya_id}` | Tek kampanya detayı |
+| GET | `/finansman` | Finansman ürünleri (oran, taksit, vade) |
+| POST | `/api/kaziyiciyi-baslat` | Manuel kazıma tetikleme |
+| POST | `/admin/reindex` | Vektörleri sıfırdan oluşturma (`ADMIN_TOKEN` korumalı) |
+| GET | `/health` | Qdrant, Evren API ve model ısınma durumu |
+
+> ℹ️ Kampanya/banka/finansman uçlarında **`/api` öneki yoktur** (`api/campaing.py` router'ı prefix kullanmıyor). Doğru yol `/campaigns/compare`'dir, `/api/campaigns/compare` değil.
+
+#### `/api/analiz-koprusu` neden var?
+
+Dashboard ve Finansman sayfalarındaki butonlar, sohbete gidecek metnin tamamını **tarayıcıda** kuruyordu; içine tarayıcının kendi hesapladığı rakamlar gömülüyordu. Bu iki soruna yol açıyordu: (1) rakamlar backend'in Mongo verisiyle çakışsa bile modele "kesin veri" gibi sunuluyordu, (2) uzun veri bloğu bir soru gibi görünmediği için niyet motoru sınıflandıramıyor, tablo/grafik hiç üretilmiyordu.
+
+Bu uç, isteği **yapılandırılmış** olarak alır; banka kodlarını doğrular, tanınmayanı reddeder, finansman ürününde arayüzün gösterdiği oranı kayıtlı oranla karşılaştırıp uyuşmazsa **kayıtlı değeri** kullanır ve kısa, doğal bir soru döner. Cevabı `/api/chat` üretir — böylece tablo ve piyasa analizi kendi doğrulanmış verisinden gelir.
+
+```bash
+curl -s -X POST http://localhost:8003/api/analiz-koprusu \
+  -H "Content-Type: application/json" \
+  -d '{"kaynak":"dashboard","tur":"karsilastirma","bankalar":["kuveytturk","albaraka","emlak_katilim"]}'
+```
 
 ---
 
@@ -253,6 +283,10 @@ docker-compose down
 ### 1. `test_buyuk.py` (Kapsamlı Doğruluk ve Regresyon Testi)
 Sistemin büyük bir prompt havuzuna (Örn. `buyuk_sonuc.json`) nasıl yanıt verdiğini (Accuracy, Halüsinasyon, Reranker farkı) ölçer.
 *   **Kullanım:** `python backend/test/test_buyuk.py --kat liste,kiyas --kayit deneme1.json --paralel 3`
+*   **Tam koşu:** `python backend/test/test_buyuk.py --paralel 4 --kayit buyuk_sonuc.json --rapor rapor.md` (500 senaryo ≈ 60 dk)
+*   ℹ️ `--paralel` modunda senaryolar tamamlandıkça tek satırlık ilerleme basılır; ayrıntılı değerlendirme koşu bitince yazdırılır.
+*   ⚠️ Koşu sürerken `backend/chatbot/*.py` düzenlemeyin: uvicorn `--reload` ile çalıştığı için koşu ortasında yeniden başlar ve sonuçlar eski/yeni kod arasında karışır.
+*   ⚠️ Kod değiştirdikten sonra Redis yanıt önbelleğini temizleyin, aksi halde 24 saat boyunca ESKİ kodun cevapları dönebilir.
 
 ### 2. `testapi.py` (Canlı API Entegrasyon Testi)
 Sistem tam ayaktayken `/api/chat` ve diğer uçları uçtan uca simüle eder.
@@ -277,6 +311,7 @@ Belge yükleme sürelerini CPU ve GPU (PyTorch/CUDA) arasında kıyaslar.
 *   **`bagimlilik_denetimi.py`**: `.env` ve `requirements.txt` ile kod tabanındaki fiili "import" komutlarının uyumunu denetler.
 *   **`test_db.py`**: Veritabanı bağlantısını test edip `islenmis_kampanyalar` koleksiyonundan örnek kayıtları (`banka_id`, `kampanya_turu`) basar.
 *   **`test_turu.py`**: MongoDB'deki kampanya verilerini tarayarak sistemde benzersiz (distinct) kaç farklı kampanya türü (`kampanya_turu`) bulunduğunu listeler.
+*   **`karma_belge_uret.py`**: `test_buyuk.py`'nin `belge` senaryolarının kullandığı tuzaklı fikstürleri üretir (`test_belgeleri/`): olmayan banka, gömülü talimat, sahte TCKN/IBAN, imkânsız oran/vade, tutmayan toplam. **Belge senaryolarından ÖNCE çalıştırılmalı**, yoksa o senaryolar sessizce atlanır. PDF fikstürü için `reportlab` gerekir (kurulu değilse yalnızca o senaryo atlanır).
 
 ---
 
