@@ -1,12 +1,27 @@
+import os
 import pymongo
 from pymongo.errors import ConnectionFailure, OperationFailure
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 def alanlari_teker_teker_sorgula():
-    # Şifreli MongoDB bağlantı URI'si
-    MONGO_URI = "mongodb://admin:admin123@localhost:27017/?authSource=admin"
+    mongo_uri = os.getenv("MONGO_URI")
+    if not mongo_uri:
+        user = os.getenv("MONGO_USER", "admin")
+        pwd = os.getenv("MONGO_PASSWORD", "")
+        host = os.getenv("MONGO_HOST", "localhost")
+        port = os.getenv("MONGO_PORT", "27017")
+        if pwd:
+            mongo_uri = f"mongodb://{user}:{pwd}@{host}:{port}/?authSource=admin"
+        else:
+            mongo_uri = f"mongodb://{host}:{port}/?authSource=admin"
     
     try:
-        client = pymongo.MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+        client = pymongo.MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
         client.admin.command('ping')
         
         db = client["smartdata"]

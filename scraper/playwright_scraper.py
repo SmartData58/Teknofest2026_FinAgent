@@ -1,15 +1,33 @@
+import os
 from contextlib import contextmanager
 
 from bs4 import BeautifulSoup
 
- # scraper/db_helper.py
+# scraper/db_helper.py
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
 from scraper.base_scraper import TabanScraper, VARSAYILAN_USER_AGENT
 
-mongo_uri: str = "mongodb://localhost:27017"
-db_name: str = "kampanyalar"
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+def _get_mongo_uri() -> str:
+    if os.getenv("MONGO_URI"):
+        return os.getenv("MONGO_URI")
+    user = os.getenv("MONGO_USER", "admin")
+    password = os.getenv("MONGO_PASSWORD", "")
+    host = os.getenv("MONGO_HOST", "localhost")
+    port = os.getenv("MONGO_PORT", "27017")
+    if password:
+        return f"mongodb://{user}:{password}@{host}:{port}/?authSource=admin"
+    return f"mongodb://{host}:{port}/?authSource=admin"
+
+mongo_uri: str = _get_mongo_uri()
+db_name: str = os.getenv("MONGO_DB_NAME", os.getenv("CAMPAIGN_DB", "smartdata"))
 
 # Gerçek Chrome'a daha yakın bir imza: TSPD gibi bot korumaları eski/tutarsız
 # User-Agent'ları eler. Chromium sürümüyle uyumlu tutulur.

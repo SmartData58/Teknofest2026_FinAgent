@@ -1,6 +1,13 @@
+import os
 import re
 import sys
 from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
 from bs4 import BeautifulSoup
 
@@ -22,7 +29,7 @@ from scraper.base_scraper import TabanScraper
 # SABİTLER
 # ============================================================
 
-TABAN_URL = "https://hayatfinans.com.tr"
+TABAN_URL = os.getenv("URL_SPIDER_HAYATFINANS", "https://hayatfinans.com.tr")
 
 LISTE_URL = f"{TABAN_URL}/kampanyalar"
 

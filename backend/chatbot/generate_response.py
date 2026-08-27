@@ -73,7 +73,19 @@ QDRANT_URL = os.getenv("QDRANT_HOST", "http://qdrant:6333")
 # evren_client üzerinden yarışma servisine gidiyor. (docker-compose'daki
 # embedding/reranker/llm konteynerleri de gereksizleşti.)
 EMBEDDING_API_URL = None  # geriye dönük: OzelQwenEmbedder imzası için
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:admin123@mongodb:27017/?authSource=admin")
+
+def _get_mongo_uri() -> str:
+    if os.getenv("MONGO_URI"):
+        return os.getenv("MONGO_URI")
+    user = os.getenv("MONGO_USER", "admin")
+    password = os.getenv("MONGO_PASSWORD", "")
+    host = os.getenv("MONGO_HOST", "mongodb")
+    port = os.getenv("MONGO_PORT", "27017")
+    if password:
+        return f"mongodb://{user}:{password}@{host}:{port}/?authSource=admin"
+    return f"mongodb://{host}:{port}/?authSource=admin"
+
+MONGO_URI = _get_mongo_uri()
 
 
 def _int_env_oku(env_adi: str, varsayilan: int) -> int:
@@ -3412,12 +3424,18 @@ async def get_chatbot_response(
                         # cevaplarının 8'inde kullanıcıya HİÇ hitap edilmiyor,
                         # 7'sinde somut bir tutar geçmiyordu. Müşteri "bu benim
                         # ne işime yarar" sorusunun cevabını alamıyor.
-                        "- MÜŞTERİYE HİTAP ET: 'siz' diye seslen ve en az bir "
-                        "cümlede ne KAZANACAĞINI ya da nasıl BAŞVURACAĞINI söyle "
-                        "('... ile 1.500 TL kazanabilirsiniz', 'başvurmak için...').\n"
-                        "- HER CEVAPTA EN AZ BİR SOMUT RAKAM olsun (TL tutarı, "
-                        "oran ya da vade). Rakamsız cevap müşteriye hiçbir şey "
-                        "söylemez.\n"
+                        # ⚠️ Bu iki kural YALNIZCA müşteri görünümünde. İlk
+                        # sürümde ortak bloğa konmuştu ve analist cevapları
+                        # "Sizin için en somut fırsat..." diye bitiyordu —
+                        # banka çalışanına müşteri diliyle seslenmek, analizin
+                        # ciddiyetini bozuyor.
+                        + ("- MÜŞTERİYE HİTAP ET: 'siz' diye seslen ve en az bir "
+                           "cümlede ne KAZANACAĞINI ya da nasıl BAŞVURACAĞINI söyle "
+                           "('... ile 1.500 TL kazanabilirsiniz', 'başvurmak için...').\n"
+                           "- HER CEVAPTA EN AZ BİR SOMUT RAKAM olsun (TL tutarı, "
+                           "oran ya da vade). Rakamsız cevap müşteriye hiçbir şey "
+                           "söylemez.\n"
+                           if view_mode == "musteri" else "") +
                         "- SICAK VE DOĞAL KONUŞ: kullanıcıya doğrudan hitap et, "
                         "kısa ve akıcı cümleler kur. Madde madde etiket sıralama; "
                         "gerçek bir bankacının anlatacağı gibi anlat.\n"

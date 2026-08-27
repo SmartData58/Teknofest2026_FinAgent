@@ -1,0 +1,586 @@
+{
+  "url": "http://localhost:8003/api/chat",
+  "kayitlar": [
+    {
+      "persona": "musteri",
+      "kat": "anlama",
+      "soru": "kâr payı ne demek, faizden farkı ne",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "gorsel": null,
+      "puan": 10,
+      "maks": 11,
+      "bulgular": [
+        "doğrudan hitap yok (siz/kazanç/başvuru)"
+      ],
+      "sure": 42.7,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "satir": 0,
+      "etiketler": [],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "anlama",
+      "soru": "katılım bankacılığı nasıl çalışıyor",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "gorsel": null,
+      "puan": 10,
+      "maks": 11,
+      "bulgular": [
+        "doğrudan hitap yok (siz/kazanç/başvuru)"
+      ],
+      "sure": 43.9,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "satir": 0,
+      "etiketler": [],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "anlama",
+      "soru": "vade ne anlama geliyor",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "gorsel": null,
+      "puan": 10,
+      "maks": 11,
+      "bulgular": [
+        "doğrudan hitap yok (siz/kazanç/başvuru)"
+      ],
+      "sure": 42.6,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "satir": 0,
+      "etiketler": [],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "anlama",
+      "soru": "murabaha nedir",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "gorsel": null,
+      "puan": 10,
+      "maks": 11,
+      "bulgular": [
+        "doğrudan hitap yok (siz/kazanç/başvuru)"
+      ],
+      "sure": 42.5,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "satir": 0,
+      "etiketler": [],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "anlama",
+      "soru": "bu kampanyaya nasıl başvurabilirim",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "gorsel": null,
+      "puan": 10,
+      "maks": 11,
+      "bulgular": [
+        "doğrudan hitap yok (siz/kazanç/başvuru)"
+      ],
+      "sure": 43.8,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "satir": 0,
+      "etiketler": [],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "anlama",
+      "soru": "kampanyadan yararlanmak için ne gerekiyor",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "gorsel": "table",
+      "puan": 8,
+      "maks": 11,
+      "bulgular": [
+        "doğrudan hitap yok (siz/kazanç/başvuru)",
+        "görsel gelmemeliydi (table)"
+      ],
+      "sure": 42.5,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "satir": 3,
+      "etiketler": [
+        "Albaraka Türk"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "anlama",
+      "soru": "başvuru ne kadar sürer",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "gorsel": "table",
+      "puan": 8,
+      "maks": 11,
+      "bulgular": [
+        "doğrudan hitap yok (siz/kazanç/başvuru)",
+        "görsel gelmemeliydi (table)"
+      ],
+      "sure": 18.2,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "satir": 3,
+      "etiketler": [
+        "Kuveyt Türk"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "anlama",
+      "soru": "dikkat etmem gereken bir şey var mı",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "gorsel": "table",
+      "puan": 8,
+      "maks": 11,
+      "bulgular": [
+        "doğrudan hitap yok (siz/kazanç/başvuru)",
+        "görsel gelmemeliydi (table)"
+      ],
+      "sure": 19.3,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "satir": 3,
+      "etiketler": [
+        "Albaraka Türk"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "anlama",
+      "soru": "katılma hesabı nedir",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "gorsel": null,
+      "puan": 10,
+      "maks": 11,
+      "bulgular": [
+        "doğrudan hitap yok (siz/kazanç/başvuru)"
+      ],
+      "sure": 18.5,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "satir": 0,
+      "etiketler": [],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "anlama",
+      "soru": "promosyon ne demek",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "gorsel": null,
+      "puan": 10,
+      "maks": 11,
+      "bulgular": [
+        "doğrudan hitap yok (siz/kazanç/başvuru)"
+      ],
+      "sure": 18.6,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "satir": 0,
+      "etiketler": [],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "tavsiye",
+      "soru": "bana en uygun kampanya hangisi",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "tavsiye_reddi": true,
+      "puan": 7,
+      "maks": 11,
+      "bulgular": [
+        "doğrudan hitap yok (siz/kazanç/başvuru)",
+        "somut tutar/oran/tarih yok",
+        "yatırım tavsiyesi reddi yok"
+      ],
+      "sure": 17.1,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "gorsel": "table",
+      "satir": 3,
+      "etiketler": [
+        "Albaraka Türk"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "tavsiye",
+      "soru": "hangisini seçmeliyim",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "tavsiye_reddi": true,
+      "puan": 7,
+      "maks": 11,
+      "bulgular": [
+        "doğrudan hitap yok (siz/kazanç/başvuru)",
+        "somut tutar/oran/tarih yok",
+        "yatırım tavsiyesi reddi yok"
+      ],
+      "sure": 18.8,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "gorsel": "table",
+      "satir": 3,
+      "etiketler": [
+        "Albaraka Türk"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "tavsiye",
+      "soru": "sence bu kampanyalar cazip mi",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "tavsiye_reddi": true,
+      "puan": 7,
+      "maks": 11,
+      "bulgular": [
+        "doğrudan hitap yok (siz/kazanç/başvuru)",
+        "somut tutar/oran/tarih yok",
+        "yatırım tavsiyesi reddi yok"
+      ],
+      "sure": 33.0,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "gorsel": null,
+      "satir": 0,
+      "etiketler": [],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "tavsiye",
+      "soru": "param olsa nereye yatırmalıyım",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "tavsiye_reddi": true,
+      "puan": 10,
+      "maks": 11,
+      "bulgular": [
+        "somut tutar/oran/tarih yok"
+      ],
+      "sure": 20.8,
+      "metin": "Ben bir yapay zeka asistanıyım ve yatırım/finansal tavsiye veremem. Ancak bankaların güncel kampanya, oran ve masraf bilgilerini sizin için karşılaştırıp listeleyebilirim.",
+      "gorsel": null,
+      "satir": 0,
+      "etiketler": [],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "tavsiye",
+      "soru": "hangi bankayı tercih etmeliyim",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "tavsiye_reddi": true,
+      "puan": 7,
+      "maks": 11,
+      "bulgular": [
+        "doğrudan hitap yok (siz/kazanç/başvuru)",
+        "somut tutar/oran/tarih yok",
+        "yatırım tavsiyesi reddi yok"
+      ],
+      "sure": 32.2,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "gorsel": "table",
+      "satir": 35,
+      "etiketler": [
+        "Albaraka Türk",
+        "Dünya Katılım",
+        "Emlak Katılım",
+        "Hayat Finans",
+        "Kuveyt Türk",
+        "TOM Katılım",
+        "Vakıf Katılım"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "musteri",
+      "kat": "tavsiye",
+      "soru": "bu kampanya değer mi",
+      "gorunum": "musteri",
+      "dil": "tr",
+      "tavsiye_reddi": true,
+      "puan": 10,
+      "maks": 11,
+      "bulgular": [
+        "somut tutar/oran/tarih yok"
+      ],
+      "sure": 20.5,
+      "metin": "Ben bir yapay zeka asistanıyım ve yatırım/finansal tavsiye veremem. Ancak bankaların güncel kampanya, oran ve masraf bilgilerini sizin için karşılaştırıp listeleyebilirim.",
+      "gorsel": null,
+      "satir": 0,
+      "etiketler": [],
+      "hata": null
+    },
+    {
+      "persona": "analist",
+      "kat": "konumlanma",
+      "soru": "biz Albaraka Türk'üz, sektördeki konumumuz ne",
+      "gorunum": "analist",
+      "dil": "tr",
+      "aksiyon": true,
+      "puan": 4,
+      "maks": 13,
+      "bulgular": [
+        "cevap yüzeysel (116 krktr < 900)",
+        "pay/sıralama rakamı yok",
+        "somut aksiyon önerisi yok",
+        "boşluk/eksik analizi yok"
+      ],
+      "sure": 31.0,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "gorsel": "table",
+      "satir": 35,
+      "etiketler": [
+        "Albaraka Türk",
+        "Dünya Katılım",
+        "Emlak Katılım",
+        "Hayat Finans",
+        "Kuveyt Türk",
+        "TOM Katılım",
+        "Vakıf Katılım"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "analist",
+      "kat": "konumlanma",
+      "soru": "Emlak Katılım olarak hangi kategorilerde eksiğiz",
+      "gorunum": "analist",
+      "dil": "tr",
+      "aksiyon": true,
+      "puan": 4,
+      "maks": 13,
+      "bulgular": [
+        "cevap yüzeysel (116 krktr < 900)",
+        "pay/sıralama rakamı yok",
+        "somut aksiyon önerisi yok",
+        "boşluk/eksik analizi yok"
+      ],
+      "sure": 30.9,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "gorsel": "table",
+      "satir": 3,
+      "etiketler": [
+        "Emlak Katılım"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "analist",
+      "kat": "konumlanma",
+      "soru": "Vakıf Katılım'ın rakiplere göre zayıf yönleri neler",
+      "gorunum": "analist",
+      "dil": "tr",
+      "aksiyon": true,
+      "puan": 4,
+      "maks": 13,
+      "bulgular": [
+        "cevap yüzeysel (116 krktr < 900)",
+        "pay/sıralama rakamı yok",
+        "somut aksiyon önerisi yok",
+        "boşluk/eksik analizi yok"
+      ],
+      "sure": 23.8,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "gorsel": "table",
+      "satir": 35,
+      "etiketler": [
+        "Albaraka Türk",
+        "Dünya Katılım",
+        "Emlak Katılım",
+        "Hayat Finans",
+        "Kuveyt Türk",
+        "TOM Katılım",
+        "Vakıf Katılım"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "analist",
+      "kat": "konumlanma",
+      "soru": "Hayat Finans hangi alanlarda büyüyebilir",
+      "gorunum": "analist",
+      "dil": "tr",
+      "aksiyon": true,
+      "puan": 4,
+      "maks": 13,
+      "bulgular": [
+        "cevap yüzeysel (116 krktr < 900)",
+        "pay/sıralama rakamı yok",
+        "somut aksiyon önerisi yok",
+        "boşluk/eksik analizi yok"
+      ],
+      "sure": 22.9,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "gorsel": "table",
+      "satir": 3,
+      "etiketler": [
+        "Hayat Finans"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "analist",
+      "kat": "konumlanma",
+      "soru": "TOM Katılım'ın pazar konumunu değerlendir",
+      "gorunum": "analist",
+      "dil": "tr",
+      "aksiyon": true,
+      "puan": 4,
+      "maks": 13,
+      "bulgular": [
+        "cevap yüzeysel (116 krktr < 900)",
+        "pay/sıralama rakamı yok",
+        "somut aksiyon önerisi yok",
+        "boşluk/eksik analizi yok"
+      ],
+      "sure": 11.5,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "gorsel": "table",
+      "satir": 3,
+      "etiketler": [
+        "TOM Katılım"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "analist",
+      "kat": "konumlanma",
+      "soru": "kendi bankamız Kuveyt Türk, rakiplere göre nasıl",
+      "gorunum": "analist",
+      "dil": "tr",
+      "aksiyon": true,
+      "puan": 4,
+      "maks": 13,
+      "bulgular": [
+        "cevap yüzeysel (116 krktr < 900)",
+        "pay/sıralama rakamı yok",
+        "somut aksiyon önerisi yok",
+        "boşluk/eksik analizi yok"
+      ],
+      "sure": 11.5,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "gorsel": "table",
+      "satir": 35,
+      "etiketler": [
+        "Albaraka Türk",
+        "Dünya Katılım",
+        "Emlak Katılım",
+        "Hayat Finans",
+        "Kuveyt Türk",
+        "TOM Katılım",
+        "Vakıf Katılım"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "analist",
+      "kat": "konumlanma",
+      "soru": "Dünya Katılım'ın portföy açığı nerede",
+      "gorunum": "analist",
+      "dil": "tr",
+      "aksiyon": true,
+      "puan": 4,
+      "maks": 13,
+      "bulgular": [
+        "cevap yüzeysel (116 krktr < 900)",
+        "pay/sıralama rakamı yok",
+        "somut aksiyon önerisi yok",
+        "boşluk/eksik analizi yok"
+      ],
+      "sure": 11.8,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "gorsel": "table",
+      "satir": 1,
+      "etiketler": [
+        "Dünya Katılım"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "analist",
+      "kat": "konumlanma",
+      "soru": "Albaraka Türk hangi kategoride kampanya açmalı",
+      "gorunum": "analist",
+      "dil": "tr",
+      "aksiyon": true,
+      "puan": 4,
+      "maks": 13,
+      "bulgular": [
+        "cevap yüzeysel (116 krktr < 900)",
+        "pay/sıralama rakamı yok",
+        "somut aksiyon önerisi yok",
+        "boşluk/eksik analizi yok"
+      ],
+      "sure": 11.1,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "gorsel": "table",
+      "satir": 3,
+      "etiketler": [
+        "Albaraka Türk"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "analist",
+      "kat": "konumlanma",
+      "soru": "Emlak Katılım'ın güçlü ve zayıf yönlerini çıkar",
+      "gorunum": "analist",
+      "dil": "tr",
+      "aksiyon": true,
+      "puan": 4,
+      "maks": 13,
+      "bulgular": [
+        "cevap yüzeysel (116 krktr < 900)",
+        "pay/sıralama rakamı yok",
+        "somut aksiyon önerisi yok",
+        "boşluk/eksik analizi yok"
+      ],
+      "sure": 3.8,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "gorsel": "table",
+      "satir": 3,
+      "etiketler": [
+        "Emlak Katılım"
+      ],
+      "hata": null
+    },
+    {
+      "persona": "analist",
+      "kat": "konumlanma",
+      "soru": "Vakıf Katılım için 3 somut aksiyon öner",
+      "gorunum": "analist",
+      "dil": "tr",
+      "aksiyon": true,
+      "puan": 4,
+      "maks": 13,
+      "bulgular": [
+        "cevap yüzeysel (116 krktr < 900)",
+        "pay/sıralama rakamı yok",
+        "somut aksiyon önerisi yok",
+        "boşluk/eksik analizi yok"
+      ],
+      "sure": 3.6,
+      "metin": "*(Yapay zekâ yorumu bu sefer eklenemedi. Yukarıdaki tablo doğrudan kampanya kayıtlarından geldiği için geçerlidir.)*",
+      "gorsel": "table",
+      "satir": 3,
+      "etiketler": [
+        "Vakıf Katılım"
+      ],
+      "hata": null
+    }
+  ]
+}

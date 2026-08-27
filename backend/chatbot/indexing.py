@@ -53,7 +53,19 @@ try:
 except ModuleNotFoundError:              # evren_client.py chatbot/ içine konmuşsa
     from chatbot.evren_client import qdrant_ayarlari, embed_batch as evren_embed_batch
 QDRANT_URL = os.getenv("QDRANT_HOST", "http://qdrant:6333")  # (yalnız geriye dönük)
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:admin123@mongodb:27017/?authSource=admin")
+
+def _get_mongo_uri() -> str:
+    if os.getenv("MONGO_URI"):
+        return os.getenv("MONGO_URI")
+    user = os.getenv("MONGO_USER", "admin")
+    password = os.getenv("MONGO_PASSWORD", "")
+    host = os.getenv("MONGO_HOST", "mongodb")
+    port = os.getenv("MONGO_PORT", "27017")
+    if password:
+        return f"mongodb://{user}:{password}@{host}:{port}/?authSource=admin"
+    return f"mongodb://{host}:{port}/?authSource=admin"
+
+MONGO_URI = _get_mongo_uri()
 COLLECTION_NAME = "banka_kampanyalari"
 
 # =============================================================================

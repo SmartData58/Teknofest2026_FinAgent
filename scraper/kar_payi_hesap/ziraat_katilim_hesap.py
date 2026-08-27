@@ -1,6 +1,13 @@
+import os
 from playwright.sync_api import sync_playwright
 
-URL = "https://www.ziraatkatilim.com.tr/"
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+URL = os.getenv("URL_KARPAYI_ZIRAAT", "https://www.ziraatkatilim.com.tr/")
 
 VADE_LABEL = "1 Ay Vadeli"
 TUTARLAR = ["100000", "250000"]

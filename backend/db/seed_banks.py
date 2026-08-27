@@ -2,10 +2,27 @@ import os
 import yaml
 from pymongo import MongoClient
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 def seed_bankalar():
-    # MongoDB Bağlantısı (Not: Docker içinde hata alırsan 'localhost' kısmını mongo container adıyla değiştir kanka)
-    client = MongoClient("mongodb://admin:admin123@smartdata-mongodb:27017/?authSource=admin")
-    db = client["smartdata"]
+    mongo_uri = os.getenv("MONGO_URI")
+    if not mongo_uri:
+        user = os.getenv("MONGO_USER", "admin")
+        pwd = os.getenv("MONGO_PASSWORD", "")
+        host = os.getenv("MONGO_HOST", "smartdata-mongodb")
+        port = os.getenv("MONGO_PORT", "27017")
+        if pwd:
+            mongo_uri = f"mongodb://{user}:{pwd}@{host}:{port}/?authSource=admin"
+        else:
+            mongo_uri = f"mongodb://{host}:{port}/?authSource=admin"
+    
+    db_name = os.getenv("MONGO_DB_NAME", "smartdata")
+    client = MongoClient(mongo_uri)
+    db = client[db_name]
     bankalar_col = db["bankalar"]
 
     # 🚀 TOKAT: Dinamik dosya yolu! Kod nerede çalışırsa çalışsın config dosyasını şak diye bulur.

@@ -1,7 +1,14 @@
+import os
 import re
 import sys
 from pathlib import Path
 from typing import Optional
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
@@ -23,7 +30,7 @@ from scraper.base_scraper import TabanScraper
 # SABİTLER
 # ============================================================
 
-TABAN_URL = "https://www.albaraka.com.tr"
+TABAN_URL = os.getenv("URL_SPIDER_ALBARAKA", "https://www.albaraka.com.tr")
 
 LISTE_URL = f"{TABAN_URL}/tr/kampanyalar"
 

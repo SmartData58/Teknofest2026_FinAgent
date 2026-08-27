@@ -345,10 +345,13 @@
             v-for="account in filteredAccounts" 
             :key="account.id"
             @click="openAccountDetails(account)"
-            class="p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-white dark:bg-neutral-800/90 border border-neutral-200/80 dark:border-neutral-700/80 shadow-sm hover:shadow-md hover:border-emerald-300 dark:hover:border-emerald-700 transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6 group cursor-pointer active:scale-[0.998]"
+            class="p-4 sm:p-5 rounded-2xl sm:rounded-3xl transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6 group cursor-pointer active:scale-[0.998] relative overflow-hidden"
+            :class="isHighlighted(account) 
+              ? 'bg-gradient-to-r from-emerald-500/[0.07] via-white to-white dark:from-emerald-500/[0.08] dark:via-neutral-800/95 dark:to-neutral-800/95 border-2 border-emerald-500/60 dark:border-emerald-500/50 shadow-md shadow-emerald-500/10 hover:border-emerald-500' 
+              : 'bg-white dark:bg-neutral-800/90 border border-neutral-200/80 dark:border-neutral-700/80 shadow-sm hover:shadow-md hover:border-emerald-300 dark:hover:border-emerald-700'"
           >
             <!-- Sol Alan: Banka Bilgisi, Logo & Vade -->
-            <div class="flex items-center gap-3 sm:gap-4 lg:w-60 shrink-0">
+            <div class="flex items-center gap-3 sm:gap-4 lg:w-64 shrink-0">
               <div class="w-12 h-12 rounded-2xl bg-neutral-50 dark:bg-neutral-700/60 border border-neutral-200 dark:border-neutral-600 flex items-center justify-center p-2 shrink-0 group-hover:scale-105 transition-transform">
                 <img :src="account.logo_url" :alt="account.banka_adi" class="w-full h-full object-contain" />
               </div>
@@ -364,6 +367,21 @@
                   <span>•</span>
                   <span>{{ account.guncellenme_tarihi }}</span>
                 </div>
+                <!-- Vurgulu En Yüksek Rozetleri -->
+                <div v-if="isHighlighted(account)" class="flex items-center gap-1.5 flex-wrap mt-1.5">
+                  <span v-if="isMaxNetRate(account)" class="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/90 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/70 flex items-center gap-1 shadow-xs">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    {{ $t('katilim_hesap.badge_max_net_rate', 'En Yüksek Net Oran') }}
+                  </span>
+                  <span v-if="isMaxNetProfit(account)" class="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-teal-100 text-teal-800 dark:bg-teal-950/90 dark:text-teal-300 border border-teal-300 dark:border-teal-700/70 flex items-center gap-1 shadow-xs">
+                    <span class="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
+                    {{ $t('katilim_hesap.badge_max_net_profit', 'En Yüksek Getiri') }}
+                  </span>
+                  <span v-if="isMaxGrossRate(account)" class="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-cyan-100 text-cyan-800 dark:bg-cyan-950/90 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-700/70 flex items-center gap-1 shadow-xs">
+                    <span class="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
+                    {{ $t('katilim_hesap.badge_max_gross_rate', 'En Yüksek Brüt Oran') }}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -373,7 +391,7 @@
               <!-- Net Kâr Oranı -->
               <div class="flex flex-col justify-center">
                 <span class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">{{ $t('katilim_hesap.net_rate', 'Net Oran') }}</span>
-                <span class="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                <span class="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5" :class="isMaxNetRate(account) ? 'underline decoration-emerald-400 decoration-2 underline-offset-2' : ''">
                   {{ account.net_oran_str }}
                 </span>
                 <span class="text-[10px] text-neutral-400">
@@ -395,7 +413,7 @@
               <!-- Net Kâr Getirisi -->
               <div class="flex flex-col justify-center">
                 <span class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">{{ $t('katilim_hesap.net_profit', 'Net Kâr Getirisi') }}</span>
-                <span class="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                <span class="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5" :class="isMaxNetProfit(account) ? 'text-teal-600 dark:text-teal-400' : ''">
                   {{ account.net_kar_str }}
                 </span>
                 <span class="text-[10px] text-red-500/80">
@@ -436,7 +454,10 @@
             v-for="account in filteredAccounts" 
             :key="account.id"
             @click="openAccountDetails(account)"
-            class="p-5 rounded-3xl bg-white dark:bg-neutral-800/90 border border-neutral-200/80 dark:border-neutral-700/80 shadow-sm hover:shadow-md hover:border-emerald-300 dark:hover:border-emerald-700 transition-all flex flex-col justify-between group cursor-pointer active:scale-[0.995]"
+            class="p-5 rounded-3xl transition-all flex flex-col justify-between group cursor-pointer active:scale-[0.995] relative overflow-hidden"
+            :class="isHighlighted(account) 
+              ? 'bg-gradient-to-br from-emerald-500/[0.07] via-white to-white dark:from-emerald-500/[0.08] dark:via-neutral-800/95 dark:to-neutral-800/95 border-2 border-emerald-500/60 dark:border-emerald-500/50 shadow-md shadow-emerald-500/10 hover:border-emerald-500' 
+              : 'bg-white dark:bg-neutral-800/90 border border-neutral-200/80 dark:border-neutral-700/80 shadow-sm hover:shadow-md hover:border-emerald-300 dark:hover:border-emerald-700'"
           >
             <!-- Kart Başlığı -->
             <div>
@@ -447,11 +468,26 @@
                   </div>
                   <div>
                     <h3 class="text-sm font-extrabold text-neutral-900 dark:text-white leading-snug">{{ account.banka_adi }}</h3>
-                    <div class="flex items-center gap-1.5 mt-0.5">
+                    <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
                       <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 uppercase">
                         {{ account.vade }}
                       </span>
                       <span class="text-[10px] font-semibold text-neutral-400">{{ account.tier }}</span>
+                    </div>
+                    <!-- Vurgulu En Yüksek Rozetleri -->
+                    <div v-if="isHighlighted(account)" class="flex items-center gap-1 flex-wrap mt-1.5">
+                      <span v-if="isMaxNetRate(account)" class="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/90 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/70 flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        {{ $t('katilim_hesap.badge_max_net_rate', 'En Yüksek Net Oran') }}
+                      </span>
+                      <span v-if="isMaxNetProfit(account)" class="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-teal-100 text-teal-800 dark:bg-teal-950/90 dark:text-teal-300 border border-teal-300 dark:border-teal-700/70 flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
+                        {{ $t('katilim_hesap.badge_max_net_profit', 'En Yüksek Getiri') }}
+                      </span>
+                      <span v-if="isMaxGrossRate(account)" class="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-cyan-100 text-cyan-800 dark:bg-cyan-950/90 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-700/70 flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
+                        {{ $t('katilim_hesap.badge_max_gross_rate', 'En Yüksek Brüt Oran') }}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -560,12 +596,18 @@
             <tr 
               v-for="account in filteredAccounts" 
               :key="account.id"
-              class="hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20 transition-colors group cursor-pointer"
+              class="transition-colors group cursor-pointer"
+              :class="isHighlighted(account) ? 'bg-emerald-50/40 dark:bg-emerald-950/20 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/30' : 'hover:bg-neutral-50/80 dark:hover:bg-neutral-800/40'"
               @click="openAccountDetails(account)"
             >
               <td class="py-3.5 px-4 font-bold text-neutral-900 dark:text-white flex items-center gap-2.5">
                 <img :src="account.logo_url" :alt="account.banka_adi" class="w-5 h-5 object-contain rounded" />
-                <span>{{ account.banka_adi }}</span>
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span>{{ account.banka_adi }}</span>
+                  <span v-if="isMaxNetRate(account)" class="px-1.5 py-0.5 text-[9px] font-bold rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                    {{ $t('katilim_hesap.badge_max_net_rate', 'En Yüksek Net Oran') }}
+                  </span>
+                </div>
               </td>
               <td class="py-3.5 px-4">
                 <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
@@ -927,6 +969,12 @@ const stats = computed(() => {
     best_bank
   }
 })
+
+// En Yüksek 3 Metriği Yansıtan Hesapları Vurgulama Fonksiyonları
+const isMaxNetRate = (a) => stats.value.max_net_rate > 0 && a.net_oran === stats.value.max_net_rate
+const isMaxNetProfit = (a) => stats.value.max_net_profit > 0 && a.net_kar === stats.value.max_net_profit
+const isMaxGrossRate = (a) => stats.value.max_gross_rate > 0 && a.brut_oran === stats.value.max_gross_rate
+const isHighlighted = (a) => isMaxNetRate(a) || isMaxNetProfit(a) || isMaxGrossRate(a)
 
 const hasActiveFilters = computed(() => {
   return searchQuery.value.trim() !== '' || selectedBanks.value.length > 0 || selectedTiers.value.length > 0 || selectedAmount.value !== null || selectedTerm.value !== null

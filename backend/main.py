@@ -8,6 +8,12 @@ import tempfile
 from contextlib import asynccontextmanager
 from typing import List
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 import httpx
 from fastapi import FastAPI, File, UploadFile, Form, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware

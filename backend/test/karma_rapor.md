@@ -2,155 +2,139 @@
 
 **Hedef:** `http://localhost:8003/api/chat`  
 **Senaryo:** 100  
-**Genel başarı:** 1128/1169 (96%)
+**Genel başarı:** 1145/1169 (98%)
 
 | Persona | Kategori | n | Puan | Başarı |
 |---|---|---:|---:|---:|
 | analist | coklu_kiyas | 12 | 204/204 | 100% |
-| analist | gecerlilik | 5 | 48/50 | 96% |
-| analist | konumlanma | 10 | 114/130 | 88% |
+| analist | gecerlilik | 5 | 50/50 | 100% |
+| analist | konumlanma | 10 | 130/130 | 100% |
 | analist | metrik | 8 | 95/96 | 99% |
 | analist | piyasa | 10 | 128/130 | 98% |
 | analist | sinir | 2 | 16/16 | 100% |
-| musteri | anlama | 10 | 103/110 | 94% |
-| musteri | banka_sorusu | 8 | 80/80 | 100% |
-| musteri | gecerlilik | 6 | 58/66 | 88% |
-| musteri | kampanya_arama | 14 | 140/140 | 100% |
-| musteri | sayisal | 6 | 53/54 | 98% |
+| musteri | anlama | 10 | 108/110 | 98% |
+| musteri | banka_sorusu | 8 | 78/80 | 98% |
+| musteri | gecerlilik | 6 | 61/66 | 92% |
+| musteri | kampanya_arama | 14 | 139/140 | 99% |
+| musteri | sayisal | 6 | 52/54 | 96% |
 | musteri | sinir | 3 | 26/27 | 96% |
-| musteri | tavsiye | 6 | 63/66 | 95% |
+| musteri | tavsiye | 6 | 58/66 | 88% |
 
 ## Bulgular
 
-### [musteri/anlama] murabaha nedir
-- analist jargonu: ['veri seti']
-- doğrudan hitap yok (siz/kazanç/başvuru)
+### [musteri/kampanya_arama] e-ticaret alışverişlerinde ne avantaj var
+- somut tutar/oran/tarih yok
 
-> Murabaha, elimdeki mevcut kampanya verilerinde yer alan bir tanım veya açıklama değildir. Elimdeki kayıtlar sadece Albaraka Türk'ün Kırtasiye, Şubesiz Umre Finansmanı, Sadakat Programı ve Limitsiz İMM Sigortası gibi belirli kampanyalarına dair detayları içermektedir.
+> Merhaba, elimdeki mevcut kampanya verilerinde e-ticaret alışverişlerine özel herhangi bir avantaj, indirim oranı veya puanlama bilgisi bulunmamaktadır. Bu nedenle hangi bankanın veya kampanyanın e-ticaret avantajlarını sorduğunuzu netleştirmeniz gerekmektedir.
 
-Bu nedenle, murabaha kavramının ne olduğunu veya nasıl çalıştığını açıklamak elimdeki veri seti kapsamında mümkün değildir. Sadece 
+Lütfen bahsettiğiniz bankayı ve kampanya adını belirtirseniz, elimdeki kayıtlarda bu bilgiye yer verilip verilmediğini kontrol edip size d
+
+### [musteri/banka_sorusu] TOM Katılım ne sunuyor
+- somut tutar/oran/tarih yok
+
+> Elimdeki kampanya verilerinde TOM Katılım bankasına ait güncel bir kampanya detayı bulunmamaktadır. Bu nedenle hangi kampanyadan bahsettiğinizi netleştirmeniz ve mevcut verilerimde olup olmadığını kontrol etmem için bana daha fazla bilgi vermeniz gerekmektedir.
+
+Lütfen hangi ürüne (kredi, mevduat, kart vb.) veya hangi tarih aralığına ait kampanyayı sorduğunuzu belirtiniz; böylece elimdeki kayıtlar
+
+### [musteri/banka_sorusu] Dünya Katılım'da ne var
+- somut tutar/oran/tarih yok
+
+> Merhaba, elimdeki mevcut kampanya verilerinde Dünya Katılım Bankası'na özel aktif bir kampanya bilgisi bulunmamaktadır. Bu nedenle hangi kampanyadan veya hangi üründen (kredi, mevduat, kart vb.) bahsettiğinizi netleştirmenizi rica ederim.
+
+Eğer belirli bir ürün veya kampanya adı belirtirseniz, elimdeki kayıtlarda bu detayın olup olmadığını tekrar kontrol edebilirim. Ayrıca, yatırım tavsiyesi verem
 
 ### [musteri/anlama] kampanyadan yararlanmak için ne gerekiyor
-- analist jargonu: ['veri seti']
 - görsel gelmemeliydi (table)
 
-> Kampanyalardan yararlanmak için elimdeki kayıtlarda belirtilen spesifik başvuru koşulları (örneğin minimum harcama tutarı, belirli bir işlem sayısı veya vade süresi) maalesef yer almıyor; bu detaylar mevcut veri setinde bulunmuyor. Ancak elimdeki verilere göre Albaraka Türk'ün "Akaryakıt Kampanyası" ile 1.500 TL, "Ağustos Ayına Özel Fatura Kampanyası" ile ise 500 TL ödül kazanma fırsatı mevcut. Bu
+> Kampanyalardan yararlanmak için öncelikle ilgili bankanın kartını kullanmanız ve kampanya koşullarını tam olarak karşılamanız gerekmektedir; örneğin Albaraka Türk'ün "Akaryakıt Kampanyası" ile 1.500 TL ödül kazanmak için belirli bir akaryakıt harcaması yapmanız, "Ağustos Ayına Özel Fatura Kampanyası" ile 500 TL kazanmak için ise fatura ödemeniz şarttır. Elimdeki kayıtlarda kampanyaların başvuru pr
+
+### [musteri/tavsiye] bana en uygun kampanya hangisi
+- yatırım tavsiyesi reddi yok
+
+> Sizin için tek bir "en uygun" kampanyayı belirlemek, ihtiyaçlarınızın (nakit ödül mü yoksa faizsiz taksit mi) ne olduğuna bağlıdır, ancak elimdeki kayıtlara göre Albaraka Türk'ün "Akaryakıt Kampanyası" ile 1.500 TL nakit ödül kazanma fırsatı öne çıkmaktadır.
+
+Eğer düzenli akaryakıt harcamanız varsa, Albaraka Türk'ün "Akaryakıt Kampanyası" size 1.500 TL'ye kadar ödül kazandırırken, fatura ödemeleri
+
+### [musteri/tavsiye] hangisini seçmeliyim
+- somut tutar/oran/tarih yok
+
+> Hangi kampanyayı seçmeniz gerektiğine karar verebilmem için elimdeki mevcut kampanya verilerinde bu bilgi bulunmamaktadır. Şu an hangi bankanın veya hangi kampanyanın söz konusu olduğunu belirtmediğiniz için, size en uygun seçeneği değerlendiremem ve tahmin yürütemem.
+
+Lütfen hangi bankanın kampanyasından bahsettiğinizi veya karşılaştırmak istediğiniz ürünlerin isimlerini paylaşın. Bu bilgileri pa
+
+### [musteri/tavsiye] sence bu kampanyalar cazip mi
+- somut tutar/oran/tarih yok
+
+> Merhaba, bir yapay zeka finans asistanı olarak yatırım tavsiyesi veremem ve kampanyaların sizin için cazip olup olmadığına dair kişisel bir görüş bildiremem. Her bireyin finansal durumu ve hedefleri farklıdır; bu nedenle karar vermeden önce kendi ihtiyaçlarınızı gözden geçirmeniz önemlidir.
+
+Elimdeki mevcut kampanya verilerinde, hangi bankanın veya kampanyanın değerlendirildiğine dair spesifik bir
 
 ### [musteri/tavsiye] param olsa nereye yatırmalıyım
-- somut tutar/oran yok
+- somut tutar/oran/tarih yok
 
 > Ben bir yapay zeka asistanıyım ve yatırım/finansal tavsiye veremem. Ancak bankaların güncel kampanya, oran ve masraf bilgilerini sizin için karşılaştırıp listeleyebilirim.
 
 ### [musteri/tavsiye] hangi bankayı tercih etmeliyim
-- cevap çok uzun (2219 krktr > 2200)
+- yatırım tavsiyesi reddi yok
 
-> Hangi bankayı tercih etmeniz, öncelikli ihtiyacınızın yüksek nakit ödül mü yoksa uzun vadeli finansman mı olduğuna göre değişir; ancak elimdeki kayıtlara göre en yüksek tekil ödül fırsatını **Hayat Finans** sunmaktadır. Özellikle "Arkadaşını Davet Et, Avantajlı Hesapla Kazanmaya Başla" kampanyasıyla 10.000 TL, "Biz Kart Arkadaşını Getir & Kazan" kampanyasıyla ise 25.000 TL'ye varan nakit ödül kaza
+> Hangi bankayı tercih etmeniz, öncelikli ihtiyacınızın nakit ödül, uzun vadeli finansman mı yoksa günlük harcamalarda puan kazanmak olduğuna göre değişir; ancak elimdeki kayıtlara göre **Kuveyt Türk**, toplam 107 aktif kampanya ile sektördeki en geniş seçenek sunan bankadır ve özellikle kart harcamalarınızda size en fazla fırsatı sağlar. Eğer amacınız doğrudan yüksek nakit ödül kazanmaksa, **Hayat 
 
 ### [musteri/tavsiye] bu kampanya değer mi
-- somut tutar/oran yok
+- somut tutar/oran/tarih yok
 
 > Ben bir yapay zeka asistanıyım ve yatırım/finansal tavsiye veremem. Ancak bankaların güncel kampanya, oran ve masraf bilgilerini sizin için karşılaştırıp listeleyebilirim.
 
 ### [musteri/gecerlilik] bu kampanyalar hâlâ geçerli mi
-- doğrudan hitap yok (siz/kazanç/başvuru)
-- somut tutar/oran yok
+- somut tutar/oran/tarih yok
 
-> Elimdeki kayıtlara göre, bahsettiğiniz kampanyaların geçerlilik tarihleri 2026 yılını kapsamaktadır. Hayat Finans'ın "Bana Bunu Al İş Ortağım ile Troy Mağazalarında Finansman Fırsatı" kampanyası 31 Ağustos 2026 tarihine kadar, Kuveyt Türk'ün "E-Ticaret, E-İhracat ve Tekno Girişimcilere Özel Fırsat" ve "E-Ticaret Pazaryeri Satıcılarına Özel Vade Farksız 3 Taksit" kampanyaları ise 31 Aralık 2026 tar
+> Merhaba, elimdeki mevcut kampanya verilerinde bu kampanyaların geçerlilik tarihleri veya sona erme durumlarına dair bir bilgi bulunmamaktadır. Bu nedenle hangi bankanın hangi kampanyasından bahsettiğinizi belirtirseniz, elimdeki kayıtları tekrar kontrol edebilirim.
+
+Lütfen ilgili bankanın adını ve kampanya ismini paylaşın, böylece size en doğru bilgiyi verebilmem mümkün olacaktır. İsterseniz tüm m
 
 ### [musteri/gecerlilik] yakında biten kampanya var mı
-- somut tutar/oran yok
+- somut tutar/oran/tarih yok
 
-> Elimdeki kampanya verilerinde, bitiş tarihi henüz gelmemiş ve "yakında bitecek" olarak işaretlenmiş aktif bir kampanya bulunmamaktadır.
+> Elimdeki kampanya verilerinde, "yakında bitecek" veya son günleri kalan aktif bir kampanya bilgisi bulunmamaktadır; çünkü paylaştığım listedeki tüm 77 kampanyanın süresi dolmuş ve bitiş tarihleri geçmiş durumdadır.
 
-Mevcut kayıtlarım, süresi dolmuş 77 kampanyanın listesini içeriyor ve bu listede gösterilen örnekler (Albaraka Türk'ün Togg Finansmanı, Türkiye Finans'ın Banka ve Kamu Çalışanlarına Özel İhtiyaç Finansmanı) tamamen sona ermiş durumdadır. Bu nedenle, şu an için ba
-
-### [musteri/gecerlilik] süresi dolmak üzere olan fırsatlar neler
-- analist jargonu: ['veri seti']
-
-> Elimdeki kampanya verilerinde, süresi dolmak üzere olan fırsatların tam listesini ve bitiş tarihlerini içeren detaylı bir kayıt bulunmamaktadır.
-
-Veri setinde toplam 107 geçerli kampanya olduğunu ve bunlardan 65 tanesinin 14 gün içinde biteceğini, en yakınının ise 2 gün sonra sona ereceğini biliyorum; ancak hangi bankanın hangi kampanyasının bu sürece dahil olduğunu gösteren isimler elimdeki örnek
+Örneğin, Albaraka Türk'ün "Togg Finansmanı" kampanyası 48 ay vade ile, Türkiye Finans'ın ise "Banka Çalışanlarına Özel İhtiyaç Finansmanı" ve "Kamu Çalışanlarına Özel İhtiyaç Finansman
 
 ### [musteri/gecerlilik] kampanya ne zaman bitiyor
-- doğrudan hitap yok (siz/kazanç/başvuru)
-- somut tutar/oran yok
+- somut tutar/oran/tarih yok
 
-> Merhaba, elimdeki kayıtlarda yer alan Kuveyt Türk kampanyalarının bitiş tarihleri şöyledir: Kuveyt Türk'ün Konyalı Saat ile ilgili kampanyası 31.12.2026 tarihinde, E-Ticaret ve Tekno Girişimcilere özel Marqby fırsatı da aynı tarih olan 31.12.2026'da sona erecektir. Ayrıca İmza mağazaları için sunulan vade farksız taksit kampanyası ile Civil resmi web sitesi kampanyaları da 31.12.2026 tarihine kada
+> Elimdeki kampanya verilerinde kampanyaların bitiş tarihine dair bir bilgi bulunmamaktadır. Hangi bankanın veya hangi kampanyanın bitiş tarihini sorduğunuzu belirtirseniz, elimdeki kayıtlarda bu bilgi olup olmadığını tekrar kontrol edebilirim.
+
+İsterseniz mevcut tüm kampanyaları detaylı bir liste halinde de sunabilirim.
 
 ### [musteri/gecerlilik] hangi kampanyalar bu ay sona eriyor
-- somut tutar/oran yok
+- analist jargonu: ['veri seti']
 
-> Elimdeki kampanya verilerinde, hangi kampanyaların bu ayın son gününde sona erdiğine dair spesifik tarih bilgisi bulunmamaktadır; verilerde sadece 14 gün içinde bitecek olan kampanyaların genel sayısı (65 adet) ve en yakın bitiş süresinin 2 gün olduğu bilgisi yer almaktadır.
+> Elimdeki kampanya verilerinde, bu ay sona eren kampanyaların tam listesini veya bitiş tarihlerini içeren spesifik bir kayıt bulunmamaktadır.
 
-Sizin için mevcut kayıtlarda en yakında bitecek fırsatları öne çıkarabilirim; örneğin Kuveyt Türk'ün "Evlenecek Olan veya Y
+Veri setinde 14 gün içinde bitecek olan 65 kampanya olduğu belirtilse de, bu kampanyaların hangilerinin tam olarak bu ay içinde sona ereceğine dair detaylı tarih bilgisi mevcut değildir; elimdeki kayıtlarda yalnızca Kuveyt Türk'ün "Evlenecek Olan veya Yeni E
+
+### [musteri/sayisal] 100.000 TL 12 ay vadeli taksit ne kadar olur
+- doğrudan hitap yok (siz/kazanç/başvuru)
+
+> Elimdeki kampanya verilerinde 100.000 TL tutarında, 12 ay vadeli bir taksit planına ait faiz oranı veya aylık ödeme tutarı bilgisi bulunmamaktadır.
+
+Sadece Kuveyt Türk'ün "Proemtia Sağlam Bayi Kart" kampanyasında 100.000 TL değerinde bir ödül (alışveriş puanı) olduğunu, ancak bu ödülün bir kredi taksit planı veya faiz oranı içermediğini belirtmeliyim. Verilerimde yer alan diğer kampanyalar (Albara
 
 ### [musteri/sayisal] en uzun vade kaç ay
-- somut tutar/oran yok
+- somut tutar/oran/tarih yok
 
-> Elimdeki kampanya verilerinde en uzun vade süresi 48.0 aydır. Bu süre, Kuveyt Türk'ün "Evlenecek Olan veya Yeni Evli Çiftlere Kuveyt Türk'ten Müjde Evlilik Paketi" adlı ihtiyaç finansmanı kampanyasında uygulanmaktadır.
-
-Toplamda 107 geçerli kampanya arasında bu vade süresi en yüksek seçenektir ve ortalamayı (6.61 ay) tek başına oldukça yukarı çekmektedir; yani tipik bir kampanya vadesi 48 aydan ço
+> Elimdeki kampanya verilerinde en uzun vade süresi 48.0 aydır. Bu süre, Kuveyt Türk'ün "Evlenecek Olan veya Yeni Evli Çiftlere Kuveyt Türk'ten Müjde Evlilik Paketi" kampanyasında geçerli olan bir ihtiyaç finansmanı vadesidir. Toplamda 107 geçerli kampanya arasında bu vade, diğer seçeneklere kıyasla oldukça uzun bir ödeme kolaylığı sunmaktadır; örneğin ortalama vade süresi 6.61 ay iken, bu kampanya 
 
 ### [analist/piyasa] sektörde pazar payları nasıl dağılıyor
 - tablo gelmedi
 
-> Elimdeki kampanya verilerinde sektör genelindeki pazar payı dağılımı, piyasa analizleri veya rakamsal pazar payı istatistikleri bulunmamaktadır. Mevcut kayıtlarım sadece belirli bankaların belirli dönemlerdeki kampanya detaylarını (örneğin Albaraka Türk'ün "Payını Sen Seç Finansmanı" veya Kuveyt Türk'ün e-ticaret satıcılarına yönelik "Vade Farksız 3 Taksit" kampanyası gibi) içermektedir ve bu veri
-
-### [analist/konumlanma] biz Albaraka Türk'üz, sektördeki konumumuz ne
-- boşluk/eksik analizi yok
-
-> Albaraka Türk, katılım bankacılığı sektöründe toplam 234 aktif kampanya içinde %19.2'lik pazar payıyla (45 kampanya) Kuveyt Türk'ten sonra ikinci sırada yer almaktadır. Bu konum, sektör lideri Kuveyt Türk'ün %45.7'lik (107 kampanya) hakimiyeti karşısında, rakiplerinizden (Emlak Katılım %16.7, Vakıf Katılım %10.3) belirgin bir şekilde önde olduğunuzu göstermektedir.
-
-Kampanya yapınıza baktığımızda,
-
-### [analist/konumlanma] Emlak Katılım olarak hangi kategorilerde eksiğiz
-- pay/sıralama rakamı yok
-
-> Elimdeki kampanya verilerinde, Emlak Katılım Bankası'nın hangi kategorilerde "eksiği" olduğu veya hangi alanlarda hizmet vermediğine dair doğrudan bir analiz, karşılaştırma raporu veya eksiklik listesi bulunmamaktadır. Mevcut veriler sadece bankanın aktif olarak sunduğu dört spesifik kampanyayı (Emekli Müşterilere Özel Ayrıcalıklar, Debit Kart Nakit İade, Paraf Harcama Hediye ve Biletinial İndirim
-
-### [analist/konumlanma] Hayat Finans hangi alanlarda büyüyebilir
-- boşluk/eksik analizi yok
-
-> Elimdeki mevcut kampanya verileri, Hayat Finans'ın sadece belirli ürün ve hizmet alanlarında müşteriye yönelik fırsatlar sunduğunu göstermektedir; ancak bu veriler bankanın genel stratejik büyüme hedefleri, pazar payı analizleri veya geleceğe yönelik yatırım planları hakkında teknik bir öngörü veya tavsiye içermemektedir. Verilerde öne çıkan alanlar, Xiaomi ürünleri için sunulan 3 aya varan %0 kâr
-
-### [analist/konumlanma] TOM Katılım'ın pazar konumunu değerlendir
-- boşluk/eksik analizi yok
-
-> Elimdeki kampanya verilerinde TOM Katılım'ın genel pazar konumu, piyasa payı, rakiplerine göre sıralaması veya stratejik konumlandırması hakkında nicel veya nitel bir analiz bilgisi bulunmamaktadır. Verilerde sadece TOM Katılım'ın sunduğu belirli ürün ve kampanya detayları yer almaktadır.
-
-Mevcut kayıtlara göre TOM Katılım, hedef kitle olarak hem mevcut müşterilere hem de yeni müşterilere yönelik 
-
-### [analist/konumlanma] Dünya Katılım'ın portföy açığı nerede
-- cevap yüzeysel (819 krktr < 900)
-- pay/sıralama rakamı yok
-
-> Elimdeki kampanya verilerinde Dünya Katılım Bankası'nın portföy açığına dair herhangi bir bilgi veya finansal analiz raporu bulunmamaktadır. Mevcut verilerim sadece Itopya, Schafer ve ADV mağazalarındaki vade farksız taksit fırsatları ile "Davet Et, Altın Kazan" referans programı gibi belirli kart ve müşteri kazanım kampanyalarına odaklanmaktadır.
-
-Bankanın genel portföy yapısı, risk yönetimi veya
-
-### [analist/konumlanma] Emlak Katılım'ın güçlü ve zayıf yönlerini çıkar
-- boşluk/eksik analizi yok
-
-> Elimdeki kampanya verilerine göre Emlak Katılım Bankası'nın mevcut portföyündeki güçlü yönleri, özellikle emekli segmentine yönelik özel finansman ve kâr paylaşım avantajları ile yeni müşteri kazanımına odaklanan yüksek nakit iade kampanyalarıdır. Emekli müşteriler için sunulan "Emekli Müşterilerimize Özel Ayrıcalıklar" kampanyasında, bireysel finansman taleplerinde liste fiyatlarından %5 indiriml
-
-### [analist/konumlanma] Vakıf Katılım için 3 somut aksiyon öner
-- boşluk/eksik analizi yok
-
-> Elimdeki kampanya verilerine göre Vakıf Katılım için mevcut müşteri portföyünü harekete geçirecek üç somut aksiyon önerisi şunlardır: İlk olarak, idefix platformundaki alışveriş hacmini artırmak amacıyla VKart TROY kampanyasını öne çıkarmalı; 1.000 TL ve üzeri harcamalarda 200 TL indirim sağlayan bu fırsatla, kullanıcıların "TROY200TL" kodunu kullanarak toplamda 3.000 TL'ye varan indirim kazanması
+> Elimdeki kampanya verilerinde sektör genelindeki pazar payı dağılımı, piyasa analizleri veya bankaların pazar payı oranlarına dair herhangi bir bilgi bulunmamaktadır. Mevcut veri setim sadece Albaraka Türk'ün "Payını Sen Seç Finansmanı" ve Kuveyt Türk'ün "E-Ticaret Pazaryeri Satıcılarına Özel Vade Farksız 3 Taksit", "Akaryakıt Sektöründe Sağlam Oran" ile "Esnaf, Çiftçi ve Tüzel Şirketlerin Faturas
 
 ### [analist/metrik] kâr payı oranlarını listele
 - tabloda tek banka (1 satır)
 
-> Elimdeki kampanya verilerinde sadece Kuveyt Türk'ün "Taksitlio'da Yeni Müşterilere Özel Kuveyt Türk Alışveriş Finansmanı Fırsatı" adlı kampanyası için %2.99 kâr payı oranı kayıtlıdır.
+> Elimdeki kampanya verilerinde, 234 aktif kampanyanın sadece 1 tanesinde kâr payı oranı bilgisi kayıtlıdır; diğer tüm bankaların bu alanda verisi bulunmamaktadır.
 
-Sektördeki diğer 6 katılım bankası (Albaraka Türk, Emlak Katılım, Vakıf Katılım, Hayat Finans, TOM Katılım ve Dünya Katılım) için kâr payı oranı verisi bulunmamaktadır; bu bankaların 233 kampanyasının tamamında ilgi
-
-### [analist/gecerlilik] süresi dolmuş kampanyalar hangileri
-- pay/sıralama rakamı yok
-
-> Elimdeki kayıtlara göre süresi dolmuş kampanyalar arasında en yüksek vade süresine sahip olan, Albaraka Türk'ün "Togg Finansmanı" kampanyasıdır ve bu kampanya 48.0 ay vade sunmaktadır.
-
-Sektördeki süresi dolmuş 77 kampanyanın tamamı üzerinden yapılan analizde, vade verisi bulunan 53 kampanyanın ortalaması 8.66 ay iken, en düşük vade 2.0 ay olarak kaydedilmiştir; bu durum ortalamanın tek bir yüksek
+Sadece Kuveyt Türk'ün "Taksitlio'da Yeni Müşterilere Özel Kuveyt Türk Alışveriş Finansmanı Fırsatı" kampanyası için %2.99 kâr payı oranı mevcuttur. Albaraka Türk, Emlak Katılım, Vakıf Katılım, Hayat Finans, TOM Katılım ve Dünya Katılım b
 
 ### [musteri/sinir] merhaba
 - doğrudan hitap yok (siz/kazanç/başvuru)

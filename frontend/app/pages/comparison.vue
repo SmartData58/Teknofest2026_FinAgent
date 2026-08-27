@@ -740,7 +740,7 @@ let observer = null
 const criteriaConfig = computed(() => [
   {
     id: 'lowest_profit',
-    title: t('dashboard.lowest_profit', 'En Düşük Kâr Payı Oranı'),
+    title: t('dashboard.lowest_profit', 'Düşük Kâr Payı'),
     sortKey: 'karPayi',
     sortAsc: true,
     columns: [
@@ -753,7 +753,7 @@ const criteriaConfig = computed(() => [
   },
   {
     id: 'highest_reward',
-    title: t('dashboard.highest_reward', 'En Yüksek Ödül Miktarı'),
+    title: t('dashboard.highest_reward', 'Yüksek Ödül'),
     sortKey: 'odul',
     sortAsc: false,
     columns: [
@@ -766,21 +766,21 @@ const criteriaConfig = computed(() => [
   },
   {
     id: 'highest_mgm',
-    title: t('dashboard.highest_mgm', 'En Yüksek MGM (Davet Et Kazan) Ödülü'),
+    title: t('dashboard.highest_mgm', 'MGM Davet'),
     sortKey: 'mgmKazanc',
     sortAsc: false,
     columns: [
       { key: 'banka', label: t('comparison.columns.banka', 'Banka') },
       { key: 'baslik', label: t('comparison.columns.kampanya', 'Kampanya') },
       { key: 'mgmKazanc', label: t('comparison.columns.mgm', 'MGM / Davet') },
-      { key: 'mgmLimit', label: t('dashboard.highest_loan', 'Toplam Kazanç Limiti') },
+      { key: 'mgmLimit', label: t('dashboard.highest_loan', 'Yüksek Limit') },
       { key: 'bitisTarihi', label: t('campaigns.columns.bitisTarihi', 'Bitiş Tarihi') },
       { key: 'hedefKitle', label: t('comparison.columns.hedefKitle', 'Hedef Kitle') }
     ]
   },
   {
     id: 'longest_term',
-    title: t('dashboard.longest_term', 'En Uzun Vade'),
+    title: t('dashboard.longest_term', 'Uzun Vade'),
     sortKey: 'vade',
     sortAsc: false,
     columns: [
@@ -793,7 +793,7 @@ const criteriaConfig = computed(() => [
   },
   {
     id: 'lowest_fee',
-    title: t('dashboard.lowest_fee', 'En Düşük Tahsis Ücreti'),
+    title: t('dashboard.lowest_fee', 'Düşük Masraf'),
     sortKey: 'tahsisUcreti',
     sortAsc: true,
     columns: [
@@ -812,8 +812,8 @@ const getMetricLabel = (key) => {
     'odul': t('comparison.columns.odul', 'Ödül (TL)'),
     'vade': t('campaigns.columns.vade', 'Vade (ay)'),
     'tahsisUcreti': t('comparison.columns.tahsisUcreti', 'Tahsis Ücreti (TL)'),
-    'mgmKazanc': t('comparison.columns.mgm', 'MGM Davet Ödülü'),
-    'mgmLimit': t('dashboard.highest_loan', 'Toplam Kazanç Limiti')
+    'mgmKazanc': t('comparison.columns.mgm', 'MGM Davet'),
+    'mgmLimit': t('dashboard.highest_loan', 'Yüksek Limit')
   }
   return labels[key] || key
 }

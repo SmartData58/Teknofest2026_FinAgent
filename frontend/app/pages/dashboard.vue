@@ -493,10 +493,10 @@ const exportToPDF = async (chartRefName) => {
           </div>`
 
     if (chartRefName === 'all-comparison' || chartRefName === 'lineChartRef') {
-      // 1. KAMPANYA BAŞLANGIÇ TRENDİ (GENİŞLETİLMİŞ)
+      // 1. LANSMAN TRENDİ
       html += `
           <div style="margin-bottom: 30px; page-break-inside: avoid;">
-              <h2 style="font-size: 16px; color: #111827; margin: 0 0 4px 0; font-weight: bold;">1. Kampanya Başlangıç Trendi (Genişletilmiş Görünüm)</h2>
+              <h2 style="font-size: 16px; color: #111827; margin: 0 0 4px 0; font-weight: bold;">1. Lansman Trendi</h2>
               <p style="font-size: 12px; color: #4b5563; margin: 0 0 12px 0;">Son 6 ayda başlayan yeni kampanya ivmesi ve sektör ortalaması kıyası</p>
               ${lineImg ? `<div style="text-align: center; margin-bottom: 14px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px;"><img src="${lineImg}" style="max-width: 100%; height: auto; max-height: 280px; object-fit: contain; display: block; margin: 0 auto;" /></div>` : ''}
               
@@ -522,10 +522,10 @@ const exportToPDF = async (chartRefName) => {
     }
 
     if (chartRefName === 'all-comparison' || chartRefName === 'radarChartRef') {
-      // 2. KAMPANYA DAĞILIMI (GENİŞLETİLMİŞ ALT KIRILIMLAR)
+      // 2. KATEGORİ DAĞILIMI
       html += `
           <div style="margin-bottom: 30px; page-break-inside: avoid;">
-              <h2 style="font-size: 16px; color: #111827; margin: 0 0 4px 0; font-weight: bold;">2. Kampanya Dağılımı (Genişletilmiş Alt Kırılımlar)</h2>
+              <h2 style="font-size: 16px; color: #111827; margin: 0 0 4px 0; font-weight: bold;">2. Kategori Dağılımı</h2>
               <p style="font-size: 12px; color: #4b5563; margin: 0 0 12px 0;">Banka portföyünün alt kategoriler bazında derinlemesine çeşitlilik analizi</p>
               ${radarImg ? `<div style="text-align: center; margin-bottom: 14px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px;"><img src="${radarImg}" style="max-width: 100%; height: auto; max-height: 300px; object-fit: contain; display: block; margin: 0 auto;" /></div>` : ''}
               
@@ -551,10 +551,10 @@ const exportToPDF = async (chartRefName) => {
     }
 
     if (chartRefName === 'all-comparison' || chartRefName === 'barChartRef') {
-      // 3. ORTALAMA KAMPANYA SÜRELERİ (GENİŞLETİLMİŞ)
+      // 3. YAYIN SÜRELERİ
       html += `
           <div style="margin-bottom: 30px; page-break-inside: avoid;">
-              <h2 style="font-size: 16px; color: #111827; margin: 0 0 4px 0; font-weight: bold;">3. Ortalama Kampanya Yayın Süreleri & Hedef Kitle (Genişletilmiş)</h2>
+              <h2 style="font-size: 16px; color: #111827; margin: 0 0 4px 0; font-weight: bold;">3. Yayın Süreleri</h2>
               <p style="font-size: 12px; color: #4b5563; margin: 0 0 12px 0;">Alt kırılımlar bazında kampanyaların aktif yayında kalma süreleri (Ay)</p>
               ${barImg ? `<div style="text-align: center; margin-bottom: 14px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px;"><img src="${barImg}" style="max-width: 100%; height: auto; max-height: 320px; object-fit: contain; display: block; margin: 0 auto;" /></div>` : ''}
               
@@ -580,10 +580,10 @@ const exportToPDF = async (chartRefName) => {
     }
 
     if (chartRefName === 'all-comparison') {
-      // 4. KAMPANYALAR LİSTESİ (BANKALARA GÖRE AYRILMIŞ ŞIK DÖKÜM)
+      // 4. KAMPANYA LİSTESİ
       html += `
           <div style="margin-bottom: 25px;">
-              <h2 style="font-size: 16px; color: #111827; margin: 0 0 4px 0; font-weight: bold;">4. Aktif Kampanyalar Envanteri</h2>
+              <h2 style="font-size: 16px; color: #111827; margin: 0 0 4px 0; font-weight: bold;">4. Kampanya Listesi</h2>
               <p style="font-size: 12px; color: #4b5563; margin: 0 0 16px 0;">Seçili bankaların aktif kampanya parametre ve detay dökümleri</p>`
 
       activeCompareBanks.value.forEach((b, bIdx) => {
@@ -1819,7 +1819,7 @@ const mgmCampaigns = computed(() => {
           <!-- Üst Bilgi Çubuğu (AI Butonu & İndirme Butonları) -->
           <div class="px-6 lg:px-8 py-5 border-b border-blue-100 dark:border-blue-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <h2 class="text-xl font-extrabold text-neutral-900 dark:text-white tracking-tight">
-              {{ activeCompareBanks.length === 1 ? activeCompareBanks[0].kisa_ad + ' - Derinlemesine Analiz' : 'Pazar Rekabeti Karşılaştırması' }}
+              {{ activeCompareBanks.length === 1 ? activeCompareBanks[0].kisa_ad + ' - Detay Analiz' : 'Rekabet Analizi' }}
             </h2>
             
             <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
