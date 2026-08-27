@@ -29,7 +29,7 @@ const router = useRouter()
 const chatStore = useChatStore()
 
 useHead({
-  title: computed(() => t('page_titles.dashboard', 'Sektörel Pazar Analizi & Dashboard')),
+  title: computed(() => t('page_titles.dashboard', 'Pazar Analizi')),
   link: [
     {
       rel: 'stylesheet',
@@ -1658,7 +1658,7 @@ const mgmCampaigns = computed(() => {
     <div class="flex flex-col items-center text-center gap-3">
       <div class="flex flex-wrap items-center justify-center gap-3">
         <h1 class="reveal-title text-4xl md:text-5xl font-bold bg-clip-text text-transparent gradient-text pb-1">
-          {{ isBankaci ? $t('dashboard.title_banker', 'Pazar & Rekabet Zekası') : $t('dashboard.title_customer', 'Kampanya Karşılaştırması') }}
+          {{ isBankaci ? $t('dashboard.title_banker', 'Pazar Analizi') : $t('dashboard.title_customer', 'Pazar Analizi') }}
         </h1>
         <span v-if="isBankaci" class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/40 rounded-full shrink-0">
           {{ $t('dashboard.banker_badge', 'Banka Çalışanı') }}

@@ -472,6 +472,25 @@ BANKA_KIYAS_SORUSU = re.compile(
     r"|\bbankalar[ıi]n\s+\w*(?:da[ğg][ıi]l[ıi]m|kar[şs][ıi]la[şs]t[ıi]rma|tablo)"
     r"|\bsekt[öo]rde\s+nerede\b|\bsekt[öo]rdeki\s+(?:yer|konum)\w*"
     r"|\brakip\w*\s+g[öo]re\b|\brekabet\w*|\bkim\s+(?:daha\s+iyi|[öo]nde)\b"
+    # 🏦 BANKA ÇALIŞANININ KONUMLANMA/BOŞLUK/AKSİYON SORULARI.
+    #
+    # 100'lük persona testinde ölçüldü: "TOM Katılım'ın pazar konumunu
+    # değerlendir" sorusuna cevap
+    #     "pazar konumu, piyasa payı ... bilgisi BULUNMAMAKTADIR"
+    #     "piyasa konumu değerlendirmesi YAPAMAM"
+    # oluyordu. Oysa pazar payı ve kategori boşluğu KODDA hesaplanıyor.
+    # Sebep: cümledeki "değerlendir"/"öner" ACIKLAYICI_SORU'ya takılıyor,
+    # görsel kararı None kalıyor, Mongo yolu HİÇ çalışmıyor ve piyasa
+    # fotoğrafı bağlama eklenmiyor — cevap yalnızca vektör aramasından
+    # geliyor. Asistan elindeki veriyi "yok" diye sunuyordu.
+    #
+    # Bu kalıplar bir müşterinin sormayacağı, tanım gereği analist
+    # sorularıdır; tabloyu ve piyasa bağlamını zorunlu kılıyorlar.
+    r"|\bpazar\s+konum\w*|\bpiyasa\s+konum\w*|\bportf[öo]y\s+a[çç][ıi][ğg]\w*"
+    r"|\bhangi\s+kategori\w*\s+(?:eksi|geri|zay[ıi]f)\w*|\bnerede\s+eksi\w*"
+    r"|\bg[üu][çç]l[üu]\s+ve\s+zay[ıi]f|\bzay[ıi]f\s+y[öo]n\w*|\bg[üu][çç]l[üu]\s+y[öo]n\w*"
+    r"|\baksiyon\w*\s+[öo]ner|\bhangi\s+(?:kategori|alan|segment)\w*\s+kampanya"
+    r"|\bnerede\s+b[üu]y[üu]\w*|\bb[üu]y[üu]yebil\w*|\bb[üu]y[üu]me\s+(?:f[ıi]rsat|alan)\w*"
     r"|\bwhich\s+bank\w*|\bpeer\s+comparison\b|\bcompare\s+(?:the\s+)?banks?\b",
     re.IGNORECASE)
 

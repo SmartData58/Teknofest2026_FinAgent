@@ -7,7 +7,7 @@ import { useI18n } from 'vue-i18n'
 const { locale, t } = useI18n()
 
 useHead({
-  title: computed(() => t('page_titles.chat', 'Yapay Zeka Asistanı'))
+  title: computed(() => t('page_titles.chat', 'AI Asistan'))
 })
 
 const mounted = ref(false)

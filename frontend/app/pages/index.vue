@@ -12,7 +12,7 @@ const router = useRouter()
 const { t } = useI18n()
 
 useHead({
-  title: computed(() => t('page_titles.home', 'Katılım Bankacılığı Kampanya & Finansman Asistanı'))
+  title: computed(() => t('page_titles.home', 'Ana Sayfa'))
 })
 
 // Sohbet kutusu ve yönlendirme ayarları
@@ -366,7 +366,7 @@ onUnmounted(() => {
                       <!-- Yollar canlı /openapi.json ile doğrulandı.
                            Önceki liste /api/campaigns/compare diyordu; kampanya
                            router'ında prefix YOK, gerçek yol /campaigns/compare. -->
-                      <span class="text-xs font-mono text-white/80">/api/chat, /api/analiz-koprusu, /campaigns/compare, /campaigns/top-advantageous, /finansman, /banks, /admin/reindex, /health</span>
+                      <span class="text-xs font-mono text-white/80">/api/chat, /api/analiz-koprusu, /campaigns/compare, /campaigns/top-advantageous, /finansman, /katilim-hesap, /banks, /admin/reindex, /health</span>
                     </div>
                   </div>
                 </div>

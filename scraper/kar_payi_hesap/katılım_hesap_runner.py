@@ -11,12 +11,18 @@ Ortam değişkenleri (opsiyonel, varsayılanlar aşağıda):
 """
 
 import os
-from datetime import datetime, timezone
-
+import sys
+from datetime import datetime, timezone  # Bu satırı geri ekledik
 from pymongo import MongoClient
+
+# Bulunduğu klasörü Python'un modül arama yollarına ekler
+mevcut_dizin = os.path.dirname(os.path.abspath(__file__))
+if mevcut_dizin not in sys.path:
+    sys.path.append(mevcut_dizin)
 
 import vakif_katılım_hesap
 import ziraat_katılım_hesap
+
 
 MONGO_USER = os.getenv("MONGO_USER", "admin")
 MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "admin123")

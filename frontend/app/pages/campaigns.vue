@@ -4,7 +4,7 @@
     <!-- ================= ORTALANMIŞ BAŞLIK ================= -->
     <div class="flex flex-col items-center text-center gap-3">
       <h1 class="reveal-title text-4xl md:text-5xl font-bold bg-clip-text text-transparent gradient-text pb-1">
-        {{ $t('campaigns.title', 'Katılım Bankacılığı Kampanyaları') }}
+        {{ $t('campaigns.title', 'Tüm Kampanyalar') }}
       </h1>
       <p class="text-sm md:text-base text-neutral-500 dark:text-neutral-400 max-w-2xl">
         {{ $t('campaigns.subtitle', 'Toplanan tüm kampanyalar, gelişmiş filtreler ve yapay zeka çıkarım kanıtları.') }}
@@ -328,7 +328,7 @@ import Lenis from 'lenis'
 const { t } = useI18n()
 
 useHead({
-  title: computed(() => t('page_titles.campaigns', 'Katılım Bankacılığı Kampanyaları'))
+  title: computed(() => t('page_titles.campaigns', 'Tüm Kampanyalar'))
 })
 
 const isValidVal = (val) => val !== null && val !== undefined && val !== '' && val !== 'None'

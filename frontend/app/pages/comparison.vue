@@ -5,7 +5,7 @@
     <!-- BAŞLIK -->
     <div class="flex flex-col items-center text-center gap-3 max-w-2xl mx-auto">
       <h1 class="reveal-title text-4xl md:text-5xl font-bold bg-clip-text text-transparent gradient-text pb-1">
-        {{ $t('comparison.title', 'Kampanya & Banka Karşılaştırma') }}
+        {{ $t('comparison.title', 'Kampanya Karşılaştırma') }}
       </h1>
       <p class="text-sm md:text-base text-neutral-500 dark:text-neutral-400">
         {{ $t('comparison.subtitle', "Şartnamedeki kriterlere göre kampanya kıyası. Bir alan 'Belirtilmemiş' ise o kampanya ilgili kritere dahil edilmez.") }}
@@ -422,7 +422,7 @@ import Lenis from 'lenis'
 const { t } = useI18n()
 
 useHead({
-  title: computed(() => t('page_titles.comparison', 'Kampanya & Banka Karşılaştırma'))
+  title: computed(() => t('page_titles.comparison', 'Karşılaştırma'))
 })
 
 const pending = ref(true)

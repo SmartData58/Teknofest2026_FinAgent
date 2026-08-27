@@ -1449,6 +1449,29 @@ def grafigi_hazirla_mongo_dinamik(
     # geçerli hiç kalmazsa dolmuş olanlar GÖSTERİLİR, ama açıkça işaretlenir.
     gecerlilik_notu = ""
     dolmus_gosteriliyor = False
+    # 🔍 "SÜRESİ DOLMUŞ OLANLAR HANGİLERİ" — SORULANI GETİR.
+    #
+    # 100'lük persona testinde ölçüldü: "süresi dolmuş kampanyalar hangileri"
+    # sorusuna cevap "SÜRESİ DOLDU ibaresi taşıyan kayıt BULUNMAMAKTADIR"
+    # oluyordu — oysa 77 tane var. Sebep: geçmiş sorusu tespit edilince filtre
+    # tamamen KAPANIYOR, havuzda geçerli+dolmuş karışık kalıyor ve modele
+    # giden dilimde tesadüfen hiç dolmuş kayıt bulunmuyordu.
+    # Kullanıcı dolmuş olanları sorduysa havuz ONLARA daraltılmalı.
+    if temel_havuz and _GECMIS_ISTEGI.search(user_query):
+        _sadece_dolmus = [d for d in temel_havuz if not d.get("gecerli", True)]
+        if _sadece_dolmus:
+            temel_havuz = _sadece_dolmus
+            dolmus_gosteriliyor = True
+            gecerlilik_notu = (
+                f"The user asked for EXPIRED campaigns; only the {len(_sadece_dolmus)} "
+                f"campaigns whose end date has passed are listed."
+                if dil == "en" else
+                f"Kullanıcı SÜRESİ DOLMUŞ kampanyaları sordu; yalnızca bitiş tarihi "
+                f"geçmiş {len(_sadece_dolmus)} kampanya listeleniyor."
+            )
+            logger.info(f"📅 Geçmiş kampanya isteği: havuz {len(_sadece_dolmus)} "
+                        "süresi dolmuş kayda daraltıldı.")
+
     if temel_havuz and not _GECMIS_ISTEGI.search(user_query):
         _gecerliler = [d for d in temel_havuz if d.get("gecerli", True)]
         _dolmus = len(temel_havuz) - len(_gecerliler)
@@ -1861,7 +1884,23 @@ def grafigi_hazirla_mongo_dinamik(
     # sorusunun cevabı satır listesi değil, banka başına ÖZETTİR.
     _sektor_kiyasi = bool(_BANKA_DUZEYINDE_KIYAS.search(user_query))
     banka_profilleri = None
-    if (_cok_bankali_kiyas_hazir(kodlar) or _sektor_kiyasi) and temel_havuz:
+    # 🏦 ANALİST GÖRÜNÜMÜNDE PROFİL HER ZAMAN ÜRETİLİR.
+    #
+    # 100'lük persona testinde ölçüldü: "TOM Katılım'ın pazar konumunu
+    # değerlendir", "Dünya Katılım'ın portföy açığı nerede", "Emlak Katılım
+    # olarak hangi kategorilerde eksiğiz" sorularına gelen cevap
+    #     "Elimdeki verilerde pazar payı / portföy açığı bilgisi
+    #      BULUNMAMAKTADIR."
+    # oluyordu. Oysa o rakamlar KODDA hesaplanıyor — sadece bağlama
+    # eklenmiyordu, çünkü profil yalnızca kalıba uyan kıyas sorularında
+    # üretiliyordu ("pazar payı" eşleşiyor ama "pazar konumu" eşleşmiyor).
+    #
+    # Bir asistanın elindeki veriyi "yok" diye sunması, veri olmamasından
+    # daha kötüdür: kullanıcı özelliğin var olmadığını sanır. Kalıbı
+    # genişletmek yerine kuralı basitleştiriyoruz — analist görünümünde
+    # piyasa bağlamı zaten HER SORUDA anlamlı.
+    if temel_havuz and (_cok_bankali_kiyas_hazir(kodlar) or _sektor_kiyasi
+                        or view_mode != "musteri"):
         banka_profilleri = _banka_profilleri_cikar(temel_havuz, dil)
 
     if zorla_limit is not None:
@@ -3369,6 +3408,16 @@ async def get_chatbot_response(
                         "- BOŞ ALANI DÜRÜSTÇE SÖYLE: bir metrik kayıtlarda yoksa "
                         "'veri yok' deyip geç; onun yerine hangi metrikle kıyas "
                         "yapılabileceğini öner.\n"
+                        # 👤 100'lük persona testinde ölçüldü: müşteri
+                        # cevaplarının 8'inde kullanıcıya HİÇ hitap edilmiyor,
+                        # 7'sinde somut bir tutar geçmiyordu. Müşteri "bu benim
+                        # ne işime yarar" sorusunun cevabını alamıyor.
+                        "- MÜŞTERİYE HİTAP ET: 'siz' diye seslen ve en az bir "
+                        "cümlede ne KAZANACAĞINI ya da nasıl BAŞVURACAĞINI söyle "
+                        "('... ile 1.500 TL kazanabilirsiniz', 'başvurmak için...').\n"
+                        "- HER CEVAPTA EN AZ BİR SOMUT RAKAM olsun (TL tutarı, "
+                        "oran ya da vade). Rakamsız cevap müşteriye hiçbir şey "
+                        "söylemez.\n"
                         "- SICAK VE DOĞAL KONUŞ: kullanıcıya doğrudan hitap et, "
                         "kısa ve akıcı cümleler kur. Madde madde etiket sıralama; "
                         "gerçek bir bankacının anlatacağı gibi anlat.\n"

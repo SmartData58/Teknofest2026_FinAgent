@@ -5,7 +5,7 @@
     <!-- ================= ORTALANMIŞ BAŞLIK ================= -->
     <div class="flex flex-col items-center text-center gap-3 max-w-2xl mx-auto">
       <h1 class="reveal-title text-4xl md:text-5xl font-bold bg-clip-text text-transparent gradient-text pb-1">
-        {{ $t('financing.title', 'Katılım Finansman Oranları') }}
+        {{ $t('financing.title', 'Finansman Oranları') }}
       </h1>
       <p class="text-sm md:text-base text-neutral-500 dark:text-neutral-400">
         {{ $t('financing.subtitle', 'Katılım bankalarının güncel kâr payı oranları, taksit tutarları ve toplam geri ödeme maliyetlerini karşılaştırın.') }}
@@ -749,7 +749,7 @@ const router = useRouter()
 const { t, locale } = useI18n()
 
 useHead({
-  title: computed(() => t('page_titles.financing', 'Katılım Finansman Kâr Oranları'))
+  title: computed(() => t('page_titles.financing', 'Finansman Oranları'))
 })
 
 // Global Görünüm Modu (Müşteri vs Banka Çalışanı)
@@ -763,12 +763,38 @@ const availableBanks = ref([])
 const availableCategories = ref([])
 const availableAmounts = ref([])
 const availableTerms = ref([])
-const stats = ref({
-  min_rate: 0,
-  avg_rate: 0,
-  min_installment: 0,
-  min_total: 0,
-  best_bank: '-'
+const stats = computed(() => {
+  const list = filteredProducts.value
+  if (!list || !list.length) {
+    return {
+      min_rate: 0,
+      avg_rate: 0,
+      min_installment: 0,
+      min_total: 0,
+      best_bank: '-'
+    }
+  }
+
+  const validRates = list.map(p => p.kar_orani).filter(r => r > 0)
+  const min_rate = validRates.length ? Math.min(...validRates) : 0
+  const avg_rate = validRates.length ? validRates.reduce((a, b) => a + b, 0) / validRates.length : 0
+
+  const validInstallments = list.map(p => p.aylik_taksit_tutari).filter(i => i > 0)
+  const min_installment = validInstallments.length ? Math.min(...validInstallments) : 0
+
+  const validTotals = list.map(p => p.geri_odenecek_toplam_tutar).filter(t => t > 0)
+  const min_total = validTotals.length ? Math.min(...validTotals) : 0
+
+  const bestProduct = list.find(p => p.kar_orani === min_rate)
+  const best_bank = bestProduct ? (bestProduct.banka_adi || bestProduct.banka_kodu) : '-'
+
+  return {
+    min_rate,
+    avg_rate: Number(avg_rate.toFixed(2)),
+    min_installment,
+    min_total,
+    best_bank
+  }
 })
 
 // Filtre Seçimleri
@@ -837,7 +863,6 @@ const fetchFinancingData = async () => {
       availableCategories.value = data.filters?.products || []
       availableAmounts.value = data.filters?.amounts || []
       availableTerms.value = data.filters?.terms || []
-      stats.value = data.stats || {}
     }
   } catch (err) {
     console.error('Finansman verileri çekilemedi:', err)

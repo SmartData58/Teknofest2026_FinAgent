@@ -105,11 +105,22 @@ class FinansmanUrunGirdisi(BaseModel):
     aylik_taksit: Optional[str] = None
 
 
+class KatilimHesapGirdisi(BaseModel):
+    """Katılım hesapları sayfasındaki bir satırın kimliği."""
+    banka: Optional[str] = None
+    tutar: Optional[float] = None
+    vade: Optional[str] = None
+    net_oran: Optional[float] = None
+    brut_oran: Optional[float] = None
+    net_kar: Optional[str] = None
+
+
 class AnalizIstegi(BaseModel):
-    kaynak: str = Field("dashboard", description="dashboard | finansman")
+    kaynak: str = Field("dashboard", description="dashboard | finansman | katilim_hesap")
     tur: str = Field("karsilastirma", description="analiz türü ya da 'serbest'")
     bankalar: List[str] = Field(default_factory=list)
     urun: Optional[FinansmanUrunGirdisi] = None
+    katilim_hesap: Optional[KatilimHesapGirdisi] = None
     soru: Optional[str] = None                 # serbest metin
     dil: str = "tr"
 
@@ -368,6 +379,45 @@ async def analiz_koprusu(istek: AnalizIstegi):
                     "emsal_sayisi": len(emsal),
                 },
             }
+
+    # ---------------------------------------------------------------- KATILIM HESAP
+    if (istek.kaynak in ("katilim_hesap", "katilim_hesaplari", "katilim") or istek.katilim_hesap) and (istek.katilim_hesap or istek.urun):
+        kh = istek.katilim_hesap or istek.urun
+        banka_ham = getattr(kh, 'banka', '') or ''
+        banka_kod = _uzun_kod(banka_ham) or banka_ham
+        banka_ad = banka_adi_getir(banka_kod, banka_ham)
+        tutar_val = getattr(kh, 'tutar', None) or 0
+        vade_val = getattr(kh, 'vade', '') or ''
+        net_oran_val = getattr(kh, 'net_oran', None) or getattr(kh, 'kar_orani', None) or 0
+        net_kar_val = getattr(kh, 'net_kar', '') or ''
+
+        if EN:
+            prompt = (
+                f"Evaluate {banka_ad}'s participation account offer of "
+                f"{tutar_val:,.0f} TL with {vade_val} term at a net profit share rate of %{net_oran_val:.2f} "
+                f"(estimated net yield {net_kar_val}) against other participation banks and sector averages."
+            )
+        else:
+            prompt = (
+                f"{banka_ad}'ın {_tr_sayi(tutar_val)} TL tutarındaki {vade_val} vadeli "
+                f"katılım hesabı kâr payı getirisini (%{_tr_sayi(net_oran_val, 2)} net kâr oranı, "
+                f"{net_kar_val} net getiri) diğer katılım bankalarıyla ve sektör ortalamasıyla karşılaştırarak analiz et."
+            )
+
+        if serbest:
+            prompt += (f"\n\nEk soru: {serbest}" if not EN else f"\n\nAdditional question: {serbest}")
+
+        return {
+            "prompt": prompt,
+            "gorunum": "analist",
+            "dogrulama": {
+                "gecerli": True,
+                "bankalar": kabul if kabul else [{"kod": banka_kod, "ad": banka_ad}],
+                "reddedilen": reddedilen,
+                "uyarilar": uyarilar,
+                "duzeltmeler": duzeltmeler,
+            }
+        }
 
     # ---------------------------------------------------------------- DASHBOARD
     if not kabul:
