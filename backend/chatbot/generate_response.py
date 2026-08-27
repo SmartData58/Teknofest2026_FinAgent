@@ -538,6 +538,8 @@ _KATEGORI_GORUNEN_ADLARI = {
     "tasit_finansmani": "Taşıt Finansmanı",
     "konut_finansmani": "Konut Finansmanı",
     "mgm_kampanyasi": "MGM (Müşteri Getiren Müşteri)",
+    "indirim_kampanyasi": "İndirim Kampanyası",
+    "hediye_promosyon": "Hediye / Promosyon",
     "kobi_finansmani": "KOBİ Finansmanı",
     "sigorta": "Sigorta",
     "genel": "Genel",
@@ -894,6 +896,26 @@ _KONU_ETKISIZ = _AD_ARAMA_ETKISIZ | {
 }
 
 
+# 🚨 SORU KELİMESİ KONU DEĞİLDİR.
+# `_KONU_ETKISIZ` TAM EŞLEŞME ile çalışıyor; Türkçe ekli hâller ("hangisi" var
+# ama "hangileri" yok) süzgeçten kaçıyordu. Ölçülen sonuç:
+#   "En düşük kâr payı oranına sahip kampanyalar hangileri?"
+#   -> konu kelimeleri ['dusuk','payi','oranina','sahip','hangileri']
+#   -> havuz 336'dan 1 kayda düştü ("PAYInı Sen Seç Finansmanı" ile eşleşerek)
+# Bunlar konu değil, sorunun SORULUŞ BİÇİMİ ve ÖLÇÜ ADIDIR. Kök tabanlı eleme
+# ekle alınmış tüm biçimleri kapsıyor.
+_KONU_ETKISIZ_KOK = (
+    "hangi",        # hangisi, hangileri
+    "sahip",        # sahip, sahibi
+    "dusuk", "yuksek", "azami", "asgari",
+    "oran",         # oranı, oranına, oranları  (ölçü adı, konu değil)
+    "payi",         # kâr PAYI — ölçü adı
+    "tutar", "miktar",
+    "siralama", "listele", "goster", "karsilastir",
+    "kampanya",     # her kayıtta var; ayırt edici değil
+)
+
+
 def _konu_kelimeleri(soru: str) -> list:
     """Sorudan KONU belirten kelimeleri çıkarır (banka adları ve kalıp sözcükler hariç)."""
     kelimeler = []
@@ -901,6 +923,8 @@ def _konu_kelimeleri(soru: str) -> list:
         if len(k) < 4 or k in _KONU_ETKISIZ or k in _BANKA_KELIMELERI:
             continue
         if k.isdigit():
+            continue
+        if k.startswith(_KONU_ETKISIZ_KOK):
             continue
         if k not in kelimeler:
             kelimeler.append(k)
@@ -2548,7 +2572,15 @@ def grafigi_hazirla_mongo_dinamik(
             # demektir. Bu durumda tek bir "ORTALAMA DEĞER" kutusu YANLIŞ bilgi
             # verir — ekrandaki "1627.76" tam olarak buydu: TL'lerle yüzdelerin
             # ortalaması. Böyle bir sayı yerine hiç sayı göstermek doğrudur.
-            "stats": (None if ozet_gruplar else
+            # 🚨 METRİK SORULMADIYSA İSTATİSTİK DE YOK.
+            # Aşağıdaki `deger_sutunu` zaten is_specific'e bağlı: kullanıcı bir
+            # metrik sormadığında her satırın "değeri" o kampanyanın rastgele
+            # dolu olan alanı oluyor, bu yüzden sütun gizleniyor. Ama stats
+            # AYNI sayılardan üretilmeye devam ediyordu; sonuç, tamamen metinsel
+            # bir kampanya listesinin üstünde "ORTALAMA DEĞER 75 / EN DÜŞÜK 75 /
+            # EN YÜKSEK 75" kutularıydı. Gizlenen bir sütunun ortalaması
+            # gösterilemez — sütunla aynı koşula bağlandı.
+            "stats": (None if (ozet_gruplar or not is_specific) else
                       {"avg": ozet["ortalama"], "min": ozet["en_dusuk"], "max": ozet["en_yuksek"]}
                       if ozet else
                       {"avg": round(sum(values) / len(values), 2), "min": min(values), "max": max(values)}),

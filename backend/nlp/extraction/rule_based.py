@@ -54,15 +54,45 @@ class AlanBulgusu:
 # YARDIMCI FONKSİYONLAR
 # =============================================================================
 
+
+# =============================================================================
+# 🚨 TÜRKÇE "İ" KÜÇÜLTME TUZAĞI
+#
+# Python'da "İ".lower() tek harf DEĞİL, İKİ kod noktası üretir:
+#     "İ".lower() == "i̇"   (i + BİRLEŞEN NOKTA)
+# Bu yüzden `.lower()` ile küçültülmüş bir metinde "İndirim" -> "i̇ndirim"
+# olur ve `indirim` araması EŞLEŞMEZ. Desenler re.IGNORECASE ile ham metinde
+# doğru çalışıyor; ama bu dosyadaki bağlam kontrolleri ÖNCEDEN küçültülmüş
+# pencerelerde (`_pencere`, `_tutar_cumle`) arama yapıyor ve orada sessizce
+# başarısız oluyordu.
+#
+# Ölçülen sonuç: "Etkinlik Biletlerinde 250 TL İndirim" kaydında ödül tutarı
+# BOŞ kalıyordu — çünkü `_ODUL_IPUCLARI` küçültülmüş cümlede "indirim"
+# arıyor, cümlede ise "i̇ndirim" yazıyordu. Aynı tuzak İ ile başlayan her
+# anahtar kelimeyi (İade, İşlem, İhtiyaç...) etkiliyor.
+#
+# Çözüm: küçültmeyi TÜRKÇEYE UYGUN yap ve artık birleşen noktayı temizle.
+# =============================================================================
+_BIRLESEN_NOKTA = "̇"
+
+
+def _kucult(metin: str) -> str:
+    """Türkçe farkındalıklı küçültme: İ -> i, I -> ı, birleşen nokta atılır."""
+    if not metin:
+        return ""
+    return (metin.replace("İ", "i").replace("I", "ı")
+            .lower().replace(_BIRLESEN_NOKTA, ""))
+
+
 def _pencere(
     metin: str,
     baslangic: int,
     bitis: int,
     genislik: int = 80,
 ) -> str:
-    return metin[
+    return _kucult(metin[
         max(0, baslangic - genislik): min(len(metin), bitis + genislik)
-    ].lower()
+    ])
 
 
 def _bulgu(
@@ -127,6 +157,16 @@ _CASHBACK_IPUCLARI = (
     "harcama",
 )
 
+# "%0 Vade Farkı ile 6 taksit" gibi ifadelerde ±70 karakterlik pencerede
+# "harcama" geçtiği için yukarıdaki gevşek ipucu tetikleniyor ve vade farkı
+# oranı `nakit_iade_yuzde` olarak kaydediliyordu (3 kayıt, hepsi %0).
+_CASHBACK_NEGATIF = (
+    "vade farkı",
+    "vade farki",
+    "komisyon",
+    "faiz",
+)
+
 _KARPAYI_ACIK = (
     "kâr payı",
     "kar payı",
@@ -168,6 +208,54 @@ _TAHSIS_IPUCLARI = (
     "binde",
 )
 
+# =============================================================================
+# KÂR PAYI TANIMA — AÇIK BAĞLAM
+#
+# 🚨 ÖLÇÜM (27.08.2026): gerçekçi 10 kâr payı ifadesinin YALNIZCA 5'i
+# yakalanıyordu. Sebepleri:
+#   1) `_KARPAYI_ACIK` düz metin listesiydi; Türkçe ek alınca eşleşmiyordu
+#      ("kâr paylı", "kâr payıyla" -> "kâr payı" alt dizesi yok).
+#   2) Dal sırası `elif` zinciriydi ve GEVŞEK ipuçları (tahsis / indirim /
+#      cashback) AÇIK kâr payı bağlamından ÖNCE geliyordu. `_CASHBACK_IPUCLARI`
+#      içindeki yalın "harcama" yüzünden "Harcamalarınızı %2,99 kâr payı
+#      oranıyla taksitlendirin" cümlesi NAKİT İADE sayılıyordu.
+#   3) "kâr oranı" `_GETIRI_IPUCLARI` üzerinden `tahsis_ucreti` alanına
+#      yazılıyordu — kâr oranı bir ÜCRET DEĞİLDİR; bu hem kaçırma hem de
+#      yanlış alana yazma hatasıydı.
+# Artık açık kâr payı bağlamı EN ÖNCE ve ek toleranslı biçimde sınanıyor.
+# =============================================================================
+_KARPAYI_ACIK_DESEN = re.compile(
+    r"k[âa]r\s*pay\w*"          # kâr payı, kâr paylı, kâr payıyla, kar payi
+    r"|k[âa]r\s*payla[şs]\w*"   # kâr paylaşım(ı)
+    r"|k[âa]r\s*oran\w*",       # kâr oranı  (ÜCRET DEĞİL, getiri)
+    re.IGNORECASE,
+)
+
+# Katılma hesabının PAYLAŞIM oranı (%80-98) finansman kâr payıyla aynı alana
+# yazılamaz; llm_extractor'da da aynı ayrım var. Buradaki ikinci savunma hattı.
+_KATILMA_HESABI_DESEN = re.compile(
+    r"kat[ıi]lma\s+hesab|pay(?:la[şs][ıi]m|da[şs][ıi]m)\s+oran"
+    r"|k[âa]r\s+pay[ıi]\s+da[ğg][ıi]t",
+    re.IGNORECASE,
+)
+_FINANSMAN_BAGLAM_DESEN = re.compile(
+    r"finansman|kredi|taksitl|vade\s*fark|tahsis\s+[üu]cret", re.IGNORECASE
+)
+
+# Finansman kâr payı oranının makul üst sınırı; üstü paylaşım oranıdır.
+_KARPAYI_UST_SINIR = 50.0
+
+
+def _kar_payi_kabul_edilir_mi(deger: float, pencere: str) -> bool:
+    """Bu yüzde, FİNANSMAN kâr payı oranı olarak yazılabilir mi?"""
+    if not (0.0 <= deger <= _KARPAYI_UST_SINIR):
+        return False
+    if (_KATILMA_HESABI_DESEN.search(pencere)
+            and not _FINANSMAN_BAGLAM_DESEN.search(pencere)):
+        return False
+    return True
+
+
 def oranlari_cikar(metin: str) -> Dict[str, AlanBulgusu]:
     """
     Yüzde ifadelerini bağlamına göre:
@@ -186,7 +274,36 @@ def oranlari_cikar(metin: str) -> Dict[str, AlanBulgusu]:
         pencere = _pencere(
             metin, eslesme.start(), eslesme.end(), genislik=70
         )
-        
+
+        # 0) AÇIK KÂR PAYI BAĞLAMI — en özgül sinyal, en önce sınanır.
+        #
+        # ⚠️ DAR PENCERE ŞART. ±70 karakterde bakıldığında bir sonraki
+        # BÖLÜM BAŞLIĞI da pencereye giriyordu: "…komisyon fiyatlarımızdan
+        # %25 indirimli olarak kiralık kasa kullanabileceklerdir. Yüksek Kâr
+        # Paylaşım Oranı:" cümlesinde %25 bir İNDİRİMDİR, ama 62 karakter
+        # ötedeki başlık yüzünden kâr payı oranı (%25) olarak kaydediliyordu.
+        # Kâr payı ifadesi Türkçede yüzdeye bitişik yazılır; ±35 yeterli.
+        dar_pencere = _pencere(metin, eslesme.start(), eslesme.end(), genislik=35)
+        if _KARPAYI_ACIK_DESEN.search(dar_pencere):
+            # ⚠️ KABUL DAR, RED GENİŞ PENCEREDE.
+            # Reddetme sinyali ("katılma hesabı", "paylaşım oranı") dar
+            # pencerenin kenarına denk gelip yarıda kesilebiliyor; o zaman
+            # tetikleyici eşleşiyor ama koruma çalışmıyordu. Kabul kararı
+            # yakınlık ister, red kararı ise kaçırılmamalıdır.
+            if _kar_payi_kabul_edilir_mi(float(deger), pencere):
+                aday = _bulgu(
+                    metin,
+                    eslesme,
+                    float(deger),
+                    "yuzde+kar_payi_acik_baglami",
+                    guven=0.99,
+                    birim="percent",
+                )
+                bulgular["kar_payi_orani"] = _ilk_yuksek_guvenli(
+                    bulgular.get("kar_payi_orani"), aday
+                )
+            continue
+
         if any(k in pencere for k in _TAHSIS_IPUCLARI):
             aday = _bulgu(
                 metin,
@@ -214,6 +331,10 @@ def oranlari_cikar(metin: str) -> Dict[str, AlanBulgusu]:
             )
 
         elif any(k in pencere for k in _CASHBACK_IPUCLARI):
+            # "%0 nakit iade" diye bir kampanya özelliği yoktur; sıfır değer
+            # ya da vade farkı/komisyon bağlamı, yanlış okumanın işaretidir.
+            if float(deger) == 0.0 or any(k in pencere for k in _CASHBACK_NEGATIF):
+                continue
             aday = _bulgu(
                 metin,
                 eslesme,
@@ -227,22 +348,18 @@ def oranlari_cikar(metin: str) -> Dict[str, AlanBulgusu]:
             if mevcut is None or aday.deger > mevcut.deger:
                 bulgular["nakit_iade_yuzde"] = aday
 
-        elif any(k in pencere for k in _KARPAYI_ACIK):
-            aday = _bulgu(
-                metin,
-                eslesme,
-                float(deger),
-                "yuzde+kar_paylasim_acik_baglami",
-                guven=0.99,
-                birim="percent",
-            )
-            bulgular["kar_payi_orani"] = _ilk_yuksek_guvenli(
-                bulgular.get("kar_payi_orani"), aday
-            )
-
         elif any(k in pencere for k in _GETIRI_IPUCLARI):
             # "oran" kelimesini tek başına sinyal olarak kullanmıyoruz.
-            if not any(n in pencere for n in _KARPAYI_NEGATIF):
+            #
+            # 🚨 ESKİDEN BU DAL `tahsis_ucreti` ALANINA YAZIYORDU.
+            # "Taşıt finansmanında %2,79 kâr oranı" gibi bir cümlede getiri
+            # oranı, TAHSİS ÜCRETİ olarak kaydediliyordu — kâr oranı bir ücret
+            # değildir. Banka kıyas tablosunda bu, hem kâr payı sütununu boş
+            # bırakıyor hem masraf sütununu uyduruyordu. Artık doğru alana,
+            # kâr payı için geçerli olan aynı güvenlik kontrolleriyle yazılıyor
+            # (paylaşım oranı ayrımı + üst sınır).
+            if (not any(n in pencere for n in _KARPAYI_NEGATIF)
+                    and _kar_payi_kabul_edilir_mi(float(deger), pencere)):
                 aday = _bulgu(
                     metin,
                     eslesme,
@@ -251,9 +368,40 @@ def oranlari_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                     guven=0.88,
                     birim="percent",
                 )
-                bulgular["tahsis_ucreti"] = _ilk_yuksek_guvenli(
-                    bulgular.get("tahsis_ucreti"), aday
+                bulgular["kar_payi_orani"] = _ilk_yuksek_guvenli(
+                    bulgular.get("kar_payi_orani"), aday
                 )
+
+    # -------------------------------------------------------------------
+    # SON ÇARE: ÖDEME PLANI TABLOSU
+    # -------------------------------------------------------------------
+    # Bazı bankalar (ör. Türkiye Finans) oranı düz cümlede değil TABLO
+    # hâlinde veriyor:
+    #     "Vade | Kâr Payı Oranı | Tahsis Ücreti | Aylık Toplam Maliyet
+    #      3  4,20%  0,50%  5,77% ...
+    #      12 4,15%  0,50%  5,50% ..."
+    # Sütun başlığı sayılardan uzakta kaldığı için yukarıdaki dar pencereli
+    # kontrol hiçbirini yakalamıyordu; iki büyük ihtiyaç finansmanı kampanyası
+    # kâr payı oranı BOŞ kalıyordu. Başlıktan sonraki İLK makul yüzde, en kısa
+    # vadenin oranıdır ve kampanyanın ilan edilen oranıdır.
+    if "kar_payi_orani" not in bulgular:
+        baslik_es = re.search(r"k[âa]r\s*pay[ıi]\s*oran[ıi]", metin, re.IGNORECASE)
+        if baslik_es:
+            kuyruk = metin[baslik_es.end(): baslik_es.end() + 200]
+            for satir_es in _YUZDE.finditer(kuyruk):
+                v = yuzde_normalize(satir_es.group())
+                if v is None:
+                    continue
+                if _kar_payi_kabul_edilir_mi(float(v), kuyruk[:120]):
+                    bulgular["kar_payi_orani"] = _bulgu(
+                        metin,
+                        satir_es,
+                        float(v),
+                        "yuzde+odeme_plani_tablosu",
+                        guven=0.90,
+                        birim="percent",
+                    )
+                break
 
     return bulgular
 
@@ -262,8 +410,16 @@ def oranlari_cikar(metin: str) -> Dict[str, AlanBulgusu]:
 # 2. VADE VE TAKSİT
 # =============================================================================
 
+# Kapanış `\b` yerine `\w*`: Türkçede taksit hemen her zaman ek alıyor
+# ("4 taksite kadar", "9 taksitle", "6 taksitli") ve `taksit\b` bunların
+# HİÇBİRİNİ tutmuyordu.
+# ⚠️ Serbest `\w*` fazla açık kaldı: "31.12.2026 Taksitlio'nun" metninde
+# "2026 Taksitlio" eşleşip taksit sayısı 2026 çıkıyordu. İki koruma eklendi:
+#   • sayı en fazla 3 hane (100'ün üzerinde taksit yok),
+#   • serbest devam yerine gerçek Türkçe ekleri sayan kapalı bir liste.
 _TAKSIT = re.compile(
-    r"\b(\d+)\s*(?:ay|aya|ayın)?\s*(?:varan|kadar)?\s*taksit\b",
+    r"\b(\d{1,3})\s*(?:ay|aya|ayın)?\s*(?:varan|kadar)?\s*"
+    r"taksit(?:i|e|te|le|li|lik|ler|lere|leri|lerde|iniz|inizi)?\b",
     re.IGNORECASE,
 )
 
@@ -274,6 +430,13 @@ _VADE_ADAYI = re.compile(
 
 _VADE_BAGLAMI = re.compile(
     r"(?:vade|vadeli|vadeye|vadesi|kadar|varan)",
+    re.IGNORECASE,
+)
+
+# Ödemesiz/ertelemeli dönem ifadeleri — vade ile aynı cümlede geçer ama
+# vadenin kendisi değildir (bkz. vade_ve_taksit_cikar içindeki kullanım).
+_VADE_DISLAMA = re.compile(
+    r"ödemesiz|odemesiz|ertele\w*|ertelemeli|geri\s*ödemesiz",
     re.IGNORECASE,
 )
 
@@ -307,13 +470,13 @@ def vade_ve_taksit_cikar(metin: str) -> Dict[str, AlanBulgusu]:
         if "taksit" in metin[vade_bul.start(): min(len(metin), vade_bul.end() + 15)].lower():
             continue
 
-        sonrasi = metin[
+        sonrasi = _kucult(metin[
             vade_bul.end(): min(len(metin), vade_bul.end() + 35)
-        ].lower()
+        ])
 
-        oncesi = metin[
+        oncesi = _kucult(metin[
             max(0, vade_bul.start() - 35): vade_bul.start()
-        ].lower()
+        ])
 
         baglam = f"{oncesi} {sonrasi}"
 
@@ -321,6 +484,28 @@ def vade_ve_taksit_cikar(metin: str) -> Dict[str, AlanBulgusu]:
 
         if not vade_mi:
             continue
+
+        # 🚫 ÖDEMESİZ DÖNEM VADE DEĞİLDİR.
+        # "6 aya kadar ödemesiz dönem ve 60 aya varan vade imkânı" cümlesinde
+        # vade 60 aydır; 6 ay yalnızca ödemenin ertelendiği süredir. Kural ilk
+        # "ay" ifadesini alıp vade_ay=6 yazıyordu. Aynı hata "1-6 ay vade
+        # (3 ay ertelemeli)" kaydında da vade_ay=3 üretmişti.
+        #
+        # Ayırt edici işaret SIRADIR: erteleme kelimesi sayıdan sonra ve
+        # "vade" kelimesinden ÖNCE geliyorsa, o sayı ertelemeye aittir.
+        #   "6 ay|a kadar ÖDEMESİZ dönem ... vade"  -> erteleme (ele)
+        #   "60 ay|a varan VADE"                    -> vade      (al)
+        #   "6 ay| VADE (3 ay ertelemeli)"          -> vade      (al)
+        #   "3 ay| ERTELEMELİ)"                     -> erteleme (ele)
+        # Karşılaştırma `_VADE_BAGLAMI` ile YAPILAMAZ: o desen "kadar"/"varan"
+        # gibi genel kelimeleri de içeriyor ve "6 aya KADAR ödemesiz" ifadesinde
+        # "kadar" ertelemeden önce geldiği için sayı vade sanılıyordu. Sıra
+        # kıyaslaması yalnızca gerçek "vade" kelimesine bakmalı.
+        _ertele = _VADE_DISLAMA.search(sonrasi)
+        if _ertele:
+            _vade_kel = re.search(r"vade\w*", sonrasi, re.IGNORECASE)
+            if _vade_kel is None or _ertele.start() < _vade_kel.start():
+                continue
 
         deger = vade_normalize(ifade)
         if deger is None:
@@ -356,6 +541,10 @@ _TUTAR = re.compile(
     re.IGNORECASE,
 )
 
+# Bir finansman/kredi tutarının makul alt sınırı. Bunun altındaki TL değerleri
+# kampanya metninde ödül, eşik ya da ücret olarak geçer — finansman olarak değil.
+_ASGARI_FINANSMAN_TUTARI = 1000.0
+
 _MIN_IPUCLARI = re.compile(
     r"\b(?:en\s+az|minimum|min\.?|asgari|en\s+düşük)\b",
     re.IGNORECASE,
@@ -366,9 +555,11 @@ _MAX_IPUCLARI = re.compile(
     re.IGNORECASE,
 )
 
+# Ek toleransı şart: "alışverişlerinizde" / "harcamalarınızda" gibi çekimli
+# hâller `\balışveriş\b` ile tutmuyordu; bu yüzden 3.4'teki harcama eşiği dalı
+# hiç çalışmıyor, tutarlar 3.5'e düşüp `finansman_tutari` oluyordu.
 _HARCAMA_IPUCLARI = re.compile(
-    r"\b(?:harcama|harcamanız|harcamalarda|alışveriş|alışverişlerde|"
-    r"harcama tutarı|harcama tutarınız)\b",
+    r"\b(?:harcama\w*|alışveriş\w*|al[ıi]sveris\w*)",
     re.IGNORECASE,
 )
 
@@ -389,7 +580,18 @@ _LIMIT_IPUCLARI = re.compile(
 )
 
 _ODUL_IPUCLARI = re.compile(
-    r"\b(?:hediye|ödül|odul|çek|çekiniz|iade|bonus|fırsat|firsat)\b",
+    # `indirim` EKLENDİ: "toplamda 3.000 TL'ye varan indirim",
+    # "Etkinlik Biletlerinde 250 TL İndirim" gibi TL cinsinden indirimler
+    # hiçbir ödül dalına düşmüyordu — oysa bunlar da parasal kazanımdır ve
+    # ödül kıyaslamasında yer almalıdır. (Yüzdesel indirim ayrı alanda:
+    # oranlari_cikar -> indirim_orani_yuzde.)
+    r"\b(?:hediye|ödül|odul|çek|çekiniz|iade|bonus|fırsat|firsat|indirim\w*"
+    # Kart programlarının ödül para birimleri. Bunlar listede yoktu, bu yüzden
+    # "Giyim ve Kozmetik Alışverişlerinize 1.300 TL ParafPara" başlığındaki
+    # ilan edilen tutar hiçbir dala düşmüyor, ödül olarak gövdedeki kademe
+    # tablosundan 800 TL yazılıyordu.
+    r"|parafpara|paraf\s*para|worldpuan|chip\s*para|chippara|maxipuan"
+    r")\b",
     re.IGNORECASE,
 )
 
@@ -411,6 +613,12 @@ _ESIK_SONRASI = re.compile(
     r"-\s*\d|harca(?!ma\s+iade))",
     re.IGNORECASE,
 )
+
+# "toplamda 2.000 TL Worldpuan" — kampanya metinleri neredeyse her zaman
+# hem BİRİM BAŞINA ödülü ("her talimat için 500 TL") hem TOPLAMI yazıyor.
+# İlan edilen ve kullanıcının gördüğü değer TOPLAMDIR; birim başına tutar
+# onu eziyordu (6 kayıtta ölçüldü).
+_TOPLAM_ONCESI = re.compile(r"toplam(?:da|[ıi])?\s*$", re.IGNORECASE)
 
 _ESIK_ONCESI = re.compile(
     r"(?:en\s+az|minimum|min\.?|asgari)\s*$",
@@ -440,14 +648,19 @@ def _tutar_cumle(metin: str, baslangic: int, bitis: int) -> str:
     ]
     sag = min(saglar) if saglar else len(metin)
 
-    return metin[sol + 1:sag].strip().lower()
+    return _kucult(metin[sol + 1:sag].strip())
 
 
-def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
-    """
-    TL tutarlarını semantik bağlamlarına göre ayırır.
+def tutar_cikar(metin: str, baslik: str = "") -> Dict[str, AlanBulgusu]:
+    """TL tutarlarını semantik bağlamlarına göre ayırır.
+
+    `baslik` verilirse, metnin başındaki başlık bölgesinde geçen ödül
+    tutarına daha yüksek güven verilir (bkz. 3.6). Çağıran taraf
+    `metin` olarak "başlık. gövde" birleşimini geçirdiği için başlık
+    bölgesi metnin ilk `len(baslik)` karakteridir.
     """
     bulgular: Dict[str, AlanBulgusu] = {}
+    baslik_sonu = len(baslik or "")
 
     for tutar_bul in _TUTAR.finditer(metin):
         deger = para_normalize(tutar_bul.group())
@@ -458,8 +671,31 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
         cumle = _tutar_cumle(metin, baslangic, bitis)
         pencere = _pencere(metin, baslangic, bitis, 70)
 
-        onceki = metin[max(0, baslangic - 25):baslangic].lower()
-        sonraki = metin[bitis:min(len(metin), bitis + 35)].lower()
+        onceki = _kucult(metin[max(0, baslangic - 25):baslangic])
+        sonraki = _kucult(metin[bitis:min(len(metin), bitis + 35)])
+        baslikta = baslangic < baslik_sonu
+        toplam_ifadesi = bool(_TOPLAM_ONCESI.search(onceki))
+
+        # -------------------------------------------------------------
+        # 3.0 HARCAMA EŞİĞİ — HER ŞEYDEN ÖNCE
+        # -------------------------------------------------------------
+        # Bu kontrol eskiden 3.4'teydi, yani PUAN dalından (3.3) SONRA.
+        # "her 1.500 TL ve üzeri harcamaya 50 TL, toplamda 200 TL Worldpuan"
+        # cümlesinde 1.500 TL'nin ±70 penceresinde "Worldpuan" geçtiği için
+        # puan dalı önce tetikleniyor ve ASGARİ HARCAMA EŞİĞİ, ödül tutarı
+        # olarak kaydediliyordu. Bir eşik, yanında hangi ödül kelimesi geçerse
+        # geçsin eşiktir; bu yüzden sıranın başına alındı.
+        if _HARCAMA_IPUCLARI.search(cumle):
+            esik = _ESIK_SONRASI.match(sonraki)
+            if esik:
+                asgari = bool(re.match(
+                    r"\s*(?:ve\s+)?(?:üzeri|üstü|yukarısı|fazlası)",
+                    sonraki, re.IGNORECASE))
+                aday = _bulgu(metin, tutar_bul, deger,
+                              "para+esik_deyimi", guven=0.96, birim="TL")
+                anahtar = "min_harcama_tl" if asgari else "max_harcama_tl"
+                bulgular[anahtar] = _ilk_yuksek_guvenli(bulgular.get(anahtar), aday)
+                continue
 
         # -------------------------------------------------------------
         # 3.1 MGM (Müşteri Getir Müşteri)
@@ -477,16 +713,31 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
             cumle,
             re.IGNORECASE,
         ):
+            # "toplam(da)" ifadesi kampanyanın İLAN EDİLEN değerini işaret
+            # eder ve diğer dalların (puan 0.97, ödül 0.93) üzerine çıkmalıdır;
+            # sabit 0.94 ile MGM toplamı puan dalına yeniliyordu.
             aday = _bulgu(
                 metin,
                 tutar_bul,
                 deger,
-                "para+mgm_baglami",
-                guven=0.94,
+                "para+mgm_baglami" + ("+toplam" if toplam_ifadesi else ""),
+                guven=1.0 if toplam_ifadesi else 0.94,
                 birim="TL",
             )
 
-            if "mgm" in cumle or "arkadaş" in cumle or "davet" in cumle:
+            # ⚠️ Ayrım cümle bazlıydı, oysa MGM metinlerinde iki tutar AYNI
+            # cümlede geçiyor: "her yakınınız için 500 TL, toplamda 5.000 TL'ye
+            # varan". İkisi de kişi başı kazanca yazılıyor, kampanya tavanı
+            # (5.000 TL) kayboluyordu. Ayırt edici işaret "toplam(da)" ifadesi.
+            if toplam_ifadesi:
+                bulgular["mgm_limit_tl"] = _ilk_yuksek_guvenli(
+                    bulgular.get("mgm_limit_tl"), aday
+                )
+                # İlan edilen toplam, kampanyanın ödül tutarıdır.
+                bulgular["odul_tutari_tl"] = _ilk_yuksek_guvenli(
+                    bulgular.get("odul_tutari_tl"), aday
+                )
+            elif "mgm" in cumle or "arkadaş" in cumle or "davet" in cumle:
                 bulgular["kisi_basi_kazanc"] = _ilk_yuksek_guvenli(
                     bulgular.get("kisi_basi_kazanc"), aday
                 )
@@ -522,12 +773,25 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                 metin,
                 tutar_bul,
                 deger,
-                "para+puan_baglami",
-                guven=0.97,
+                "para+puan_baglami" + ("+toplam" if toplam_ifadesi
+                                       else "+baslik" if baslikta else ""),
+                guven=1.0 if toplam_ifadesi else (0.99 if baslikta else 0.97),
                 birim="TL",
             )
             bulgular["puan_kazanc"] = _ilk_yuksek_guvenli(
                 bulgular.get("puan_kazanc"), aday
+            )
+            # 🎁 PUAN ÖDÜLÜ AYNI ZAMANDA BİR ÖDÜL TUTARIDIR.
+            # Bu dal `continue` ile bittiği için 3.6 (ödül) hiç çalışmıyor ve
+            # "500 TL Worldpuan" yalnızca `puan_kazanc`a yazılıyordu. Ölçüm:
+            # kural katmanı tek başına çalıştığında Albaraka'nın 12 ödüllü
+            # kampanyasının 11'inde `odul_tutari` BOŞ kalıyordu (LLM devrede
+            # olduğu için tabloda görünmüyordu, ama LLM erişilemediğinde ödül
+            # kıyaslaması tamamen çöküyordu).
+            # Bu programların birimi zaten TL'dir ("500 TL Worldpuan"), o
+            # yüzden aynı değer ödül tutarı olarak da yazılıyor.
+            bulgular["odul_tutari_tl"] = _ilk_yuksek_guvenli(
+                bulgular.get("odul_tutari_tl"), aday
             )
             continue
 
@@ -535,6 +799,7 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
         # 3.4 Harcama eşiği
         # -------------------------------------------------------------
         if _HARCAMA_IPUCLARI.search(cumle):
+            # Eşik deyimi kontrolü 3.0'a taşındı (puan dalından önce olmalı).
             if _MIN_IPUCLARI.search(onceki) or _MIN_IPUCLARI.search(pencere):
                 aday = _bulgu(
                     metin,
@@ -549,7 +814,16 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                 )
                 continue
 
-            if _MAX_IPUCLARI.search(onceki) or _MAX_IPUCLARI.search(pencere):
+            # ⚠️ ÖDÜL TAVANI, HARCAMA TAVANI DEĞİLDİR.
+            # `_MAX_IPUCLARI` gevşek ("kadar", "maksimum", "azami") ve bu dal
+            # cümlede harcama kelimesi geçtiği anda tetikleniyor. Sonuç:
+            # "her ay 250 TL'ye KADAR indirim kazanma" ve "tek işlemde
+            # MAKSİMUM 5.000 TL indirim kazanılabilir" ifadelerindeki ÖDÜL
+            # ÜST SINIRI, harcama tavanı olarak kaydedilip 3.6'ya hiç
+            # ulaşmıyordu. Pencerede bir ödül kelimesi varsa bu bir ödül
+            # tavanıdır; aşağıdaki ödül dalına bırakılıyor.
+            if ((_MAX_IPUCLARI.search(onceki) or _MAX_IPUCLARI.search(pencere))
+                    and not _ODUL_IPUCLARI.search(pencere)):
                 aday = _bulgu(
                     metin,
                     tutar_bul,
@@ -572,12 +846,23 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
             re.IGNORECASE,
         )
 
+        acik_finansman = bool(
+            _FINANSMAN_IPUCLARI.search(cumle) or _KREDI_IPUCLARI.search(cumle)
+        )
         finansman_baglami = (
-            _FINANSMAN_IPUCLARI.search(cumle)
-            or _KREDI_IPUCLARI.search(cumle)
+            acik_finansman
             or "taksit" in cumle.lower()
             or genel_limit_baglami
         )
+
+        # ⚠️ ÖDÜL BAĞLAMI FİNANSMANI BASTIRIR.
+        # "tek işlemde maksimum 5.000 TL indirim kazanılabilir" cümlesinde
+        # finansman/kredi kelimesi YOK; bağlamı yalnızca "maksimum" kelimesi
+        # (genel_limit_baglami) kuruyor ve ödül üst sınırı FİNANSMAN TUTARI
+        # olarak kaydediliyordu. Ortada bir ödül kelimesi varken finansman
+        # sayabilmek için AÇIK bir finansman/kredi kelimesi şart.
+        if finansman_baglami and _ODUL_IPUCLARI.search(pencere) and not acik_finansman:
+            finansman_baglami = False
 
         if finansman_baglami:
             # Min Finansman Tutarı
@@ -600,7 +885,17 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                 continue
 
             # Max Finansman Tutarı / Kampanya Üst Limiti
-            if _MAX_IPUCLARI.search(pencere) or genel_limit_baglami:
+            # ⚠️ Makuliyet tabanı burada da geçerli. `semaya_donustur` artık
+            # `finansman_tutari` boşsa bu alana düşüyor; taban olmayınca
+            # "en fazla 300 TL nakit iade" gibi ÖDÜL TAVANLARI finansman
+            # tutarı olarak tabloya giriyordu (6 kayıt: 100/250/300/500 TL).
+            # Ödül tavanı koruması burada da geçerli: "tek işlemde MAKSİMUM
+            # 5.000 TL indirim kazanılabilir" cümlesinde `genel_limit_baglami`
+            # ("maksimum") tetikleniyor ve ödül üst sınırı FİNANSMAN LİMİTİ
+            # olarak kaydediliyordu.
+            if ((_MAX_IPUCLARI.search(pencere) or genel_limit_baglami)
+                    and deger >= _ASGARI_FINANSMAN_TUTARI
+                    and not _ODUL_IPUCLARI.search(pencere)):
                 aday = _bulgu(
                     metin,
                     tutar_bul,
@@ -615,29 +910,45 @@ def tutar_cikar(metin: str) -> Dict[str, AlanBulgusu]:
                 continue
 
             # Genel Finansman Tutarı
-            aday = _bulgu(
-                metin,
-                tutar_bul,
-                deger,
-                "para+finansman_baglami",
-                guven=0.93,
-                birim="TL",
-            )
-            bulgular["finansman_tutari"] = _ilk_yuksek_guvenli(
-                bulgular.get("finansman_tutari"), aday
-            )
-            continue
+            # ⚠️ Makuliyet tabanı: "2.500 TL ve üzeri harcamalarında 250 TL
+            # kazan" gibi cümlelerde ödül tutarı da finansman bağlamının
+            # içinde kalıyor ve 250 TL'lik "finansman tutarı" üretiyordu.
+            # Bu eşiğin altındaki tutar finansman değildir; aşağıdaki ödül
+            # dalına düşmesi için burada yakalanmıyor.
+            if deger < _ASGARI_FINANSMAN_TUTARI:
+                pass
+            else:
+                aday = _bulgu(
+                    metin,
+                    tutar_bul,
+                    deger,
+                    "para+finansman_baglami",
+                    guven=0.93,
+                    birim="TL",
+                )
+                bulgular["finansman_tutari"] = _ilk_yuksek_guvenli(
+                    bulgular.get("finansman_tutari"), aday
+                )
+                continue
 
         # -------------------------------------------------------------
         # 3.6 Ödül / hediye / iade
         # -------------------------------------------------------------
         if _ODUL_IPUCLARI.search(cumle):
+            # 🏷️ BAŞLIKTAKİ TUTAR ÖNCELİKLİDİR.
+            # Kampanya gövdeleri çoğu kez kademe tablosu içeriyor
+            # ("7.500-14.999 TL harcamaya 500 TL, 15.000-24.999 TL'ye 800 TL…")
+            # ve ilk yakalanan kademe, başlıkta REKLAM EDİLEN üst tutarı
+            # eziyordu: "Giyim ve Kozmetik Alışverişlerinize 1.300 TL
+            # ParafPara" kaydında ödül 50 TL olarak yazılmıştı. Başlık,
+            # bankanın ilan ettiği değerdir; ona daha yüksek güven veriyoruz.
             aday = _bulgu(
                 metin,
                 tutar_bul,
                 deger,
-                "para+odul_baglami",
-                guven=0.93,
+                "para+odul_baglami" + ("+toplam" if toplam_ifadesi
+                                       else "+baslik" if baslikta else ""),
+                guven=1.0 if toplam_ifadesi else (0.97 if baslikta else 0.93),
                 birim="TL",
             )
             bulgular["odul_tutari_tl"] = _ilk_yuksek_guvenli(
@@ -782,8 +1093,25 @@ def _tarih_objesine_cevir(tarih_val) -> datetime:
     return None
 
 
+# Kampanya tarihleri için makul yıl penceresi. Bundan uzak bir yıl, kampanya
+# gerçeği değil ayrıştırma/tarama artefaktıdır (bkz. 2076 örneği).
+_TARIH_GECMIS_YIL = 12
+_TARIH_GELECEK_YIL = 8
+
+
+def _makul_tarih_mi(tarih_val) -> bool:
+    """None kabul edilir (alan yok demektir); dolu ama saçma yıl reddedilir."""
+    if tarih_val is None:
+        return True
+    dt = _tarih_objesine_cevir(tarih_val)
+    if dt is None:
+        return True          # çevrilemiyorsa burada karar verme
+    bu_yil = date.today().year
+    return (bu_yil - _TARIH_GECMIS_YIL) <= dt.year <= (bu_yil + _TARIH_GELECEK_YIL)
+
+
 def tarihleri_cikar(
-    metin: str, 
+    metin: str,
     temizlenme_tarihi: Optional[Union[str, date, datetime]] = None
 ) -> Dict[str, AlanBulgusu]:
     bulgular: Dict[str, AlanBulgusu] = {}
@@ -808,6 +1136,15 @@ def tarihleri_cikar(
         bas = tarih_normalize(bas_str)
         bit = tarih_normalize(bit_str)
 
+        # ⚠️ Aralık kalıbı ilk eşleşmeyi alır ve makuliyete bakmazdı. Taranan
+        # metinlerde bozuk yıllar var ("... 2026 - 31 ... 2076"); bu kayıtta
+        # doğru tarih "31 Temmuz 2026" metnin üç ayrı yerinde yazılı olduğu
+        # hâlde bitiş 2076-07-31 olarak kaydedilmişti. Makul olmayan yıl
+        # üreten aralık eşleşmesini çöpe atıp 5.3'teki "…tarihine kadar"
+        # kalıbına düşüyoruz.
+        if not (_makul_tarih_mi(bas) and _makul_tarih_mi(bit)):
+            bas = bit = None
+
         if bas:
             bulgular["baslangic_tarihi"] = _bulgu(
                 metin, tarih_bul, bas, "tarih_araligi", guven=0.99, birim="tarih"
@@ -829,7 +1166,10 @@ def tarihleri_cikar(
                     metin, tarih_bul, sure, "hesaplanmis_sure", guven=0.99, birim="gun"
                 )
 
-        return bulgular
+        # Aralık kalıbı işe yaradıysa bitir; makul olmayan tarih ürettiyse
+        # (yukarıda temizlendi) aşağıdaki daha dar kalıba düşülür.
+        if bas or bit:
+            return bulgular
 
     # 5.3 "... tarihine kadar"
     tarih_bul = _BITIS_TARIHI.search(metin)
@@ -844,7 +1184,7 @@ def tarihleri_cikar(
 
             # BAŞLANGIÇ TARİHİ VE SÜRE ATAMA (Bitiş Var, Başlangıç Yok)
             bas_varsayilan = temizlenme_tarihi or date.today()
-            
+
             # str formatına/ISO formatına dönüştürme kontrolü
             if isinstance(bas_varsayilan, (date, datetime)):
                 bas_varsayilan_str = bas_varsayilan.isoformat()
@@ -853,14 +1193,24 @@ def tarihleri_cikar(
 
             bas_norm = tarih_normalize(bas_varsayilan_str) or bas_varsayilan_str
 
+            bas_dt = _tarih_objesine_cevir(bas_norm)
+            bit_dt = _tarih_objesine_cevir(bit)
+
+            # ⚠️ Uydurulan başlangıç, metinden OKUNAN bitişten sonra olamaz.
+            # `temizlenme_tarihi` bu çağrı yolunda hep None olduğu için
+            # varsayılan daima "bugün"dü; süresi geçmiş kampanyalarda bu
+            # "bugün başladı, iki ay önce bitti" gibi imkânsız kayıtlar
+            # üretiyordu (10 kayıt) ve alttaki max(0, ...) kırpması yüzünden
+            # sure_gun 0 çıkıyordu (6 kayıt). Bilinmeyen başlangıç, YANLIŞ
+            # başlangıçtan iyidir: böyle durumda alanı hiç yazmıyoruz.
+            if bas_dt and bit_dt and bas_dt > bit_dt:
+                return bulgular
+
             bulgular["baslangic_tarihi"] = _bulgu(
                 metin, tarih_bul, bas_norm, "varsayilan_temizlenme_tarihi", guven=0.80, birim="tarih"
             )
 
             # Bitiş ile varsayılan başlangıç arasındaki süreyi hesapla
-            bas_dt = _tarih_objesine_cevir(bas_norm)
-            bit_dt = _tarih_objesine_cevir(bit)
-
             if bas_dt and bit_dt:
                 sure = max(0, (bit_dt - bas_dt).days)
                 bulgular["sure_gun"] = _bulgu(
@@ -1203,6 +1553,13 @@ def metni_temizle(metin: str) -> str:
 import re
 from typing import Dict, Optional
 
+# Gövde metninden bir sektörün toplayabileceği en yüksek puan. Başlık zaten 3
+# puan getirdiği için tavan 2 olunca başlık her zaman gövdeyi yener.
+_METIN_SKOR_TAVANI = 2
+# Tek bir kaçak kelimenin sektör belirlemesini engelleyen alt eşik.
+_ASGARI_SEKTOR_SKORU = 2
+
+
 def sektor_cikar(metin: str, baslik: str = "") -> Dict[str, AlanBulgusu]:
     """
     Başlık ve metin üzerinden sektör/kategori tespiti yapar 
@@ -1238,40 +1595,79 @@ def sektor_cikar(metin: str, baslik: str = "") -> Dict[str, AlanBulgusu]:
             }
 
     # 2. AŞAMA: Skorlama Mimarisi (İstenen 7 Sektör)
+    # ⚠️ TÜRKÇE EK TOLERANSI (27.08.2026): Genel adların sonundaki `\b`,
+    # kelime ek aldığında eşleşmeyi bozuyordu — "Seyahatlerinde" `\bseyahat\b`
+    # ile tutmuyor, kampanya "Genel / Sektör Bağımsız" kalıyordu. Ölçüm:
+    # bilet +5, eğitim +3, seyahat/otel/market +1 başlık. Genel adlara `\w*`
+    # eklendi; MARKA adları `\b` ile bırakıldı (ör. `mavi\w*` "maviye"yi de
+    # tutar), ayrıca ekle anlamı kayan kökler (saat, takı, araç, tur, oto)
+    # bilerek dar tutuldu: `tur\w*` "turkcell"i, `ara[çc]\w*` "aracılık"ı
+    # yakalardı.
     sektor_kurallari = {
         "Market ve Gıda": (
-            r"\bmarket\b|\bg[ıi]da\b|\bs[üu]permarket\b|\bhipermarket\b|\bşarküteri\b|\bmanav\b|\bkasap\b"
-            r"|\bmigros\b|\bcarrefour\b|\bcarrefoursa\b|\bbin\b|\ba101\b|\bşok\b|\bfile\b|\bmacrocenter\b"
+            # `\bbin\b` BİM zincirinin yazım hatasıydı ve tutarlardaki
+            # "250 Bin TL" ile eşleşip 2 kaydı Market'e itiyordu.
+            # "yapı marketi" bir NALBURDUR, market zinciri değil; bu yüzden
+            # "Mobilya, Dekorasyon ve Yapı Marketi Alışverişinize" kampanyası
+            # Market ve Gıda'ya düşüyordu. Negatif geriye bakış onu dışlıyor.
+            r"(?<!yapı )(?<!yapi )\bmarket\w*"
+            r"|\bg[ıi]da\w*|\bs[üu]permarket\w*|\bhipermarket\w*|\bşarküteri\w*|\bmanav\w*|\bkasap\w*"
+            r"|\bmigros\b|\bcarrefour\b|\bcarrefoursa\b|\bbim\b|\ba101\b|\bşok\b|\bfile\b|\bmacrocenter\b"
             r"|\byemeksepeti\s+market\b|\bgetirmarket\b|\bgetir\s+büyük\b|\bistegelsin\b|\bavm\s+g[ıi]da\b"
         ),
         "E-Ticaret ve Pazaryerleri": (
-            r"\be-?t[ıi]caret\b|\bpazaryer[ıi]\b|\bonline\s+al[ıi][şs]veri[şs]\b|\btrendyol\b|\bhepsiburada\b"
+            r"\be-?t[ıi]caret\w*|\bpazaryer[ıi]\w*|\bonline\s+al[ıi][şs]veri[şs]\w*|\btrendyol\b|\bhepsiburada\b"
             r"|\bn11\b|\bamazon\b|\bçiçeksepeti\b|\bpazarama\b|\bidefix\b|\bbonanza\b|\bebay\b|\baliexpress\b"
         ),
         "Akaryakıt ve Otomotiv": (
-            r"\bakaryak[ıi]t\b|\bbenzin\b|\bmotorin\b|\bdizel\b|\blpg\b|\botogaz\b|\bistasyon\b|\botomotiv\b"
+            r"\bakaryak[ıi]t\w*|\bbenzin\w*|\bmotorin\w*|\bdizel\w*|\blpg\b|\botogaz\w*|\bistasyon\w*|\botomotiv\w*"
             r"|\baraç\b|\boto\b|\bshell\b|\bopet\b|\bpetrol\s+ofisi\b|\bbp\b|\btotal\b|\btotalenergies\b"
-            r"|\bpo\b|\btp\b|\bopet\s+fuchs\b|\botobak[ıi]m\b|\blastik\b|\bservis\b"
+            r"|\bpo\b|\btp\b|\bopet\s+fuchs\b|\botobak[ıi]m\w*|\blastik\w*|\bservis\b"
         ),
         "Teknoloji ve Elektronik": (
-            r"\btekno\w*\b|\belektronik\b|\bbilgisayar\b|\btelefon\b|\bcep\s+telefonu\b|\btablet\b"
-            r"|\btroy\s+ma[gğ]aza\w*\b|\bgürgençler\b|\bteknosa\b|\bmediamarkt\b|\bvatan\s+bilgisayar\b"
+            r"\btekno\w*|\belektronik\w*|\bbilgisayar\w*|\btelefon\w*|\bcep\s+telefonu\w*|\btablet\w*"
+            r"|\btroy\s+ma[gğ]aza\w*|\bgürgençler\b|\bteknosa\b|\bmediamarkt\b|\bvatan\s+bilgisayar\b"
             r"|\bapple\b|\bsamsung\b|\bbyfix\b|\beve\s+elektronik\b"
+            # Verideki bilgisayar satıcıları: bunlar olmadan "Monster
+            # Notebook'ta 12 Aya Varan Taksit" (3 banka) sektörsüz kalıyordu.
+            r"|\bnotebook\w*|\blaptop\w*|\bitopya\b|\bcasper\b|\bxiaomi\b|\bmonster\b"
         ),
         "Giyim ve Aksesuar": (
-            r"\bgiyim\b|\btekstil\b|\bkiyafet\b|\bkonfeksiyon\b|\bayakkab[ıi]\b|\bçanta\b|\baksesuar\b"
+            r"\bgiyim\w*|\btekstil\w*|\bkiyafet\w*|\bkonfeksiyon\w*|\bayakkab[ıi]\w*|\bçanta\w*|\baksesuar\w*"
             r"|\bsaat\b|\btak[ıi]\b|\bzarab|\bh&m\b|\blcw\b|\blc\s+waikiki\b|\bdefacto\b|\bmavi\b"
             r"|\bkoton\b|\bboyner\b|\byarg[ıi]\b|\bvakko\b|\bderimod\b|\bflo\b|\btergan\b"
         ),
         "Seyahat ve Turizm": (
-            r"\bseyahat\b|\bturizm\b|\botel\b|\bkonaklama\b|\buçak\b|\bbilet\b|\bhavayolu\b|\bthy\b"
+            r"\bseyahat\w*|\bturizm\w*|\botel\w*|\bkonaklama\w*|\buçak\w*|\bbilet\w*|\bhavayolu\w*|\bthy\b"
             r"|\btürk\s+hava\s+yollar[ıi]\b|\bpegasus\b|\bajet\b|\bsunexpress\b|\bturna\b|\benuygun\b"
-            r"|\bobilet\b|\betstur\b|\bjolly\b|\btur\b|\baraç\s+kiralama\b|\brent\s+a\s+car\b"
+            r"|\bobilet\b|\betstur\b|\bjolly\b|\btur\b|\baraç\s+kiralama\w*|\brent\s+a\s+car\b"
         ),
         "Eğitim ve Kırtasiye": (
-            r"\be[gğ]itim\b|\bokul\b|\bk[ıi]rtasiye\b|\bokula\s+dönü[şs]\b|\bnezih\b|\büniversite\b"
-            r"|\bkurs\b|\bderse\w*\b|\bkitap\b|\bkitabevi\b|\bd&r\b|\bdr\b|\bbkm\s+kitap\b|\bdr\.com\.tr\b"
-        )
+            r"\be[gğ]itim\w*|\bokul\w*|\bk[ıi]rtasiye\w*|\bokula\s+dönü[şs]\w*|\bnezih\b|\büniversite\w*"
+            r"|\bkurs\w*|\bderse\w*|\bkitap\w*|\bkitabevi\w*|\bd&r\b|\bdr\b|\bbkm\s+kitap\b|\bdr\.com\.tr\b"
+        ),
+        # --- 27.08.2026'da EKLENEN üç sektör ---------------------------------
+        # Katalogun %67'si "Genel / Sektör Bağımsız" kalıyordu; sınıfsız
+        # kalanların içindeki en kalabalık üç küme buydu. Marka adları
+        # doğrudan bu veri kümesindeki kampanya başlıklarından alındı.
+        "Mobilya ve Ev": (
+            r"\bmobilya\w*|\bev\s+tekstil\w*|\bbeyaz\s+e[şs]ya\w*|\bmutfak\s+e[şs]ya\w*"
+            r"|\byap[ıi]\s+market\w*|\bdekorasyon\w*|\bnalbur\w*"
+            r"|\bbellona\b|\bistikbal\b|\bmondi\b|\bdo[ğg]ta[şs]\b|\benza\s+home\b|\byata[şs]\b"
+            r"|\bdivanev\b|\bkelebek\b|\bpuffy\b|\balfemo\b|\bkonfor\b|\bçetmen\b|\bevidea\b"
+            r"|\bkoçta[şs]\b|\bdemird[öo]küm\b|\bvaillant\b|\bider\s+mobilya\b|\benglish\s+home\b"
+            r"|\bschafer\b|\bdyson\b"
+        ),
+        "Sağlık": (
+            r"\bsa[ğg]l[ıi]k\s+harcama\w*|\beczane\w*|\bhastane\w*|\bdi[şs]\s+hastane\w*"
+            r"|\bpoliklinik\w*|\bmedikal\b|\boptik\b|\bmemorial\b|\brestoderm\b|\balpi\s+di[şs]\b"
+            r"|\bmedical\s+park\b|\bacıbadem\b"
+        ),
+        "Restoran ve Yeme-İçme": (
+            r"\brestoran\w*|\bkafe\w*|\bkahve\w*|\byemek\s+harcama\w*|\bcaf[eé]\b"
+            r"|\byemeksepeti\b(?!\s+market)|\bgetir\s*yemek\b|\bespressolab\b|\bstarbucks\b"
+            r"|\bkahve\s+dünyas[ıi]\b|\btatl[ıi]c[ıi]\w*"
+        ),
     }
     
     skorlar: Dict[str, int] = {sektor: 0 for sektor in sektor_kurallari}
@@ -1279,25 +1675,55 @@ def sektor_cikar(metin: str, baslik: str = "") -> Dict[str, AlanBulgusu]:
     
     for sektor, pattern in sektor_kurallari.items():
         regex_obj = re.compile(pattern, re.IGNORECASE)
-        
+
         # Başlık kontrolü (Ağırlık: 3)
         baslik_eslesme = regex_obj.search(baslik)
         if baslik and baslik_eslesme:
             skorlar[sektor] += 3
             if en_iyi_eslesmeler[sektor] is None:
                 en_iyi_eslesmeler[sektor] = baslik_eslesme
-        
-        # Metin kontrolü (Ağırlık: 1 x Her eşleşme)
+
+        # Metin kontrolü (Ağırlık: 1 x Her eşleşme, EN FAZLA 2)
+        # ⚠️ Sınır şart: kampanya şartlar-koşullar metinleri kapsam listeleri
+        # içeriyor ("havayolları, seyahat acenteleri, konaklama ile ilgili
+        # harcamalarda 3 ay, elektronik eşya...") ve bu liste tekrar tekrar
+        # eşleştiği için bilgisayar satıcısı kampanyalarını (ITOPYA, Casper)
+        # "Seyahat ve Turizm" yapıyordu. Tavan, şablon metnin gerçek sinyali
+        # ezmesini engelliyor.
         metin_eslesmeleri = list(regex_obj.finditer(islenen_metin))
-        skorlar[sektor] += len(metin_eslesmeleri)
-        
+        skorlar[sektor] += min(len(metin_eslesmeleri), _METIN_SKOR_TAVANI)
+
         if metin_eslesmeleri and en_iyi_eslesmeler[sektor] is None:
             en_iyi_eslesmeler[sektor] = metin_eslesmeleri[0]
-        
+
     en_yuksek_skor = max(skorlar.values())
-    
-    if en_yuksek_skor > 0:
-        kazanan_sektor = max(skorlar, key=skorlar.get)
+
+    # Tepe skorunu birden çok sektör paylaşıyorsa karar verilemez.
+    tepe = [s for s, v in skorlar.items() if v == en_yuksek_skor]
+
+    kazanan_sektor = None
+    if en_yuksek_skor >= _ASGARI_SEKTOR_SKORU:
+        if len(tepe) == 1:
+            kazanan_sektor = tepe[0]
+        else:
+            # ⚠️ Beraberlik iki farklı sebepten olabilir:
+            #  (a) Gövde şablonu birden çok sektörü eşit besliyor -> kanıt
+            #      gerçekten çelişkili, "Genel" dürüst cevaptır.
+            #  (b) BAŞLIK iki sektöre birden değiyor:
+            #      "A101 Ekstra'da tüm cep telefonlarına 3 Taksit"
+            #      "A101'lerde yapacağın kırtasiye harcamaların"
+            #      Burada kampanyanın konusu belli; "Genel" demek bilgi kaybı.
+            # Türkçe baş-sonda bir dildir: niteleyen önce, ASIL KONU sonda
+            # gelir (mağaza adı önde, ürün kategorisi arkada). Bu yüzden
+            # başlıkta EN SONDA eşleşen sektör seçiliyor.
+            baslikta = [(s, en_iyi_eslesmeler[s].start())
+                        for s in tepe
+                        if baslik and en_iyi_eslesmeler.get(s) is not None
+                        and en_iyi_eslesmeler[s].start() < len(baslik)]
+            if baslikta:
+                kazanan_sektor = max(baslikta, key=lambda x: x[1])[0]
+
+    if kazanan_sektor:
         eslesme_obj = en_iyi_eslesmeler[kazanan_sektor]
         
         # Kural adını güvenli slug formatına dönüştür (örn: sektor_skorlama_market_ve_gida)
@@ -1550,12 +1976,10 @@ def kurallarla_cikar(
     cikaricilar = (
         oranlari_cikar,
         vade_ve_taksit_cikar,
-        tutar_cikar,
         tarihleri_cikar,
         masraf_cikar,
         hedef_kitle_cikar,
          #mgm_cikar,
-        sektor_cikar,
         urun_kategori_cikar,
         mgm_detay_cikar,    # <-- YENİ EKLENDİ (5 kişi limiti ve MGM ödülleri için)
         odul_tipi_ve_metni_cikar,
@@ -1566,6 +1990,16 @@ def kurallarla_cikar(
         bulgular.update(cikarici(
             tam_metin
         ))
+
+    # ⚠️ sektor_cikar YUKARIDAKİ listeden çıkarıldı: imzası
+    # `sektor_cikar(metin, baslik="")` olduğu hâlde döngü tüm çıkarıcıları tek
+    # argümanla çağırıyordu, yani başlık DAİMA boş geçiliyor ve fonksiyonun
+    # kendi "Başlık kontrolü (Ağırlık: 3)" dalı hiç çalışmıyordu. Başlık artık
+    # gerçekten aktarılıyor.
+    bulgular.update(sektor_cikar(tam_metin, baslik or ""))
+    # tutar_cikar da sektor_cikar gibi baslik farkindaligi istiyor:
+    # basliktaki odul tutari, govdedeki kademe tablosuna yenilmemeli.
+    bulgular.update(tutar_cikar(tam_metin, baslik or ""))
 
     bulgular.update(
         kategori_cikar(

@@ -252,7 +252,7 @@
 
                         <!-- Vade Kolonu -->
                         <span v-else-if="col.key === 'vade'">
-                          {{ row.vade ? row.vade + ' Ay' : '-' }}
+                          {{ row.vade ? row.vade + ' ' + $t('financing.term_months', 'Ay') : '-' }}
                         </span>
 
                         <!-- Genel Başlık Kolonu -->
@@ -353,7 +353,7 @@
               <!-- Vade -->
               <div v-if="hasValue(selectedModalCampaign.finansman_detay?.vade_ay || selectedModalCampaign.vade)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
                 <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.vade', 'Vade') }}</div>
-                <div class="text-xs font-bold text-indigo-600 dark:text-indigo-400">{{ selectedModalCampaign.finansman_detay?.vade_ay || selectedModalCampaign.vade }} Ay</div>
+                <div class="text-xs font-bold text-indigo-600 dark:text-indigo-400">{{ selectedModalCampaign.finansman_detay?.vade_ay || selectedModalCampaign.vade }} {{ $t('financing.term_months', 'Ay') }}</div>
               </div>
 
               <!-- Taksit -->
@@ -611,31 +611,99 @@ const exportMatrix = async (format) => {
       if (hasAnyValidRow(c => c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul)) headers.push('MGM / Davet (TL)')
       if (hasAnyValidRow(c => c.genel_bilgi?.hedef_kitle)) headers.push('Hedef Kitle')
 
-      const rows = [
-        ['FINAGENT - KAMPANYA KARŞILAŞTIRMA LİSTESİ'],
-        [`Tarih: ${today}`, `Karşılaştırılan Kampanya Sayısı: ${matrixData.value.length}`],
-        [],
-        headers
-      ]
+      const dataRows = []
+      dataRows.push([
+        { v: 'FINAGENT · KAMPANYA KARŞILAŞTIRMA RAPORU', s: { font: { bold: true, sz: 14, color: { rgb: '1E40AF' } }, alignment: { horizontal: 'left' } } }
+      ])
+      dataRows.push([
+        { v: `Tarih: ${today} | Karşılaştırılan Kampanya Sayısı: ${matrixData.value.length}`, s: { font: { italic: true, sz: 9, color: { rgb: '6B7280' } } } }
+      ])
+      dataRows.push([])
 
-      matrixData.value.forEach(c => {
-        const row = [getBankaAd(c.genel_bilgi?.banka_id), c.genel_bilgi?.kampanya_adi || c.baslik]
-        if (hasAnyValidRow(x => x.genel_bilgi?.kampanya_turu)) row.push(c.genel_bilgi?.kampanya_turu || '-')
-        if (hasAnyValidRow(x => x.finansman_detay?.kar_payi_orani)) row.push(c.finansman_detay?.kar_payi_orani ? `%${c.finansman_detay.kar_payi_orani}` : '-')
-        if (hasAnyValidRow(x => x.finansman_detay?.vade_ay)) row.push(c.finansman_detay?.vade_ay ? `${c.finansman_detay.vade_ay} Ay` : '-')
-        if (hasAnyValidRow(x => x.finansman_detay?.taksit)) row.push(c.finansman_detay?.taksit || '-')
-        if (hasAnyValidRow(x => x.finansman_detay?.tahsis_ucreti)) row.push(c.finansman_detay?.tahsis_ucreti ? `${Number(c.finansman_detay.tahsis_ucreti).toLocaleString('tr-TR')} TL` : '-')
-        if (hasAnyValidRow(x => x.finansman_detay?.finansman_tutari)) row.push(c.finansman_detay?.finansman_tutari ? `${Number(c.finansman_detay.finansman_tutari).toLocaleString('tr-TR')} TL` : '-')
-        if (hasAnyValidRow(x => x.promosyon_detay?.odul_tutari)) row.push(c.promosyon_detay?.odul_tutari ? `${Number(c.promosyon_detay.odul_tutari).toLocaleString('tr-TR')} TL` : '-')
-        if (hasAnyValidRow(x => x.mgm_detay?.kisi_basi_kazanc || x.mgm_detay?.davet_eden_odul)) row.push(c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul ? `${Number(c.mgm_detay.kisi_basi_kazanc || c.mgm_detay.davet_eden_odul).toLocaleString('tr-TR')} TL` : '-')
-        if (hasAnyValidRow(x => x.genel_bilgi?.hedef_kitle)) row.push(Array.isArray(c.genel_bilgi?.hedef_kitle) ? c.genel_bilgi.hedef_kitle.join(', ') : (c.genel_bilgi?.hedef_kitle || '-'))
-        rows.push(row)
+      const headerCells = headers.map(h => ({
+        v: h,
+        s: {
+          fill: { fgColor: { rgb: '2563EB' } },
+          font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 },
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+          border: {
+            top: { style: 'thin', color: { rgb: '93C5FD' } },
+            bottom: { style: 'thin', color: { rgb: '93C5FD' } },
+            left: { style: 'thin', color: { rgb: '93C5FD' } },
+            right: { style: 'thin', color: { rgb: '93C5FD' } }
+          }
+        }
+      }))
+      dataRows.push(headerCells)
+
+      matrixData.value.forEach((c, idx) => {
+        const isEven = idx % 2 === 0
+        const rowBg = isEven ? 'FFFFFF' : 'F8FAFC'
+        const borderStyle = {
+          top: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          left: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          right: { style: 'thin', color: { rgb: 'E2E8F0' } }
+        }
+
+        const row = [
+          { v: getBankaAd(c.genel_bilgi?.banka_id), s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+          { v: c.genel_bilgi?.kampanya_adi || c.baslik, s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } }
+        ]
+
+        if (hasAnyValidRow(x => x.genel_bilgi?.kampanya_turu)) {
+          row.push({ v: c.genel_bilgi?.kampanya_turu || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } })
+        }
+        if (hasAnyValidRow(x => x.finansman_detay?.kar_payi_orani)) {
+          const rate = c.finansman_detay?.kar_payi_orani ? parseFloat(c.finansman_detay.kar_payi_orani) / 100 : null
+          row.push(rate !== null ? { v: rate, t: 'n', z: '0.00%', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '059669' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } } : { v: '-', s: { fill: { fgColor: { rgb: rowBg } }, border: borderStyle, alignment: { horizontal: 'center' } } })
+        }
+        if (hasAnyValidRow(x => x.finansman_detay?.vade_ay)) {
+          row.push({ v: c.finansman_detay?.vade_ay || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } })
+        }
+        if (hasAnyValidRow(x => x.finansman_detay?.taksit)) {
+          row.push({ v: c.finansman_detay?.taksit || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } })
+        }
+        if (hasAnyValidRow(x => x.finansman_detay?.tahsis_ucreti)) {
+          const fee = c.finansman_detay?.tahsis_ucreti ? Number(c.finansman_detay.tahsis_ucreti) : null
+          row.push(fee !== null ? { v: fee, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9, color: { rgb: '64748B' } }, border: borderStyle, alignment: { horizontal: 'right' } } } : { v: '-', s: { fill: { fgColor: { rgb: rowBg } }, border: borderStyle, alignment: { horizontal: 'center' } } })
+        }
+        if (hasAnyValidRow(x => x.finansman_detay?.finansman_tutari)) {
+          const amt = c.finansman_detay?.finansman_tutari ? Number(c.finansman_detay.finansman_tutari) : null
+          row.push(amt !== null ? { v: amt, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } } : { v: '-', s: { fill: { fgColor: { rgb: rowBg } }, border: borderStyle, alignment: { horizontal: 'center' } } })
+        }
+        if (hasAnyValidRow(x => x.promosyon_detay?.odul_tutari)) {
+          const reward = c.promosyon_detay?.odul_tutari ? Number(c.promosyon_detay.odul_tutari) : null
+          row.push(reward !== null ? { v: reward, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '059669' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } } : { v: '-', s: { fill: { fgColor: { rgb: rowBg } }, border: borderStyle, alignment: { horizontal: 'center' } } })
+        }
+        if (hasAnyValidRow(x => x.mgm_detay?.kisi_basi_kazanc || x.mgm_detay?.davet_eden_odul)) {
+          const mgm = (c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul) ? Number(c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul) : null
+          row.push(mgm !== null ? { v: mgm, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: 'D97706' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } } : { v: '-', s: { fill: { fgColor: { rgb: rowBg } }, border: borderStyle, alignment: { horizontal: 'center' } } })
+        }
+        if (hasAnyValidRow(x => x.genel_bilgi?.hedef_kitle)) {
+          const audience = Array.isArray(c.genel_bilgi?.hedef_kitle) ? c.genel_bilgi.hedef_kitle.join(', ') : (c.genel_bilgi?.hedef_kitle || '-')
+          row.push({ v: audience, s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 8.5 }, border: borderStyle, alignment: { horizontal: 'left' } } })
+        }
+        dataRows.push(row)
       })
 
-      const ws = XLSX.utils.aoa_to_sheet(rows)
-      ws['!cols'] = [{ wch: 20 }, { wch: 40 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }]
+      const ws = XLSX.utils.aoa_to_sheet(dataRows)
+      ws['!cols'] = [
+        { wch: 22 },
+        { wch: 36 },
+        { wch: 14 },
+        { wch: 15 },
+        { wch: 12 },
+        { wch: 14 },
+        { wch: 18 },
+        { wch: 20 },
+        { wch: 16 },
+        { wch: 16 },
+        { wch: 24 }
+      ]
+
       XLSX.utils.book_append_sheet(wb, ws, 'Karsilastirma')
-      XLSX.writeFile(wb, `FinAgent_Karsilastirma_${Date.now()}.xlsx`)
+      XLSX.writeFile(wb, `FinAgent_Karsilastirma_${new Date().toISOString().slice(0, 10)}.xlsx`)
     } catch (e) {
       console.error('Excel export hatası:', e)
     }
@@ -648,38 +716,38 @@ const exportMatrix = async (format) => {
             <!-- ÜST BAŞLIK -->
             <div style="border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 20px;">
                 <h1 style="color: #2563eb; margin: 0; font-size: 24px; font-weight: bold;">FinAgent Kampanya Karşılaştırması</h1>
-                <p style="color: #6b7280; font-size: 12px; margin: 5px 0 0 0;">Oluşturulma Tarihi: ${escapeHtml(today)}</p>
+                <p style="color: #6b7280; font-size: 12px; margin: 5px 0 0 0;">Oluşturulma Tarihi: ${escapeHtml(today)} | Karşılaştırılan Kampanya Sayısı: ${matrixData.value.length}</p>
             </div>
 
             <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 15px;">
                 <thead>
-                    <tr style="background-color: #f3f4f6;">
-                        <th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: left; color: #1f2937;">Banka</th>
-                        <th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: left; color: #1f2937;">Kampanya</th>
-                        ${hasAnyValidRow(c => c.genel_bilgi?.kampanya_turu) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center;">Tür</th>` : ''}
-                        ${hasAnyValidRow(c => c.finansman_detay?.kar_payi_orani) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center;">Kâr Payı</th>` : ''}
-                        ${hasAnyValidRow(c => c.finansman_detay?.vade_ay) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center;">Vade</th>` : ''}
-                        ${hasAnyValidRow(c => c.finansman_detay?.taksit) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center;">Taksit</th>` : ''}
-                        ${hasAnyValidRow(c => c.finansman_detay?.tahsis_ucreti) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center;">Tahsis Ücreti</th>` : ''}
-                        ${hasAnyValidRow(c => c.promosyon_detay?.odul_tutari) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center;">Ödül</th>` : ''}
-                        ${hasAnyValidRow(c => c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: center;">MGM</th>` : ''}
-                        ${hasAnyValidRow(c => c.genel_bilgi?.hedef_kitle) ? `<th style="padding: 8px 10px; border: 1px solid #d1d5db; text-align: left;">Hedef Kitle</th>` : ''}
+                    <tr style="background-color: #f1f5f9;">
+                        <th style="padding: 8px 10px; border: 1px solid #cbd5e1; text-align: left; color: #1e293b;">Banka</th>
+                        <th style="padding: 8px 10px; border: 1px solid #cbd5e1; text-align: left; color: #1e293b;">Kampanya</th>
+                        ${hasAnyValidRow(c => c.genel_bilgi?.kampanya_turu) ? `<th style="padding: 8px 10px; border: 1px solid #cbd5e1; text-align: center; color: #1e293b;">Tür</th>` : ''}
+                        ${hasAnyValidRow(c => c.finansman_detay?.kar_payi_orani) ? `<th style="padding: 8px 10px; border: 1px solid #cbd5e1; text-align: center; color: #1e293b;">Kâr Payı</th>` : ''}
+                        ${hasAnyValidRow(c => c.finansman_detay?.vade_ay) ? `<th style="padding: 8px 10px; border: 1px solid #cbd5e1; text-align: center; color: #1e293b;">Vade</th>` : ''}
+                        ${hasAnyValidRow(c => c.finansman_detay?.taksit) ? `<th style="padding: 8px 10px; border: 1px solid #cbd5e1; text-align: center; color: #1e293b;">Taksit</th>` : ''}
+                        ${hasAnyValidRow(c => c.finansman_detay?.tahsis_ucreti) ? `<th style="padding: 8px 10px; border: 1px solid #cbd5e1; text-align: center; color: #1e293b;">Tahsis Ücreti</th>` : ''}
+                        ${hasAnyValidRow(c => c.promosyon_detay?.odul_tutari) ? `<th style="padding: 8px 10px; border: 1px solid #cbd5e1; text-align: center; color: #1e293b;">Ödül</th>` : ''}
+                        ${hasAnyValidRow(c => c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul) ? `<th style="padding: 8px 10px; border: 1px solid #cbd5e1; text-align: center; color: #1e293b;">MGM</th>` : ''}
+                        ${hasAnyValidRow(c => c.genel_bilgi?.hedef_kitle) ? `<th style="padding: 8px 10px; border: 1px solid #cbd5e1; text-align: left; color: #1e293b;">Hedef Kitle</th>` : ''}
                     </tr>
                 </thead>
                 <tbody>`
 
-      matrixData.value.forEach(c => {
-        html += `<tr>
-          <td style="padding: 7px 10px; border: 1px solid #d1d5db; font-weight: bold; color: #1e40af;">${escapeHtml(getBankaAd(c.genel_bilgi?.banka_id))}</td>
-          <td style="padding: 7px 10px; border: 1px solid #d1d5db; font-weight: 500;">${escapeHtml(c.genel_bilgi?.kampanya_adi || c.baslik)}</td>
-          ${hasAnyValidRow(x => x.genel_bilgi?.kampanya_turu) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center;">${escapeHtml(c.genel_bilgi?.kampanya_turu || '-')}</td>` : ''}
-          ${hasAnyValidRow(x => x.finansman_detay?.kar_payi_orani) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center; font-weight: bold; color: #2563eb;">${c.finansman_detay?.kar_payi_orani ? `%${c.finansman_detay.kar_payi_orani}` : '-'}</td>` : ''}
-          ${hasAnyValidRow(x => x.finansman_detay?.vade_ay) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center;">${c.finansman_detay?.vade_ay ? `${c.finansman_detay.vade_ay} Ay` : '-'}</td>` : ''}
-          ${hasAnyValidRow(x => x.finansman_detay?.taksit) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center;">${escapeHtml(c.finansman_detay?.taksit || '-')}</td>` : ''}
-          ${hasAnyValidRow(x => x.finansman_detay?.tahsis_ucreti) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center; color: #ea580c; font-weight: bold;">${c.finansman_detay?.tahsis_ucreti ? `${Number(c.finansman_detay.tahsis_ucreti).toLocaleString('tr-TR')} TL` : '-'}</td>` : ''}
-          ${hasAnyValidRow(x => x.promosyon_detay?.odul_tutari) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center; color: #059669; font-weight: bold;">${c.promosyon_detay?.odul_tutari ? `${Number(c.promosyon_detay.odul_tutari).toLocaleString('tr-TR')} TL` : '-'}</td>` : ''}
-          ${hasAnyValidRow(x => x.mgm_detay?.kisi_basi_kazanc || x.mgm_detay?.davet_eden_odul) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db; text-align: center; color: #d97706; font-weight: bold;">${c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul ? `${Number(c.mgm_detay.kisi_basi_kazanc || c.mgm_detay.davet_eden_odul).toLocaleString('tr-TR')} TL` : '-'}</td>` : ''}
-          ${hasAnyValidRow(x => x.genel_bilgi?.hedef_kitle) ? `<td style="padding: 7px 10px; border: 1px solid #d1d5db;">${escapeHtml(Array.isArray(c.genel_bilgi?.hedef_kitle) ? c.genel_bilgi.hedef_kitle.join(', ') : (c.genel_bilgi?.hedef_kitle || '-'))}</td>` : ''}
+      matrixData.value.forEach((c, idx) => {
+        html += `<tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
+          <td style="padding: 7px 10px; border: 1px solid #e2e8f0; font-weight: bold; color: #1e40af;">${escapeHtml(getBankaAd(c.genel_bilgi?.banka_id))}</td>
+          <td style="padding: 7px 10px; border: 1px solid #e2e8f0; font-weight: 500;">${escapeHtml(c.genel_bilgi?.kampanya_adi || c.baslik)}</td>
+          ${hasAnyValidRow(x => x.genel_bilgi?.kampanya_turu) ? `<td style="padding: 7px 10px; border: 1px solid #e2e8f0; text-align: center;">${escapeHtml(c.genel_bilgi?.kampanya_turu || '-')}</td>` : ''}
+          ${hasAnyValidRow(x => x.finansman_detay?.kar_payi_orani) ? `<td style="padding: 7px 10px; border: 1px solid #e2e8f0; text-align: center; font-weight: bold; color: #2563eb;">${c.finansman_detay?.kar_payi_orani ? `%${c.finansman_detay.kar_payi_orani}` : '-'}</td>` : ''}
+          ${hasAnyValidRow(x => x.finansman_detay?.vade_ay) ? `<td style="padding: 7px 10px; border: 1px solid #e2e8f0; text-align: center;">${c.finansman_detay?.vade_ay ? `${c.finansman_detay.vade_ay} Ay` : '-'}</td>` : ''}
+          ${hasAnyValidRow(x => x.finansman_detay?.taksit) ? `<td style="padding: 7px 10px; border: 1px solid #e2e8f0; text-align: center;">${escapeHtml(c.finansman_detay?.taksit || '-')}</td>` : ''}
+          ${hasAnyValidRow(x => x.finansman_detay?.tahsis_ucreti) ? `<td style="padding: 7px 10px; border: 1px solid #e2e8f0; text-align: center; color: #ea580c; font-weight: bold;">${c.finansman_detay?.tahsis_ucreti ? `${Number(c.finansman_detay.tahsis_ucreti).toLocaleString('tr-TR')} TL` : '-'}</td>` : ''}
+          ${hasAnyValidRow(x => x.promosyon_detay?.odul_tutari) ? `<td style="padding: 7px 10px; border: 1px solid #e2e8f0; text-align: center; color: #059669; font-weight: bold;">${c.promosyon_detay?.odul_tutari ? `${Number(c.promosyon_detay.odul_tutari).toLocaleString('tr-TR')} TL` : '-'}</td>` : ''}
+          ${hasAnyValidRow(x => x.mgm_detay?.kisi_basi_kazanc || x.mgm_detay?.davet_eden_odul) ? `<td style="padding: 7px 10px; border: 1px solid #e2e8f0; text-align: center; color: #d97706; font-weight: bold;">${c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul ? `${Number(c.mgm_detay.kisi_basi_kazanc || c.mgm_detay.davet_eden_odul).toLocaleString('tr-TR')} TL` : '-'}</td>` : ''}
+          ${hasAnyValidRow(x => x.genel_bilgi?.hedef_kitle) ? `<td style="padding: 7px 10px; border: 1px solid #e2e8f0;">${escapeHtml(Array.isArray(c.genel_bilgi?.hedef_kitle) ? c.genel_bilgi.hedef_kitle.join(', ') : (c.genel_bilgi?.hedef_kitle || '-'))}</td>` : ''}
         </tr>`
       })
 
@@ -709,12 +777,38 @@ const exportMatrix = async (format) => {
       const el = document.getElementById('comparison-matrix-table')
       if (!el) return
 
+      const scrollWrapper = el.querySelector('.overflow-x-auto, .overflow-y-auto')
+      const thead = el.querySelector('thead')
+
+      const prevMaxHeight = scrollWrapper ? scrollWrapper.style.maxHeight : ''
+      const prevOverflow = scrollWrapper ? scrollWrapper.style.overflow : ''
+      const prevPosition = thead ? thead.style.position : ''
+
+      if (scrollWrapper) {
+        scrollWrapper.style.maxHeight = 'none'
+        scrollWrapper.style.overflow = 'visible'
+        scrollWrapper.scrollTop = 0
+        scrollWrapper.scrollLeft = 0
+      }
+      if (thead) {
+        thead.style.position = 'static'
+      }
+
       const canvas = await window.html2canvas(el, {
         scale: 2.5,
         backgroundColor: '#ffffff',
         useCORS: true,
-        logging: false
+        logging: false,
+        windowWidth: el.scrollWidth + 100
       })
+
+      if (scrollWrapper) {
+        scrollWrapper.style.maxHeight = prevMaxHeight
+        scrollWrapper.style.overflow = prevOverflow
+      }
+      if (thead) {
+        thead.style.position = prevPosition
+      }
 
       const dataUrl = canvas.toDataURL('image/png', 1.0)
       const link = document.createElement('a')
@@ -964,7 +1058,16 @@ const fetchCampaigns = async () => {
   }
 }
 
+const handleKeyDown = (e) => {
+  if (e.key === 'Escape' && selectedModalCampaign.value) {
+    selectedModalCampaign.value = null
+  }
+}
+
 onMounted(async () => {
+  if (process.client) {
+    window.addEventListener('keydown', handleKeyDown)
+  }
   const scrollerEl = document.getElementById('main-scroller')
 
   if (scrollerEl) {
@@ -987,6 +1090,9 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (process.client) {
+    window.removeEventListener('keydown', handleKeyDown)
+  }
   if (lenisRafId) cancelAnimationFrame(lenisRafId)
   if (lenis) { lenis.destroy(); lenis = null }
   if (observer) { observer.disconnect(); observer = null }

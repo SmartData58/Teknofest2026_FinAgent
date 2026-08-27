@@ -55,14 +55,22 @@ turler:
   mgm_kampanyasi:
     tr: "MGM / Davet"
     en: "MGM / Referral"
+  indirim_kampanyasi:         # 27.08.2026 eklendi — üye iş yeri indirimleri
+    tr: "İndirim"
+    en: "Discount"
+  hediye_promosyon:           # 27.08.2026 eklendi — saf hediye/promosyon
+    tr: "Hediye / Promosyon"
+    en: "Gift / Promotion"
 
-  # --- Veride görülen ama GECERLI_TURLER'de OLMAYAN değerler --------------
-  # Silinmiyorlar: silinirse bu 23 kayıt arayüzde ham anahtarla görünür.
-  # Doğrusu, boru hattının bunları `alisveris_puani`ye normalize etmesidir.
-  alisveris_kampanyası:       # ⚠️ veritabanında 23 kayıt (Türkçe "ı" ile)
-    tr: "Alışveriş"
-    en: "Shopping"
-  alisveris_kampanyasi:       # ⚠️ ASCII "i" varyantı — aynı anlam
+  # --- ESKİ VERİ İÇİN GEÇİŞ ETİKETİ --------------------------------------
+  # KÖK NEDEN BULUNDU (27.08.2026): campaign_classifier.py'deki kural tablosu
+  # bu etiketi üretiyordu, oysa aynı dosyanın GECERLI_TURLER kümesinde YOK —
+  # ve kümeyi hiçbir yer dayatmadığı için geçersiz etiket sessizce Mongo'ya
+  # yazıldı. Kural artık `alisveris_puani` üretiyor ve kuralla_siniflandir
+  # küme dışı etiketi reddediyor. Bu giriş yalnızca YENİDEN İŞLENMEMİŞ eski
+  # kayıtlar (23 adet) arayüzde ham anahtarla görünmesin diye duruyor;
+  # yeniden çıkarım sonrası silinebilir.
+  alisveris_kampanyası:       # ⚠️ eski veri — Türkçe "ı" ile, 23 kayıt
     tr: "Alışveriş"
     en: "Shopping"
 
@@ -140,20 +148,23 @@ urun_kategorileri:
 
 # -----------------------------------------------------------------------------
 # 4) SEKTÖR  (genel_bilgi.sektor)
-# DOĞRULUK KAYNAĞI: nlp/extraction/rule_based.py::sektor_kurallari (7)
+# DOĞRULUK KAYNAĞI: nlp/extraction/rule_based.py::sektor_cikar (10)
 #                   + varsayılan "Genel / Sektör Bağımsız"
-# ⚠️ VERİ UYARISI (27.08.2026): `islenmis_kampanyalar` içinde bu alan 390
-#    kaydın tamamında düz "Genel" — yani 7 sektör kuralı çalıştırılmadan
-#    kaydedilmiş. Boru hattı yeniden koşturulunca gerçek sektörler dolacak.
-#    Bu yüzden "Genel" varyantı da tanımlı bırakıldı.
+# 27.08.2026: Mobilya ve Ev / Sağlık / Restoran ve Yeme-İçme eklendi —
+#   katalogun %67'si sınıfsız kalıyordu, bunlar sınıfsızların en kalabalık
+#   üç kümesiydi (mobilyacılar, eczane-hastane, restoran-kahve).
+# ✅ VERİ DOĞRULAMASI (27.08.2026, test/nlp_izle.py): sektör kuralları düzgün
+#    çalışıyor ve depoya çeşitli değerler yazılmış:
+#      Genel / Sektör Bağımsız 208 | Market ve Gıda 36 | Seyahat ve Turizm 36
+#      Teknoloji ve Elektronik 30 | E-Ticaret 25 | Akaryakıt ve Otomotiv 22
+#      Giyim ve Aksesuar 17 | Eğitim ve Kırtasiye 16 | (null) 1
+#    (Bu dosyanın önceki sürümünde "390 kaydın tamamı düz 'Genel'" yazıyordu;
+#     bu ölçüm YANLIŞTI — düz "Genel" değeri veride hiç yok.)
 # -----------------------------------------------------------------------------
 sektorler:
   "Genel / Sektör Bağımsız":
     tr: "Genel / Sektör Bağımsız"
     en: "General / Sector-Agnostic"
-  "Genel":                    # ⚠️ veride bulunan kısa varyant (390 kayıt)
-    tr: "Genel"
-    en: "General"
   "Market ve Gıda":
     tr: "Market ve Gıda"
     en: "Grocery & Food"
@@ -175,6 +186,15 @@ sektorler:
   "Eğitim ve Kırtasiye":
     tr: "Eğitim ve Kırtasiye"
     en: "Education & Stationery"
+  "Mobilya ve Ev":            # 27.08.2026 eklendi
+    tr: "Mobilya ve Ev"
+    en: "Furniture & Home"
+  "Sağlık":                   # 27.08.2026 eklendi
+    tr: "Sağlık"
+    en: "Health"
+  "Restoran ve Yeme-İçme":    # 27.08.2026 eklendi
+    tr: "Restoran ve Yeme-İçme"
+    en: "Restaurants & Dining"
 
 # -----------------------------------------------------------------------------
 # 5) KATEGORİLER — GERİYE DÖNÜK UYUMLULUK

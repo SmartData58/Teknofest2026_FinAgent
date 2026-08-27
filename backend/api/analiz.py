@@ -43,7 +43,7 @@ from typing import Any, List, Optional
 
 from fastapi import APIRouter
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pymongo import MongoClient
 
 from chatbot.intent import (
@@ -112,6 +112,23 @@ _SUPHELI_METIN = re.compile(
 )
 
 
+# 🛠️ ARAYÜZ SAYILARI METİN OLARAK GELİYOR.
+# Sayfalardaki tablolar kullanıcıya GÖRÜNEN biçimi tutuyor ("%38,50",
+# "100.000 TL", "36 Ay") ve butonlar bu değerleri olduğu gibi gönderiyor.
+# Modeller ise düz `float` bekliyordu; sonuç 422 "unable to parse string as a
+# number" idi. Katılım hesabı butonu bu yüzden HER TIKLAMADA köprüye
+# ulaşamayıp sessizce doğrulanmamış yedek prompt'a düşüyordu — yani buton
+# duruyor ama arkasındaki doğrulama hiç çalışmıyordu.
+# `_sayi()` bu biçimleri zaten çözüyordu; artık modellere bağlı.
+def _metinden_sayi(v):
+    return _sayi(v) if isinstance(v, str) else v
+
+
+def _metinden_tamsayi(v):
+    s = _sayi(v) if isinstance(v, str) else v
+    return int(s) if isinstance(s, float) else s
+
+
 class FinansmanUrunGirdisi(BaseModel):
     """Finansman sayfasındaki bir satırın kimliği. Rakamlar DOĞRULAMA içindir —
     prompt'a arayüzün değil, BİZİM kayıtlarımızdaki değer yazılır."""
@@ -122,6 +139,16 @@ class FinansmanUrunGirdisi(BaseModel):
     kar_orani: Optional[float] = None          # arayüzün gösterdiği oran (doğrulanacak)
     aylik_taksit: Optional[str] = None
 
+    @field_validator("tutar", "kar_orani", mode="before")
+    @classmethod
+    def _sayisal(cls, v):
+        return _metinden_sayi(v)
+
+    @field_validator("vade", mode="before")
+    @classmethod
+    def _vade(cls, v):
+        return _metinden_tamsayi(v)
+
 
 class KatilimHesapGirdisi(BaseModel):
     """Katılım hesapları sayfasındaki bir satırın kimliği."""
@@ -131,6 +158,16 @@ class KatilimHesapGirdisi(BaseModel):
     net_oran: Optional[float] = None
     brut_oran: Optional[float] = None
     net_kar: Optional[str] = None
+
+    @field_validator("tutar", "net_oran", "brut_oran", mode="before")
+    @classmethod
+    def _sayisal(cls, v):
+        return _metinden_sayi(v)
+
+    @field_validator("vade", "net_kar", mode="before")
+    @classmethod
+    def _metin(cls, v):
+        return None if v is None else str(v)
 
 
 class AnalizIstegi(BaseModel):
@@ -184,11 +221,23 @@ def _sayi(ham: Any) -> Optional[float]:
         return None
     if isinstance(ham, (int, float)):
         return float(ham)
-    metin = str(ham).replace("%", "").replace("TL", "").strip()
+    metin = str(ham).replace("%", "").replace("TL", "").replace("₺", "").strip()
+    metin = metin.replace(" ", "")
     if not metin or metin.lower() == "none":
         return None
-    # Türkçe biçim: binlik nokta, ondalık virgül
-    metin = metin.replace(".", "").replace(",", ".") if "," in metin else metin
+
+    # 🛠️ BİNLİK NOKTASI ONDALIK SANILIYORDU.
+    # Eski kural "virgül varsa Türkçe biçimdir" idi; virgülsüz "100.000 TL"
+    # olduğu gibi float()'a gidiyor ve 100.0 çıkıyordu — yüz bin lira, yüz
+    # liraya dönüşüyordu. Katılım hesabı köprüsünde tam olarak bu görüldü.
+    if "," in metin:
+        # Virgül ondalık ayraç; nokta varsa binlik ayraçtır.
+        metin = metin.replace(".", "").replace(",", ".")
+    elif re.fullmatch(r"\d{1,3}(?:\.\d{3})+", metin):
+        # Yalnızca nokta var ve rakamları ÜÇERLİ gruplandırıyor -> binlik.
+        # ("3.49" gibi gruplamayan hâller ondalık olarak bırakılır.)
+        metin = metin.replace(".", "")
+
     try:
         return float(metin)
     except ValueError:

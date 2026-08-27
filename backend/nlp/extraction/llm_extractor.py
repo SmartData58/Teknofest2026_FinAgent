@@ -379,8 +379,24 @@ def _requests_ile_json(prompt: str, max_tokens: int = 100) -> dict | None:
 # gibi acikca imkansiz bir sayi uretmesi nadir degil; kayda gecmeden once
 # eleniyor. Sinirlar genis tutuldu — amac uydurmayi engellemek, gercek uc
 # degerleri kirpmak degil.
+# Katilma hesabi "paylasim orani" ile finansman "kar payi orani" AYRI
+# kavramlar, ama ikisi de yuzde ve ikisinin de adinda "kar payi" gecebiliyor.
+# Paylasim orani %80-98 bandinda; finansman orani ise aylik ve tek haneli.
+# Ayrim yapilmadigi icin iki kayit (albaraka, emlak_katilim) `kar_payi_orani`
+# alanina 98.0 yazmisti -- alanin dolu 8 kaydinin DORTTE BIRI. Bu deger banka
+# kiyas tablosunda "en yuksek kar payi %98" olarak gorunuyordu.
+_KATILMA_HESABI_DESENI = re.compile(
+    r"kat[ıi]lma\s+hesab|pay(?:la[şs][ıi]m|da[şs][ıi]m)\s+oran|kar\s+pay[ıi]\s+da[ğg][ıi]t",
+    re.IGNORECASE,
+)
+_FINANSMAN_DESENI = re.compile(
+    r"finansman|kredi|taksitl|vade\s*fark|tahsis\s+[üu]cret", re.IGNORECASE
+)
+
 _SAYISAL_SINIRLAR = {
-    "kar_payi_orani":   (0.0, 100.0),
+    # Ust sinir 100 -> 50: finansman kar payi orani hicbir kosulda 50'yi
+    # gecmez; 100'luk tavan paylasim oranlarini serbest birakiyordu.
+    "kar_payi_orani":   (0.0, 50.0),
     "vade_ay":          (1, 600),
     "taksit_sayisi":    (1, 120),
     "finansman_tutari": (1.0, 100_000_000.0),
@@ -389,8 +405,20 @@ _SAYISAL_SINIRLAR = {
 _TAMSAYI_ALANLAR = {"vade_ay", "taksit_sayisi"}
 
 
-def _alan_dogrula(alan: str, ham):
-    """Ham LLM degerini alanin tipine/araligina gore dogrular; gecersizse None."""
+def _alan_dogrula(alan: str, ham, metin: str = ""):
+    """Ham LLM degerini alanin tipine/araligina gore dogrular; gecersizse None.
+
+    `metin` verilirse baglama duyarli kontroller de calisir (bkz.
+    _KATILMA_HESABI_DESENI): sayinin araliginda olmasi tek basina yetmiyor,
+    dogru KAVRAMIN olcusu olmasi da gerekiyor.
+    """
+    if alan == "kar_payi_orani" and metin:
+        if (_KATILMA_HESABI_DESENI.search(metin)
+                and not _FINANSMAN_DESENI.search(metin)):
+            print("    ⚠️ 'kar_payi_orani' atlandi: metin katilma hesabi "
+                  "paylasim oranindan bahsediyor, finansman oranindan degil.")
+            return None
+
     if alan == "hedef_kitle":
         if isinstance(ham, str):
             ham = [ham]
@@ -445,7 +473,7 @@ def llm_ile_cikar(metin: str, istenen_alanlar: list[str]) -> dict[str, AlanBulgu
             _kampanya_promptu(metin, kampanya_alanlari), max_tokens=butce
         ) or {}
         for alan in kampanya_alanlari:
-            deger = _alan_dogrula(alan, ham_json.get(alan))
+            deger = _alan_dogrula(alan, ham_json.get(alan), metin)
             if deger is None:
                 continue
             bulgular[alan] = AlanBulgusu(
