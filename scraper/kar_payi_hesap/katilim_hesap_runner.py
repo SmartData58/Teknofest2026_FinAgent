@@ -15,8 +15,9 @@ from datetime import datetime, timezone
 
 from pymongo import MongoClient
 
-import vakif_katılım_hesap
-import ziraat_katılım_hesap
+
+from scraper.kar_payi_hesap import vakif_katilim_hesap
+from scraper.kar_payi_hesap import ziraat_katilim_hesap
 
 MONGO_USER = os.getenv("MONGO_USER", "admin")
 MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "admin123")
@@ -36,13 +37,13 @@ def topla_sonuclar():
 
     print("Vakıf Katılım hesaplanıyor...")
     try:
-        tum_sonuclar.extend(vakif_katılım_hesap.run())
+        tum_sonuclar.extend(vakif_katilim_hesap.run())
     except Exception as e:
         print(f"Vakıf Katılım hesaplanırken hata oluştu: {e}")
 
     print("Ziraat Katılım hesaplanıyor...")
     try:
-        tum_sonuclar.extend(ziraat_katılım_hesap.run())
+        tum_sonuclar.extend(ziraat_katilim_hesap.run())
     except Exception as e:
         print(f"Ziraat Katılım hesaplanırken hata oluştu: {e}")
 

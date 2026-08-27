@@ -123,8 +123,8 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
 
     # Kampanya Türü için Çoklu Anahtar Kontrolü
     kampanya_turu = _get_val(bulgular, "kampanya_turu")
-    kategori = (
-        doc.get("kategori") or
+    sektor = (
+        doc.get("sektor") or
         doc.get("sektor") or 
         _get_val(bulgular, ["kategori", "sektor"]) or 
         "Genel"
@@ -172,7 +172,7 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
             "is_active": "aktif",
             "hedef_kitle": _get_val(bulgular, "hedef_kitle"),
             "kampanya_turu": kampanya_turu,
-            "kategori": kategori,
+            "sektor": sektor,
             "metin": doc.get("ham_metin"),
             "cekilis_tarihi": doc.get("cekilis_tarihi")
         },

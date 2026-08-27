@@ -1140,108 +1140,194 @@ def kategori_cikar(
     }
 
 
-# =============================================================================
-# 9. ALT KATEGORİ
-# =============================================================================
+import re
+from typing import Any, Dict, Optional
 
-_ALT_KATEGORILER: tuple[tuple[str, re.Pattern], ...] = (
-    (
-        "Konut",
-        re.compile(
-            r"\bkonut\b|\bev\s+sahibi\b|\bkonut\s+finansmanı\b"
-            r"|\bmortgage\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Taşıt",
-        re.compile(
-            r"\bta[şs][ıi]t\b|\bara[çc]\b|\botomobil\b|\boto\b"
-            r"|\btaşıt\s+finansmanı\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "İhtiyaç",
-        re.compile(
-            r"\bihtiyaç\b|\bihtiyaç\s+finansmanı\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Ticari",
-        re.compile(
-            r"\bticari\b|\bKOBİ\b|\besnaf\b|\bşirket\b"
-            r"|\bişletme\b|\bticari\s+finansman\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Birikim",
-        re.compile(
-            r"\bbirikim\b|\bkatılma\s+hesabı\b|\byatırım\s+hesabı\b"
-            r"|\bmevduat\b|\bgetiri\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Cari/Katılma",
-        re.compile(
-            r"\bcari\s+hesap\b|\bkatılma\s+hesab\w*\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Kredi Kartı",
-        re.compile(
-            r"\bkredi\s+kart\w*\b|\bworldpuan\b|\bchip[- ]?para\b"
-            r"|\bparafpuan\b|\bbonus\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Banka Kartı",
-        re.compile(
-            r"\bbanka\s+kart\w*\b|\bdebit\b|\bTROY\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Sermaye Piyasaları",
-        re.compile(
-            r"\bhisse\b|\btahvil\b|\bbono\b|\byatırım\s+fonu\b"
-            r"|\bsukuk\b|\bsermaye\s+piyas\w*\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Gayrimenkul",
-        re.compile(
-            r"\bgayrimenkul\b|\barsa\b|\bkonut\s+projesi\b",
-            re.IGNORECASE,
-        ),
-    ),
-)
+# Projenizdeki AlanBulgusu sınıf yapısına uygun temsil (gerekliyse import edin)
+class AlanBulgusu:
+    def __init__(
+        self,
+        deger: Any,
+        ham_metin: str = "",
+        kural: str = "",
+        yontem: str = "regex",
+        guven: float = 1.0,
+        kanit_metni: str = "",
+        baslangic_konum: int = -1,
+        bitis_konum: int = -1,
+        birim: Optional[str] = None,
+    ):
+        self.deger = deger
+        self.ham_metin = ham_metin
+        self.kural = kural
+        self.yontem = yontem
+        self.guven = guven
+        self.kanit_metni = kanit_metni
+        self.baslangic_konum = baslangic_konum
+        self.bitis_konum = bitis_konum
+        self.birim = birim
 
 
-def alt_kategori_cikar(metin: str) -> Dict[str, AlanBulgusu]:
-    for kategori, desen in _ALT_KATEGORILER:
-        esles = desen.search(metin)
+def metni_temizle(metin: str) -> str:
+    """Metin içindeki peş peşe sayılan genel şart sektör listelerini temizler."""
+    if not metin:
+        return ""
+    
+    coklu_sektor_pattern = re.compile(
+        r"(?:restoran|market|akaryakıt|eğitim|elektronik|giyim|kozmetik|seyahat|sağlık|ulaşım|yapı|sigorta)"
+        r"(?:\s*,\s*|\s+veya\s+|\s+ve\s+|\s+)"
+        r"(?:restoran|market|akaryakıt|eğitim|elektronik|giyim|kozmetik|seyahat|sağlık|ulaşım|yapı|sigorta)"
+        r"(?:\s*,\s*|\s+veya\s+|\s+ve\s+|\s+)"
+        r"(?:restoran|market|akaryakıt|eğitim|elektronik|giyim|kozmetik|seyahat|sağlık|ulaşım|yapı|sigorta)",
+        re.IGNORECASE
+    )
+    return coklu_sektor_pattern.sub("", metin)
 
-        if esles:
+
+def metni_temizle(metin: str) -> str:
+    """Metin içindeki peş peşe sayılan genel şart sektör listelerini temizler."""
+    if not metin:
+        return ""
+    
+    coklu_sektor_pattern = re.compile(
+        r"(?:restoran|market|akaryakıt|eğitim|elektronik|giyim|kozmetik|seyahat|sağlık|ulaşım|yapı|sigorta)"
+        r"(?:\s*,\s*|\s+veya\s+|\s+ve\s+|\s+)"
+        r"(?:restoran|market|akaryakıt|eğitim|elektronik|giyim|kozmetik|seyahat|sağlık|ulaşım|yapı|sigorta)"
+        r"(?:\s*,\s*|\s+veya\s+|\s+ve\s+|\s+)"
+        r"(?:restoran|market|akaryakıt|eğitim|elektronik|giyim|kozmetik|seyahat|sağlık|ulaşım|yapı|sigorta)",
+        re.IGNORECASE
+    )
+    return coklu_sektor_pattern.sub("", metin)
+
+
+import re
+from typing import Dict, Optional
+
+def sektor_cikar(metin: str, baslik: str = "") -> Dict[str, AlanBulgusu]:
+    """
+    Başlık ve metin üzerinden sektör/kategori tespiti yapar 
+    ve projeye uygun AlanBulgusu yapısında bir Dict döner.
+    """
+    islenen_metin = metni_temizle(metin)
+    
+    # 1. AŞAMA: Çoklu Bankacılık / Program Kontrolü (Override Kuralı)
+    genel_bankacilik_pattern = re.compile(
+        r"\bi[şs]lem\s+yapt[ıi]k[çc]a\s+kazan\b|\bg[üu]nl[üu]k\s+bankac[ıi]l[ıi]k\b"
+        r"|\bbankac[ıi]l[ıi]k\s+i[şs]lemleri\b|\bhayat\s+pay\b|\barkada[şs][ıi]n[ıi]\s+davet\b", 
+        re.IGNORECASE
+    )
+    
+    eslesme = genel_bankacilik_pattern.search(baslik) or genel_bankacilik_pattern.search(islenen_metin)
+    if eslesme:
+        islem_sayaci = 0
+        if re.search(r"\bfatura\b", islenen_metin, re.IGNORECASE): islem_sayaci += 1
+        if re.search(r"\bd[öo]viz\b|\bal[ıi]m[- ]sat[ıi]m\b", islenen_metin, re.IGNORECASE): islem_sayaci += 1
+        if re.search(r"\btransfer\b|\beft\b|\bfast\b", islenen_metin, re.IGNORECASE): islem_sayaci += 1
+        if re.search(r"\bkart\s+harcamas[ıi]\b|\bbanka\s+kart\b", islenen_metin, re.IGNORECASE): islem_sayaci += 1
+        
+        if islem_sayaci >= 2:
             return {
-                "alt_kategori": _bulgu(
-                    metin,
-                    esles,
-                    kategori,
-                    f"alt_kategori_{kategori.lower()}",
-                    guven=0.92,
-                    birim="metin",
+                "sektor": _bulgu(
+                    metin=islenen_metin,
+                    eslesme=eslesme,
+                    deger="Genel / Sektör Bağımsız",
+                    kural="sektor_coklu_bankacilik_override",
+                    guven=0.95,
+                    birim="kategori"
                 )
             }
 
-    return {}
+    # 2. AŞAMA: Skorlama Mimarisi (İstenen 7 Sektör)
+    sektor_kurallari = {
+        "Market ve Gıda": (
+            r"\bmarket\b|\bg[ıi]da\b|\bs[üu]permarket\b|\bhipermarket\b|\bşarküteri\b|\bmanav\b|\bkasap\b"
+            r"|\bmigros\b|\bcarrefour\b|\bcarrefoursa\b|\bbin\b|\ba101\b|\bşok\b|\bfile\b|\bmacrocenter\b"
+            r"|\byemeksepeti\s+market\b|\bgetirmarket\b|\bgetir\s+büyük\b|\bistegelsin\b|\bavm\s+g[ıi]da\b"
+        ),
+        "E-Ticaret ve Pazaryerleri": (
+            r"\be-?t[ıi]caret\b|\bpazaryer[ıi]\b|\bonline\s+al[ıi][şs]veri[şs]\b|\btrendyol\b|\bhepsiburada\b"
+            r"|\bn11\b|\bamazon\b|\bçiçeksepeti\b|\bpazarama\b|\bidefix\b|\bbonanza\b|\bebay\b|\baliexpress\b"
+        ),
+        "Akaryakıt ve Otomotiv": (
+            r"\bakaryak[ıi]t\b|\bbenzin\b|\bmotorin\b|\bdizel\b|\blpg\b|\botogaz\b|\bistasyon\b|\botomotiv\b"
+            r"|\baraç\b|\boto\b|\bshell\b|\bopet\b|\bpetrol\s+ofisi\b|\bbp\b|\btotal\b|\btotalenergies\b"
+            r"|\bpo\b|\btp\b|\bopet\s+fuchs\b|\botobak[ıi]m\b|\blastik\b|\bservis\b"
+        ),
+        "Teknoloji ve Elektronik": (
+            r"\btekno\w*\b|\belektronik\b|\bbilgisayar\b|\btelefon\b|\bcep\s+telefonu\b|\btablet\b"
+            r"|\btroy\s+ma[gğ]aza\w*\b|\bgürgençler\b|\bteknosa\b|\bmediamarkt\b|\bvatan\s+bilgisayar\b"
+            r"|\bapple\b|\bsamsung\b|\bbyfix\b|\beve\s+elektronik\b"
+        ),
+        "Giyim ve Aksesuar": (
+            r"\bgiyim\b|\btekstil\b|\bkiyafet\b|\bkonfeksiyon\b|\bayakkab[ıi]\b|\bçanta\b|\baksesuar\b"
+            r"|\bsaat\b|\btak[ıi]\b|\bzarab|\bh&m\b|\blcw\b|\blc\s+waikiki\b|\bdefacto\b|\bmavi\b"
+            r"|\bkoton\b|\bboyner\b|\byarg[ıi]\b|\bvakko\b|\bderimod\b|\bflo\b|\btergan\b"
+        ),
+        "Seyahat ve Turizm": (
+            r"\bseyahat\b|\bturizm\b|\botel\b|\bkonaklama\b|\buçak\b|\bbilet\b|\bhavayolu\b|\bthy\b"
+            r"|\btürk\s+hava\s+yollar[ıi]\b|\bpegasus\b|\bajet\b|\bsunexpress\b|\bturna\b|\benuygun\b"
+            r"|\bobilet\b|\betstur\b|\bjolly\b|\btur\b|\baraç\s+kiralama\b|\brent\s+a\s+car\b"
+        ),
+        "Eğitim ve Kırtasiye": (
+            r"\be[gğ]itim\b|\bokul\b|\bk[ıi]rtasiye\b|\bokula\s+dönü[şs]\b|\bnezih\b|\büniversite\b"
+            r"|\bkurs\b|\bderse\w*\b|\bkitap\b|\bkitabevi\b|\bd&r\b|\bdr\b|\bbkm\s+kitap\b|\bdr\.com\.tr\b"
+        )
+    }
+    
+    skorlar: Dict[str, int] = {sektor: 0 for sektor in sektor_kurallari}
+    en_iyi_eslesmeler: Dict[str, Optional[re.Match]] = {sektor: None for sektor in sektor_kurallari}
+    
+    for sektor, pattern in sektor_kurallari.items():
+        regex_obj = re.compile(pattern, re.IGNORECASE)
+        
+        # Başlık kontrolü (Ağırlık: 3)
+        baslik_eslesme = regex_obj.search(baslik)
+        if baslik and baslik_eslesme:
+            skorlar[sektor] += 3
+            if en_iyi_eslesmeler[sektor] is None:
+                en_iyi_eslesmeler[sektor] = baslik_eslesme
+        
+        # Metin kontrolü (Ağırlık: 1 x Her eşleşme)
+        metin_eslesmeleri = list(regex_obj.finditer(islenen_metin))
+        skorlar[sektor] += len(metin_eslesmeleri)
+        
+        if metin_eslesmeleri and en_iyi_eslesmeler[sektor] is None:
+            en_iyi_eslesmeler[sektor] = metin_eslesmeleri[0]
+        
+    en_yuksek_skor = max(skorlar.values())
+    
+    if en_yuksek_skor > 0:
+        kazanan_sektor = max(skorlar, key=skorlar.get)
+        eslesme_obj = en_iyi_eslesmeler[kazanan_sektor]
+        
+        # Kural adını güvenli slug formatına dönüştür (örn: sektor_skorlama_market_ve_gida)
+        kural_slug = re.sub(r'[^a-z0-9]', '_', kazanan_sektor.lower()).strip('_')
+        
+        if eslesme_obj:
+            return {
+                "sektor": _bulgu(
+                    metin=islenen_metin,
+                    eslesme=eslesme_obj,
+                    deger=kazanan_sektor,
+                    kural=f"sektor_skorlama_{kural_slug}",
+                    guven=0.85,
+                    birim="kategori"
+                )
+            }
 
+    # Hiçbir sektöre uymuyorsa varsayılan durum
+    return {
+        "sektor": AlanBulgusu(
+            deger="Genel / Sektör Bağımsız",
+            ham_metin="",
+            kural="sektor_varsayilan",
+            guven=0.50,
+            kanit_metni="",
+            baslangic_konum=0,
+            bitis_konum=0,
+            birim="kategori"
+        )
+    }
 # ============================================================
 # KATEGORİ TESPİTİ
 # ============================================================
@@ -1469,7 +1555,7 @@ def kurallarla_cikar(
         masraf_cikar,
         hedef_kitle_cikar,
          #mgm_cikar,
-        alt_kategori_cikar,
+        sektor_cikar,
         urun_kategori_cikar,
         mgm_detay_cikar,    # <-- YENİ EKLENDİ (5 kişi limiti ve MGM ödülleri için)
         odul_tipi_ve_metni_cikar,

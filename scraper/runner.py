@@ -1,6 +1,8 @@
 import argparse
 import importlib
 import inspect
+import os
+import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -14,8 +16,6 @@ from scraper.base_scraper import TabanScraper
 # Backend NLP temizleme modülünden gerekli bağımlılıkları yüklüyoruz
 from backend.nlp.preprocessing.cleaner import temizle
 from backend.nlp.extraction.rule_based import kategori_cikar
-
-# --- 1. ADIM: TARİH ÇIKARMA FONKSİYONUNUZU IMPORT EDİN ---
 from backend.nlp.extraction.rule_based import tarihleri_cikar
 
 PROJE_KOK = Path(__file__).resolve().parent.parent
@@ -86,31 +86,25 @@ def ham_verileri_temizle_in_memory(
         clean_doc = doc.copy()
         clean_doc.pop("is_processed", None)
 
-        # Banka kimliğini tutarlı hale getir
         if banka_id and not clean_doc.get("banka"):
             clean_doc["banka"] = banka_id
 
-        # 1. Doküman içindeki tüm metin alanlarını otomatik temizle
         for anahtar, deger in clean_doc.items():
             if anahtar not in ATLATICAK_ANAHTARLAR and isinstance(deger, str):
                 clean_doc[anahtar] = temizle(deger)
 
-        # 2. Öncelikli Tarih Çıkarma Mantığı (Fallback Mechanics)
         tarih_metni = clean_doc.get("tarih_metni", "")
         ham_metin = clean_doc.get("ham_metin", "")
         baslik = clean_doc.get("baslik", "")
 
         tarih_bulgulari = {}
 
-        # 1. ÖNCELİK: Spider'ın karttan/özetten topladığı kısa tarih_metni
         if tarih_metni and str(tarih_metni).strip().lower() != "none":
             tarih_bulgulari = tarihleri_cikar(tarih_metni)
 
-        # 2. ÖNCELİK: Kısa metin yoksa veya tarih çıkarılamadıysa uzun detay metnini tara
         if not tarih_bulgulari.get("baslangic_tarihi") and not tarih_bulgulari.get("bitis_tarihi"):
             tarih_bulgulari = tarihleri_cikar(ham_metin)
 
-        # Çıkarılan tarih bulgularını dokümana ekle
         if "baslangic_tarihi" in tarih_bulgulari:
             clean_doc["baslangic_tarihi"] = tarih_bulgulari["baslangic_tarihi"].deger
 
@@ -120,15 +114,11 @@ def ham_verileri_temizle_in_memory(
         if "sure_gun" in tarih_bulgulari:
             clean_doc["sure_gun"] = tarih_bulgulari["sure_gun"].deger
 
-        # 3. ÜRÜN İÇİN ÖZEL MANTIKSAL ADIM:
-        # Tarih çıkarma işlemi tamamlandıktan sonra, eğer veri tipi 'urun' ise
-        # DB'ye yazılmasını istemediğimiz 'tarih_metni' alanını siliyoruz.
         if veri_tipi == "urun":
             clean_doc.pop("tarih_metni", None)
 
-        # 4. İşleme zamanı ve LLM aşaması için bayrak ekleme
         clean_doc["temizlenme_tarihi"] = datetime.now(timezone.utc)
-        clean_doc["is_extracted"] = False  # LLM aşaması için hazır işareti
+        clean_doc["is_extracted"] = False
 
         temiz_kayitlar.append(clean_doc)
 
@@ -155,7 +145,6 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
 
         # ---------------- KAMPANYALAR (ham_kampanya) ----------------
         raw_kayitlar = list(spider.kampanyalari_topla())
-        # Kampanyalarda tarih_metni KALIYOR (varsayılan: veri_tipi="kampanya")
         temizlenmis_kayitlar = ham_verileri_temizle_in_memory(
             raw_kayitlar, banka_id=banka_id, veri_tipi="kampanya"
         )
@@ -174,7 +163,6 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
             raw_urunler = list(spider.urunleri_topla())
 
             if raw_urunler:
-                # Ürünlerde tarih_metni DB'ye YAZILMIYOR (veri_tipi="urun")
                 temiz_urunler = ham_verileri_temizle_in_memory(
                     raw_urunler, banka_id=banka_id, veri_tipi="urun"
                 )
@@ -185,7 +173,6 @@ def bankayi_calistir(banka_conf: dict, db) -> None:
                 for urun in bson_urunler:
                     urun["banka_id"] = banka_id
                     urun["tarama_zamani"] = baslangic_zamani
-                    # url'ye göre upsert -> tekrar çalıştırınca duplike olmasın
                     urun_koleksiyonu.update_one(
                         {"url": urun.get("url")},
                         {"$set": urun},

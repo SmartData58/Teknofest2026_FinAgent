@@ -42,14 +42,14 @@ class GenelBilgi(BaseModel):
     banka_id: Optional[str] = None
     hedef_kitle: Optional[List[str]] = None
     kampanya_turu: Optional[str] = None
-    kategori: Optional[str] = None
+    sektor: Optional[str] = None
     metin: Optional[str] = None
     is_active: Optional[Any] = None
     baslangic_tarihi: Optional[str] = None
     bitis_tarihi: Optional[str] = None
     cekilis_tarihi: Optional[str] = None
     kaynak_url: Optional[str] = None
-    alt_kategori: Optional[str] = None
+    sektor: Optional[str] = None
     sure_gun: Optional[Any] = None
     temiz_kampanya_id: Optional[str] = None
 
