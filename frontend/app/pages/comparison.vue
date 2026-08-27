@@ -235,7 +235,7 @@
                         <!-- Banka Kolonu (Logolu & Düzgün İsimli) -->
                         <span v-if="col.key === 'banka'" class="inline-flex items-center gap-2 font-semibold text-neutral-900 dark:text-neutral-100">
                           <div v-if="getBankaLogo(row.banka)" class="w-6 h-6 rounded-lg bg-white p-0.5 flex items-center justify-center shrink-0 border border-neutral-200/60 dark:border-white/20 shadow-2xs">
-                            <img :src="getBankaLogo(row.banka)" class="w-full h-full object-contain" @error="(e) => e.target.style.display = 'none'" />
+                            <img :src="getBankaLogo(row.banka)" loading="lazy" decoding="async" class="w-full h-full object-contain" @error="(e) => e.target.style.display = 'none'" />
                           </div>
                           {{ getBankaAd(row.banka) }}
                         </span>
@@ -525,7 +525,7 @@ const fetchCompareMatrix = async () => {
   isComparing.value = true
   try {
     const ids = selectedForCompare.value.map(c => c.id).join(',')
-    const res = await fetch(`http://localhost:8003/campaigns/compare?ids=${encodeURIComponent(ids)}`)
+    const res = await apiFetch(`/campaigns/compare?ids=${encodeURIComponent(ids)}`)
     if (res.ok) {
       matrixData.value = await res.json()
       await nextTick()
@@ -554,7 +554,7 @@ const openCampaignModal = async (id) => {
   }
   
   try {
-    const res = await fetch(`http://localhost:8003/campaigns/${id}`)
+    const res = await apiFetch(`/campaigns/${id}`)
     if (res.ok) {
       const data = await res.json()
       selectedModalCampaign.value = data
@@ -985,7 +985,7 @@ const setupObserver = (scrollerEl) => {
 
 const fetchBanks = async () => {
   try {
-    const res = await fetch('http://localhost:8003/banks')
+    const res = await apiFetch(`/banks`)
     if (res.ok) {
       banks.value = await res.json()
     }
@@ -996,7 +996,7 @@ const fetchBanks = async () => {
 
 const fetchCampaigns = async () => {
   try {
-    const response = await fetch('http://localhost:8003/campaigns?limit=500&sadece_gecerli=false')
+    const response = await apiFetch(`/campaigns?limit=500&sadece_gecerli=false`)
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)

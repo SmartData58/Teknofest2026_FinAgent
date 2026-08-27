@@ -447,7 +447,9 @@
     "actions": "Action",
     "badge_min_rate": "Lowest Rate",
     "badge_min_installment": "Lowest Installment",
-    "badge_min_total": "Lowest Total"
+    "badge_min_total": "Lowest Total",
+    "below_avg": "Below the average profit rate",
+    "above_avg": "Above the average profit rate"
   },
   "katilim_hesap": {
     "title": "Participation Account Comparisons",
@@ -513,7 +515,9 @@
     "badge_max_net_rate": "Highest Net Rate",
     "badge_max_net_profit": "Highest Net Yield",
     "badge_max_gross_rate": "Highest Gross Rate",
-    "profit_breakdown": "Profit & Deduction Breakdown"
+    "profit_breakdown": "Profit & Deduction Breakdown",
+    "above_avg_net": "Above the average net return",
+    "below_avg_net": "Below the average net return"
   },
   "taxonomy": {
     "turler": {

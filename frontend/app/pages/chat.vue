@@ -1186,7 +1186,7 @@ const sendMessage = async () => {
   let buffer = '';
 
   try {
-    const response = await fetch('http://localhost:8003/api/chat', { method: 'POST', body: formData })
+    const response = await fetch(apiUrl(`/api/chat`), { method: 'POST', body: formData })
     if (!response.body) throw new Error('Akış başlatılamadı.')
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
@@ -1283,7 +1283,7 @@ const sendMessage = async () => {
 </script>
 
 <template>
-  <div class="relative w-full h-screen flex flex-col transition-colors duration-500 ease-in-out bg-neutral-50 dark:bg-neutral-900 overflow-hidden" 
+  <div class="relative w-full ekran-yuksekligi flex flex-col transition-colors duration-500 ease-in-out bg-neutral-50 dark:bg-neutral-900 overflow-hidden" 
        @dragenter.prevent="handleDragEnter" 
        @dragover.prevent 
        @dragleave.prevent="handleDragLeave" 
@@ -1836,7 +1836,7 @@ const sendMessage = async () => {
       </div>
 
       <Transition enter-active-class="transform transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)]" enter-from-class="translate-x-[120%] opacity-0 scale-95" enter-to-class="translate-x-0 opacity-100 scale-100" leave-active-class="transform transition-all duration-300 ease-in" leave-from-class="translate-x-0 opacity-100 scale-100" leave-to-class="translate-x-[120%] opacity-0 scale-95">
-        <div v-if="showSourceModal" class="absolute right-4 top-4 bottom-4 w-[340px] lg:w-[480px] bg-white dark:bg-[#121212] rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.2)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.6)] border border-neutral-200 dark:border-neutral-700 flex flex-col z-50 overflow-hidden">
+        <div v-if="showSourceModal" class="absolute right-2 sm:right-4 top-4 bottom-4 left-2 sm:left-auto w-auto sm:w-[340px] lg:w-[480px] bg-white dark:bg-[#121212] rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.2)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.6)] border border-neutral-200 dark:border-neutral-700 flex flex-col z-50 overflow-hidden">
           <div class="flex justify-between items-center p-4 border-b border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800">
             <h3 class="text-[14px] font-bold flex items-center gap-2 text-neutral-800 dark:text-white">
               <template v-if="activeModalType === 'file'">

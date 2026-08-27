@@ -80,6 +80,166 @@ Proje 5 ana bileşenden (pipeline) oluşur:
 
 ---
 
+## 🔤 Veri Ön İşleme Adımları
+
+Ham kampanya metni, bilgi çıkarımına girmeden önce sırayla şu adımlardan geçer
+(`backend/nlp/preprocessing/cleaner.py`):
+
+| # | Adım | Fonksiyon | Ne yapar |
+|---|------|-----------|----------|
+| 1 | Unicode normalizasyonu | `unicode_normalize` | Görsel olarak aynı ama farklı kodlanmış karakterleri tek biçime indirger |
+| 2 | Emoji temizliği | `emojileri_temizle` | Kampanya başlıklarındaki süs emojilerini atar (regex eşleşmelerini bozuyorlardı) |
+| 3 | Gürültü temizliği | `gurultu_temizle` | Çerez uyarısı, menü, "Detaylı bilgi için tıklayınız" gibi tekrar eden site kalıplarını siler |
+| 4 | Boşluk düzeltme | `bosluk_duzelt` | Satır sonu, sekme ve çoklu boşlukları tek boşluğa indirir |
+
+Ardından **normalizasyon katmanı** (`backend/nlp/normalizasyon/`) farklı yazım
+biçimlerini tek bir değere indirir — şartname 5.6'nın istediği davranış:
+
+| Modül | Girdi örnekleri | Çıktı |
+|-------|-----------------|-------|
+| `percentage.py` | `%2,05` · `% 2.05` · `2.05 %` · `%2,87 'den başlayan` | `2.05` / `2.87` |
+| `money.py` | `500 TL` · `500₺` · `500 Türk Lirası` · `1.500.000 TL` | `500.0` / `1500000.0` |
+| `duration.py` | `120 ay` · `10 yıl` · `120 aya kadar` | `120` (ay) |
+| `date.py` | `31 Aralık 2026` · `31.12.2026` · `31/12/2026` | `2026-12-31` |
+
+> **Türkçeye özgü iki tuzak.** (1) `"İ".lower()` Python'da `i` + birleşen nokta
+> (U+0307) üretir; bu, küçültülmüş metinde regex eşleşmelerini sessizce
+> bozuyordu — `_kucult()` bunu ayrıca temizler. (2) `32.648,38` sayısında nokta
+> binlik ayracı, virgül ondalık ayracıdır; standart sayı çevrimi bu değeri
+> `32.64` yapıyordu. Her iki durum da açıkça ele alınıyor.
+
+---
+
+## 📤 Model Çıktılarının Örnekleri
+
+**Girdi** (Albaraka Türk kampanya metninden bir kesit):
+
+> "…Size özel avantajlı oranlarla konut ve taşıt finansmanında fırsat zamanı.
+> Ev sahibi olmanın tam zamanı **%2,87 'den başlayan** kâr oranları ile
+> bütçenize uygun ödeme planı oluşturun… Yeni ya da ikinci el araç alımlarında,
+> **%3,19 'dan başlayan** kâr oranı fırsatı…"
+
+**Çıktı** (`islenmis_kampanyalar` koleksiyonundaki gerçek kayıt):
+
+```json
+{
+  "genel_bilgi": {
+    "banka_id": "albaraka",
+    "kampanya_adi": "Dijitale Özel Konut ve Taşıt Finansmanı Kampanyası",
+    "kampanya_turu": "tasit_finansmani",
+    "sektor": "Akaryakıt ve Otomotiv",
+    "hedef_kitle": ["mevcut_musteri"],
+    "baslangic_tarihi": "2026-07-31",
+    "bitis_tarihi": "2026-08-31",
+    "sure_gun": 31,
+    "is_active": "aktif"
+  },
+  "finansman_detay": {
+    "kar_payi_orani": 2.87,
+    "masraf_bilgi": "Tahsis ücreti belirtilmemiştir."
+  }
+}
+```
+
+Dikkat edilecek noktalar: oran, kesme işaretinden önce boşluk bulunan
+`%2,87 'den` yazımından doğru okundu; kampanya türü metinden sınıflandırıldı;
+süre iki tarihten hesaplandı.
+
+**Bankalar arası karşılaştırma çıktısı** (konut finansmanı, `/finansman` ucu):
+
+| Banka | Ürün | Kâr oranı | Vade |
+|-------|------|-----------|------|
+| Albaraka Türk | Konut finansmanı | %2,90 | 120 ay |
+| Vakıf Katılım | Konut finansmanı | %2,99 | 120 ay |
+| Dünya Katılım | Konut finansmanı | %2,99 | 84 ay |
+| Ziraat Katılım | Konut finansmanı | %3,19 | 120 ay |
+
+> Aylık taksit ve toplam geri ödeme tutarları **hesaplanmaz**; bankaların
+> yayımladığı değerler olduğu gibi kullanılır (`chatbot/urun_verisi.py`).
+> Formül uygulamak, gerçek veriyi tahminle değiştirmek olurdu.
+
+---
+
+## 📏 Model Performansını Değerlendirme Yöntemi
+
+Doğruluk iki ayrı yönden, iki ayrı araçla ölçülür. Her ikisi de boru hattına
+gömülüdür (`pipeline.py`, ADIM 3.5) ve tek başına da çalıştırılabilir.
+
+### 1. Kesinlik (precision) — `backend/test/nlp_denetle.py`
+
+Çıkarılan her değeri **kaynak metne karşı** doğrular: değer aralık dışı mı,
+metinde gerçekten geçiyor mu (kanıtlı mı), tarihler tutarlı mı, etiket geçerli
+taksonomide mi.
+
+```bash
+docker exec teknofest2026_finagent-backend-1 python /app/test/nlp_denetle.py
+```
+
+### 2. Geri çağırma (recall) — `backend/test/nlp_kacak.py`
+
+Ters yönden bakar: metinde bir **gösterge** var ama alan boş kalmış mı? Yani
+çıkarılabilecekken kaçırılan bilgiyi sayar.
+
+```bash
+docker exec teknofest2026_finagent-backend-1 python /app/test/nlp_kacak.py
+```
+
+### Güncel sonuçlar (599 kayıt)
+
+**Kesinlik: %99,3** — 599 kayıtta 4 kusur (3'ü tür belirlenememesi, 1'i
+kanıtsız ödül tutarı).
+
+| Alan | Dolu | Metinde gösterge | Yakalama |
+|------|-----:|-----------------:|---------:|
+| `kar_payi_orani` | 10 | 8 | %100 |
+| `vade_ay` | 73 | 20 | %100 |
+| `taksit` | 273 | 273 | %100 |
+| `finansman_tutari` | 49 | 15 | %100 |
+| `odul_tutari` | 219 | 121 | %100 |
+| `nakit_iade_yuzde` | 41 | 10 | %100 |
+| `bitis_tarihi` | 460 | 388 | %93 |
+
+> `kar_payi_orani` yalnızca 10 kampanyada dolu; bu bir çıkarım zayıflığı değil
+> **veri gerçeğidir** — kart ve alışveriş kampanyalarının büyük çoğunluğu bir
+> kâr payı oranı yayımlamaz. Oranlar ağırlıklı olarak finansman ürünlerinde
+> bulunur ve `finansman_urun` koleksiyonundaki 48 kaydın neredeyse tamamında
+> doludur.
+
+### 3. Ürün katmanı testleri
+
+```bash
+python backend/test/test_urun_verisi.py
+```
+```bash
+python backend/test/test_urun_chat_uctan_uca.py
+```
+
+Birincisi 14 birim testi (veritabanı gerektirmez), ikincisi canlı `/api/chat`
+ucuna 4 uçtan uca test atar. Uçtan uca testler şartnamenin kendi örnek
+senaryolarını (s.13) doğrular: tek bankaya bilgi sorma, iki banka
+karşılaştırma, mevduat ürününün krediyle karıştırılmaması ve modele yazılmış
+talimatların arayüze sızmaması.
+
+---
+
+## 🧯 Karşılaşılan Problemler ve Çözüm Yaklaşımları
+
+| Problem | Belirti | Çözüm |
+|---------|---------|-------|
+| **Türkçe noktalı İ** | Küçültülmüş metinde regex'ler sessizce eşleşmiyordu | `İ→i`, `I→ı` eşlemesi ve birleşen noktanın atılması |
+| **Binlik ayracı** | `32.648,38` değeri `32.64` olarak okunuyordu | Saf binlik kalıbı ayrı ele alınıyor |
+| **Mevduat ↔ kredi karışması** | "katılım **hesabı** kâr payı getirisi" sorusundaki *isim*, "hesapla" *fiili* sanılıyor ve mevduat için "Aylık Taksit 125.990 TL" üretiliyordu | Taksit hesaplayıcısı kaldırıldı; mevduat ve finansman ayrı niyetlere bağlandı |
+| **Oran biriminin varsayılması** | Kullanıcının verdiği yıllık mevduat oranı aylık kredi oranı kabul ediliyordu | Hesaplama kaldırıldı; bankanın yayımladığı taksit değeri kullanılıyor |
+| **İki kopuk veri dünyası** | "En uzun vade" sorusuna 9 ay cevabı (kampanya taksitleri), oysa konut finansmanında 120 ay var | Ürün metriği + finansman/kredi geçen sorular ürün tablosuna yönlendiriliyor; "kampanya" geçen sorular kampanya akışında kalıyor |
+| **Şartname Senaryo 2 yazımı** | "X mı daha avantajlı, Y mı?" sorusu "veri bulunamadı" veriyordu ("avantaj" kelimesi soruyu yorum sorusu sanıyordu) | Adı geçen banka sayısı ≥2 ve kıyas belirteci varsa tablo zorunlu (`iki_banka_kiyasi`) |
+| **Kayıt kopyaları** | `katilim_hesap`'ta her kayıt 3 kez (kazıyıcı `insert_many` kullanıyordu) | Tekil indeks + `upsert`; kardeş kazıyıcıdaki kalıp uygulandı |
+| **Model talimatının sızması** | Arayüzdeki tablo altyazısında "Bunları hâlen geçerli teklifmiş gibi sunma" yazıyordu | Notlar ikiye ayrıldı: modele giden ve kullanıcıya gösterilen |
+| **Çift import kökü** | `pipeline.py` `backend.*`, konteyner `nlp.*` bekliyordu; geçici symlink gerekiyordu | Her iki yolu deneyen `try/except ModuleNotFoundError` kalıbı |
+| **Tam tarama sorgusu** | Kanıt paneli 4.963 belgeyi tarıyordu | `kampanya_id` üzerinde indeks (COLLSCAN → IXSCAN, 1,68 → 0,33 ms) |
+| **Her çağrıda yeni bağlantı** | Dört modül her istekte yeni `MongoClient` açıyordu | Paylaşılan havuz (`chatbot/mongo_baglanti.py`) |
+
+---
+
 ## 🏢 Şirket İçi Uyumluluk ve Dışa Bağımlılıklar
 
 Proje, özellikle bankacılık gibi regülasyonların sıkı olduğu sektörlerdeki "veri gizliliği" ve "kurumsal ağ uyumluluğu" gözetilerek tasarlanmıştır.
@@ -88,6 +248,63 @@ Proje, özellikle bankacılık gibi regülasyonların sıkı olduğu sektörlerd
 - **Mikroservis Mimarisi:** Sistem (Frontend, Backend, Scraper, DB) tamamen konteynerize (Docker) edilmiştir. Bir bankanın mevcut şirket içi (on-premise) Kubernetes, OpenShift veya CI/CD boru hatlarına (pipeline) doğrudan entegre edilebilir.
 - **Veri Gizliliği (Data Privacy):** Müşteri ve sohbet verileri dışarıdaki ticari / açık uçlu LLM sağlayıcılarına (Örn. OpenAI, Anthropic) gönderilmez. Proje tam izole veya kurum tarafından sağlanan özel modellere (şu an için Teknofest **Evren API** altyapısına) entegre çalışır.
 - **Kurumsal Kullanıcı Modu (Analist Görünümü):** Chatbot'un şirket içi banka personeline özel bir görünüm seçeneği vardır. Analistler sistemi *"Rakiplerin taşıt kredisiyle bizimkini kıyasla"* gibi doğrudan rakip analizine yönelik banka-içi senaryolarla kullanabilirler.
+
+### Tam Kurum İçi (On-Premise) Mod — Sıfır Dış Bağımlılık
+
+Şartname 5.9, çözümün "dış servislere bağımlı olmadan" çalışabilmesini istiyor.
+Mimari bunu **kod değişikliği gerektirmeden** karşılar: LLM, embedding ve vektör
+veritabanı adreslerinin üçü de ortam değişkenidir
+(`backend/chatbot/evren_client.py` → `BASE_URL`, `MODEL_ANA`, `MODEL_HIZLI`,
+`EMBED_MODEL`, `EVREN_QDRANT_URL`). Ollama OpenAI uyumlu bir `/v1` ucu
+yayımladığı için mevcut `ChatOpenAI` istemcisi olduğu gibi çalışır.
+
+**1. Yerel servisleri başlatın:**
+
+```bash
+docker compose --profile yerel-llm --profile yerel-vektor up -d ollama qdrant
+```
+
+**2. Modelleri indirin (bir kez):**
+
+```bash
+docker exec smartdata-ollama ollama pull qwen2.5:7b-instruct
+```
+```bash
+docker exec smartdata-ollama ollama pull bge-m3
+```
+
+**3. `.env` dosyasını yerele çevirin:**
+
+```env
+EVREN_BASE_URL=http://ollama:11434/v1
+EVREN_API_KEY=yerel
+EVREN_MODEL=qwen2.5:7b-instruct
+EVREN_MODEL_HIZLI=qwen2.5:7b-instruct
+EVREN_EMBED_MODEL=bge-m3
+EVREN_QDRANT_URL=http://qdrant:6333
+EVREN_QDRANT_KEY=
+EVREN_TEAM=
+```
+
+**4. Vektörleri yerelde yeniden kurun:**
+
+```bash
+docker exec teknofest2026_finagent-backend-1 python -m chatbot.indexing
+```
+
+Bu modda hiçbir istek kurum ağının dışına çıkmaz. MongoDB ve Redis zaten
+yereldir; kalan tek dış çağrı, kazıyıcının banka sitelerine yaptığı — o da
+zaten halka açık veri toplama adımıdır ve çalışma anında değil, veri güncelleme
+sırasında yapılır.
+
+> **Kritik nokta:** Bilgi çıkarımının kendisi hiçbir zaman LLM'e bağımlı
+> değildir. Şartnamenin çekirdek işini yapan katman
+> (`backend/nlp/extraction/rule_based.py`, ~2.000 satır kural) tamamen yerelde,
+> deterministik olarak çalışır. LLM yalnızca sohbet arayüzünün cevabını
+> biçimlendirir ve belirsiz ifadelerde yardımcı çıkarım yapar. LLM tamamen
+> devre dışı bırakılsa bile kampanya metinlerinden bilgi çıkarma, sınıflandırma,
+> normalizasyon ve bankalar arası karşılaştırma çalışmaya devam eder.
+
 
 ### Dışa Bağımlılıklar (External Dependencies)
 Sistemin ihtiyaç duyduğu temel ağ ve yazılım bağımlılıkları şunlardır:

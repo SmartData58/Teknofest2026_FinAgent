@@ -447,7 +447,9 @@
     "actions": "İşlem",
     "badge_min_rate": "En Düşük Oran",
     "badge_min_installment": "En Düşük Taksit",
-    "badge_min_total": "En Düşük Toplam"
+    "badge_min_total": "En Düşük Toplam",
+    "below_avg": "Ortalama kâr oranından aşağıda",
+    "above_avg": "Ortalama kâr oranından yukarıda"
   },
   "katilim_hesap": {
     "title": "Katılım Hesabı Karşılaştırmaları",
@@ -513,7 +515,9 @@
     "badge_max_net_rate": "En Yüksek Net Oran",
     "badge_max_net_profit": "En Yüksek Getiri",
     "badge_max_gross_rate": "En Yüksek Brüt Oran",
-    "profit_breakdown": "Getiri & Kesinti Dökümü"
+    "profit_breakdown": "Getiri & Kesinti Dökümü",
+    "above_avg_net": "Ortalama net gelirin yukarısında",
+    "below_avg_net": "Ortalama net gelirin altında"
   },
   "taxonomy": {
     "turler": {

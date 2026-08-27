@@ -13,7 +13,7 @@ Ortam değişkenleri (opsiyonel, varsayılanlar aşağıda):
 import os
 import sys
 from datetime import datetime, timezone  # Bu satırı geri ekledik
-from pymongo import MongoClient
+from pymongo import MongoClient, UpdateOne
 
 # Bulunduğu klasörü Python'un modül arama yollarına ekler
 mevcut_dizin = os.path.dirname(os.path.abspath(__file__))
@@ -74,20 +74,51 @@ def topla_sonuclar():
 
 
 def mongoya_kaydet(sonuclar):
-    """Sonuç listesini MongoDB'deki katilim_hesap koleksiyonuna kaydeder."""
+    """Sonuç listesini MongoDB'deki katilim_hesap koleksiyonuna YAZAR (upsert).
+
+    🛠️ Eskiden `insert_many` kullanılıyordu: boru hattı her çalıştığında aynı
+    kayıtların bir kopyası daha ekleniyordu. Ölçüldü — 12 kaydın yalnızca 4'ü
+    benzersizdi (3 koşu = 3 kopya); chatbot tablosunda aynı banka üst üste üç
+    kez görünüyordu. Kardeş kazıyıcı (finans_hesap/finansman_runner.py) bu işi
+    baştan doğru yapıyor: ayırt edici anahtar üzerinde unique index + upsert.
+    Aynı kalıp buraya da uygulandı.
+    """
     client = MongoClient(MONGO_URI)
     db = client[MONGO_DB_NAME]
     koleksiyon = db[COLLECTION_NAME]
+
+    # Ayırt edici anahtar: aynı banka + tutar + vade tek bir kayıttır.
+    try:
+        koleksiyon.create_index(
+            [("banka", 1), ("yatirilan_tutar", 1), ("vade", 1)],
+            unique=True,
+            name="banka_tutar_vade_unique",
+        )
+    except Exception as e:
+        print(f"Index olusturulurken uyari (muhtemelen zaten mevcut): {e}")
 
     kayit_zamani = datetime.now(timezone.utc)
     for sonuc in sonuclar:
         sonuc["kayit_tarihi"] = kayit_zamani
 
-    if sonuclar:
-        sonuc_ekle = koleksiyon.insert_many(sonuclar)
-        print(f"{len(sonuc_ekle.inserted_ids)} kayıt '{COLLECTION_NAME}' koleksiyonuna eklendi.")
-    else:
+    if not sonuclar:
         print("Kaydedilecek sonuç bulunamadı.")
+        client.close()
+        return
+
+    islemler = [
+        UpdateOne(
+            {"banka": s.get("banka"),
+             "yatirilan_tutar": s.get("yatirilan_tutar"),
+             "vade": s.get("vade")},
+            {"$set": s},
+            upsert=True,
+        )
+        for s in sonuclar
+    ]
+    sonuc_yaz = koleksiyon.bulk_write(islemler, ordered=False)
+    print(f"{sonuc_yaz.upserted_count} yeni, {sonuc_yaz.modified_count} güncellenen "
+          f"kayıt '{COLLECTION_NAME}' koleksiyonuna yazıldı.")
 
     client.close()
 

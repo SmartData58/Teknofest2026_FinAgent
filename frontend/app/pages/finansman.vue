@@ -358,7 +358,7 @@
             <!-- Sol Alan: Banka Bilgisi, Logo & Kategori -->
             <div class="flex items-center gap-3 sm:gap-4 lg:w-64 shrink-0">
               <div class="w-12 h-12 rounded-2xl bg-white border border-neutral-200/80 dark:border-white/20 flex items-center justify-center p-2 shrink-0 shadow-xs group-hover:scale-105 transition-transform">
-                <img :src="p.logo_url" :alt="p.banka_adi" class="w-full h-full object-contain" />
+                <img :src="p.logo_url" loading="lazy" decoding="async" :alt="p.banka_adi" class="w-full h-full object-contain" />
               </div>
               <div class="min-w-0">
                 <div class="flex items-center gap-1.5 flex-wrap">
@@ -396,8 +396,11 @@
               <!-- Kâr Oranı -->
               <div class="flex flex-col justify-center">
                 <span class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">{{ $t('financing.rate', 'Kâr Oranı') }}</span>
-                <span class="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5" :class="isMinRate(p) ? 'underline decoration-emerald-400 decoration-2 underline-offset-2' : ''">
-                  {{ p.kar_orani_str }}
+                <span class="flex items-center gap-1.5 mt-0.5">
+                  <span class="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400" :class="isMinRate(p) ? 'underline decoration-emerald-400 decoration-2 underline-offset-2' : ''">
+                    {{ p.kar_orani_str }}
+                  </span>
+                  <OrtalamaOku :konum="ortalamayaGoreKonum(p)" :ipucu="ortalamaIpucu(p)" />
                 </span>
               </div>
 
@@ -426,7 +429,7 @@
                 <span class="text-sm sm:text-base font-black text-indigo-600 dark:text-indigo-400 mt-0.5">
                   {{ p.geri_odenecek_toplam_str }}
                 </span>
-                <span class="text-[10px] text-neutral-400 truncate" :title="$t('financing.allocation_short', 'Tahsis') + ': ' + p.tahsis_ucreti_str">
+                <span v-if="hasTahsisUcreti(p)" class="text-[10px] text-neutral-400 truncate" :title="$t('financing.allocation_short', 'Tahsis') + ': ' + p.tahsis_ucreti_str">
                   {{ $t('financing.allocation_short', 'Tahsis') }}: {{ p.tahsis_ucreti_str }}
                 </span>
               </div>
@@ -463,7 +466,7 @@
               <div class="flex items-start justify-between gap-3 pb-3 border-b border-neutral-100 dark:border-neutral-700/60">
                 <div class="flex items-center gap-2.5">
                   <div class="w-10 h-10 rounded-2xl bg-white border border-neutral-200/80 dark:border-white/20 flex items-center justify-center p-1.5 shrink-0 shadow-xs">
-                    <img :src="p.logo_url" :alt="p.banka_adi" class="w-full h-full object-contain" />
+                    <img :src="p.logo_url" loading="lazy" decoding="async" :alt="p.banka_adi" class="w-full h-full object-contain" />
                   </div>
                   <div>
                     <h3 class="text-sm font-extrabold text-neutral-900 dark:text-white leading-snug">{{ p.banka_adi }}</h3>
@@ -494,8 +497,9 @@
                 <!-- Vurgulu Kâr Oranı Rozeti -->
                 <div class="text-right">
                   <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">{{ $t('financing.rate', 'Kâr Oranı') }}</div>
-                  <div class="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                  <div class="text-lg font-black text-emerald-600 dark:text-emerald-400 flex items-center justify-end gap-1.5">
                     {{ p.kar_orani_str }}
+                    <OrtalamaOku :konum="ortalamayaGoreKonum(p)" :ipucu="ortalamaIpucu(p)" />
                   </div>
                 </div>
               </div>
@@ -533,16 +537,16 @@
                 </div>
 
                 <!-- Masraflar Dökümü -->
-                <div class="pt-1 text-[11px] text-neutral-500 dark:text-neutral-400 space-y-1 bg-neutral-50/50 dark:bg-neutral-900/30 p-2 rounded-xl">
-                  <div class="flex justify-between">
+                <div v-if="hasTahsisUcreti(p) || (p.ekspertiz_ucreti && p.ekspertiz_ucreti > 0) || (p.ipotek_tesis_ucreti && p.ipotek_tesis_ucreti > 0)" class="pt-1 text-[11px] text-neutral-500 dark:text-neutral-400 space-y-1 bg-neutral-50/50 dark:bg-neutral-900/30 p-2 rounded-xl">
+                  <div v-if="hasTahsisUcreti(p)" class="flex justify-between">
                     <span>{{ $t('financing.allocation_fee', 'Tahsis Ücreti') }}:</span>
                     <span class="font-semibold text-neutral-700 dark:text-neutral-300">{{ p.tahsis_ucreti_str }}</span>
                   </div>
-                  <div v-if="p.ekspertiz_ucreti > 0" class="flex justify-between">
+                  <div v-if="p.ekspertiz_ucreti && p.ekspertiz_ucreti > 0" class="flex justify-between">
                     <span>{{ $t('financing.appraisal_fee', 'Ekspertiz') }}:</span>
                     <span class="font-semibold text-neutral-700 dark:text-neutral-300">{{ p.ekspertiz_ucreti_str }}</span>
                   </div>
-                  <div v-if="p.ipotek_tesis_ucreti > 0" class="flex justify-between">
+                  <div v-if="p.ipotek_tesis_ucreti && p.ipotek_tesis_ucreti > 0" class="flex justify-between">
                     <span>{{ $t('financing.mortgage_fee', 'İpotek Tesis') }}:</span>
                     <span class="font-semibold text-neutral-700 dark:text-neutral-300">{{ p.ipotek_tesis_ucreti_str }}</span>
                   </div>
@@ -595,7 +599,7 @@
               <td class="py-3 px-4">
                 <div class="flex items-center gap-2.5">
                   <div class="w-6 h-6 rounded-md bg-white p-0.5 flex items-center justify-center shrink-0 shadow-2xs border border-neutral-200/60 dark:border-white/20">
-                    <img :src="p.logo_url" :alt="p.banka_adi" class="w-full h-full object-contain" />
+                    <img :src="p.logo_url" loading="lazy" decoding="async" :alt="p.banka_adi" class="w-full h-full object-contain" />
                   </div>
                   <div class="flex items-center gap-1.5 flex-wrap">
                     <span class="font-bold text-neutral-900 dark:text-white">{{ p.banka_adi }}</span>
@@ -617,7 +621,10 @@
                 {{ p.vade }} {{ $t('financing.term_months', 'Ay') }}
               </td>
               <td class="py-3 px-4 font-extrabold text-emerald-600 dark:text-emerald-400 text-sm">
-                {{ p.kar_orani_str }}
+                <span class="inline-flex items-center gap-1.5">
+                  {{ p.kar_orani_str }}
+                  <OrtalamaOku :konum="ortalamayaGoreKonum(p)" :ipucu="ortalamaIpucu(p)" />
+                </span>
               </td>
               <td class="py-3 px-4 font-extrabold text-neutral-900 dark:text-white">
                 {{ p.aylik_taksit_str }}
@@ -626,7 +633,7 @@
                 {{ p.geri_odenecek_toplam_str }}
               </td>
               <td class="py-3 px-4 text-neutral-500 dark:text-neutral-400">
-                {{ p.tahsis_ucreti_str }}
+                {{ hasTahsisUcreti(p) ? p.tahsis_ucreti_str : '-' }}
               </td>
               <td class="py-3 px-4 text-right" data-png-gizle>
                 <button 
@@ -740,20 +747,20 @@
             </div>
 
             <!-- Masraflar Dökümü -->
-            <div class="bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-2.5">
+            <div v-if="hasTahsisUcreti(selectedProduct) || (selectedProduct.ekspertiz_ucreti && selectedProduct.ekspertiz_ucreti > 0) || (selectedProduct.ipotek_tesis_ucreti && selectedProduct.ipotek_tesis_ucreti > 0)" class="bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-2.5">
               <div class="text-[11px] font-bold text-neutral-400 uppercase tracking-wider mb-1">{{ $t('financing.fees_breakdown', 'Yasal Masraflar & Harçlar') }}</div>
               
-              <div class="flex items-center justify-between text-xs py-1 border-b border-neutral-200/50 dark:border-neutral-700/50">
+              <div v-if="hasTahsisUcreti(selectedProduct)" class="flex items-center justify-between text-xs py-1" :class="((selectedProduct.ekspertiz_ucreti && selectedProduct.ekspertiz_ucreti > 0) || (selectedProduct.ipotek_tesis_ucreti && selectedProduct.ipotek_tesis_ucreti > 0)) ? 'border-b border-neutral-200/50 dark:border-neutral-700/50' : ''">
                 <span class="text-neutral-600 dark:text-neutral-400">{{ $t('financing.allocation_fee', 'Tahsis Ücreti') }}</span>
                 <span class="font-bold text-neutral-800 dark:text-neutral-200">{{ selectedProduct.tahsis_ucreti_str }}</span>
               </div>
 
-              <div class="flex items-center justify-between text-xs py-1 border-b border-neutral-200/50 dark:border-neutral-700/50">
+              <div v-if="selectedProduct.ekspertiz_ucreti && selectedProduct.ekspertiz_ucreti > 0" class="flex items-center justify-between text-xs py-1" :class="(selectedProduct.ipotek_tesis_ucreti && selectedProduct.ipotek_tesis_ucreti > 0) ? 'border-b border-neutral-200/50 dark:border-neutral-700/50' : ''">
                 <span class="text-neutral-600 dark:text-neutral-400">{{ $t('financing.appraisal_fee', 'Ekspertiz Ücreti') }}</span>
                 <span class="font-bold text-neutral-800 dark:text-neutral-200">{{ selectedProduct.ekspertiz_ucreti_str }}</span>
               </div>
 
-              <div class="flex items-center justify-between text-xs py-1">
+              <div v-if="selectedProduct.ipotek_tesis_ucreti && selectedProduct.ipotek_tesis_ucreti > 0" class="flex items-center justify-between text-xs py-1">
                 <span class="text-neutral-600 dark:text-neutral-400">{{ $t('financing.mortgage_fee', 'İpotek Tesis Ücreti') }}</span>
                 <span class="font-bold text-neutral-800 dark:text-neutral-200">{{ selectedProduct.ipotek_tesis_ucreti_str }}</span>
               </div>
@@ -781,6 +788,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { useChatStore } from '~/stores/chatStore'
 import { useI18n } from 'vue-i18n'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
@@ -792,6 +800,7 @@ let lenis = null
 let lenisRafId = null
 
 const router = useRouter()
+const chatStore = useChatStore()
 const { t, locale } = useI18n()
 
 useHead({
@@ -843,11 +852,75 @@ const stats = computed(() => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// KATEGORİ ORTALAMASINA GÖRE KONUM (yalnızca banka çalışanı görünümü)
+//
+// Ortalama, EKRANDAKİ FİLTRELİ listeden değil, o kategorinin TAMAMINDAN
+// hesaplanıyor. Aksi hâlde kullanıcı bir bankayı filtrelediğinde ortalama
+// kayar ve aynı ürün bir bakışta "ortalamanın altında", diğerinde "üstünde"
+// görünürdü — gösterge güvenilirliğini kaybederdi.
+//
+// Oranı 0 olan kayıtlar ortalamaya KATILMIYOR: bunlar gerçek bir teklif değil,
+// kazıyıcının hesaplanmamış satır aldığı kayıtlar (ör. Ziraat taşıt 24 ay,
+// toplam geri ödeme anaparaya eşit). Ortalamayı aşağı çekerlerdi.
+const kategoriOrtalamalari = computed(() => {
+  const kova = {}
+  for (const p of (allProducts.value || [])) {
+    const k = p.urun
+    if (!k) continue
+    const oran = Number(p.kar_orani)
+    if (!(oran > 0)) continue
+    ;(kova[k] || (kova[k] = [])).push(oran)
+  }
+  const sonuc = {}
+  for (const [k, oranlar] of Object.entries(kova)) {
+    sonuc[k] = oranlar.reduce((a, b) => a + b, 0) / oranlar.length
+  }
+  return sonuc
+})
+
+/**
+ * Ürünün kendi kategori ortalamasına göre konumu.
+ * Döner: 'dusuk' | 'yuksek' | null (gösterge çizilmez)
+ *
+ * Müşteri görünümünde her zaman null — bu gösterge bir PİYASA KONUMLANDIRMA
+ * bilgisi; banka çalışanı için anlamlı, müşteri için gürültü.
+ */
+const ortalamayaGoreKonum = (p) => {
+  if (globalViewMode.value === 'musteri') return null
+  const oran = Number(p?.kar_orani)
+  if (!(oran > 0)) return null
+  const ort = kategoriOrtalamalari.value[p.urun]
+  if (!ort) return null
+  // Ortalamaya çok yakın değerlerde ok göstermek yanıltıcı olur.
+  if (Math.abs(oran - ort) < 0.005) return null
+  return oran < ort ? 'dusuk' : 'yuksek'
+}
+
+const ortalamaIpucu = (p) => {
+  const ort = kategoriOrtalamalari.value[p?.urun]
+  const bicimli = ort ? `%${ort.toFixed(2).replace('.', ',')}` : ''
+  return ortalamayaGoreKonum(p) === 'dusuk'
+    ? t('financing.below_avg', 'Ortalama kâr oranından aşağıda') + (bicimli ? ` (${bicimli})` : '')
+    : t('financing.above_avg', 'Ortalama kâr oranından yukarıda') + (bicimli ? ` (${bicimli})` : '')
+}
+
 // En Düşük 3 Metriği Yansıtan Kampanyaları Vurgulama Fonksiyonları
 const isMinRate = (p) => stats.value.min_rate > 0 && p.kar_orani === stats.value.min_rate
 const isMinInstallment = (p) => stats.value.min_installment > 0 && p.aylik_taksit_tutari === stats.value.min_installment
 const isMinTotal = (p) => stats.value.min_total > 0 && p.geri_odenecek_toplam_tutar === stats.value.min_total
 const isHighlighted = (p) => isMinRate(p) || isMinInstallment(p) || isMinTotal(p)
+
+const hasTahsisUcreti = (p) => {
+  if (!p) return false
+  const val = p.tahsis_ucreti
+  if (val === null || val === undefined) return false
+  if (typeof val === 'number') return !isNaN(val) && val >= 0
+  const s = String(val).trim().toLowerCase()
+  if (s === '' || s === 'null' || s === 'none' || s === '-' || s === 'undefined') return false
+  const num = parseFloat(s.replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.'))
+  return !isNaN(num) && num >= 0
+}
 
 // Filtre Seçimleri
 const selectedCategory = ref('')
@@ -907,7 +980,7 @@ const openProductDetails = (product) => {
 const fetchFinancingData = async () => {
   isLoading.value = true
   try {
-    const res = await fetch('http://localhost:8003/finansman')
+    const res = await apiFetch(`/finansman`)
     if (res.ok) {
       const data = await res.json()
       allProducts.value = data.products || []
@@ -1072,7 +1145,7 @@ const formatCompactNumber = (val) => {
  */
 const askAiAboutProduct = async (product) => {
   try {
-    const res = await fetch('http://localhost:8003/api/analiz-koprusu', {
+    const res = await fetch(apiUrl(`/api/analiz-koprusu`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1095,8 +1168,7 @@ const askAiAboutProduct = async (product) => {
     if (!veri?.prompt) throw new Error('bos prompt')
 
     if (process.client) {
-      sessionStorage.setItem('finagent_direct_prompt', veri.prompt)
-      sessionStorage.setItem('finagent_auto_send', 'true')
+      chatStore.setChatData(veri.prompt, [])
     }
     router.push('/chat')
   } catch (e) {
@@ -1105,8 +1177,7 @@ const askAiAboutProduct = async (product) => {
     console.error('Analiz köprüsü hatası:', e)
     const yedek = `${product.banka_adi} bankasının ${product.vade} ay vadeli ${getCategoryLabel(product.urun)} finansmanını diğer katılım bankalarıyla karşılaştır.`
     if (process.client) {
-      sessionStorage.setItem('finagent_direct_prompt', yedek)
-      sessionStorage.setItem('finagent_auto_send', 'true')
+      chatStore.setChatData(yedek, [])
     }
     router.push('/chat')
   }
@@ -1135,9 +1206,9 @@ const formatProfitRate = (p) => {
 }
 
 const formatFee = (val) => {
-  if (!val || val === '0' || val === 0) return '0 ₺'
+  if (!val || val === '0' || val === 0) return '-'
   const num = typeof val === 'number' ? val : parseFloat(String(val).replace(/[^0-9.,]/g, '').replace(',', '.'))
-  if (isNaN(num) || num === 0) return '0 ₺'
+  if (isNaN(num) || num === 0) return '-'
   return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(num) + ' ₺'
 }
 

@@ -6,6 +6,45 @@ export default defineNuxtConfig({
     host: '0.0.0.0',
     port: 3000
   },
+
+  // Frontend'i de tünelden yayınlarken gerekli.
+  // Vite, gelen isteğin Host başlığı bilinmiyorsa "Blocked request" diyerek
+  // reddeder (DNS rebinding koruması). Tünel alan adları beyaz listeye alındı.
+  //
+  // ⚠️ HMR'a ELLE DOKUNULMUYOR. Sabit `host`/`protocol: wss` verildiğinde
+  // Vite bunu HER istemciye dayatıyor ve localhost'tan açıldığında tarayıcı
+  // `wss://localhost/_nuxt/` adresine bağlanmaya çalışıp başarısız oluyordu
+  // ("WebSocket closed without opened"). Varsayılan davranışta Vite istemciye
+  // sayfanın KENDİ host'unu kullandırır; hem localhost hem tünel çalışır.
+  vite: {
+    server: {
+      allowedHosts: [
+        '.devtunnels.ms',        // VS Code dev tunnels
+        '.trycloudflare.com',    // cloudflared
+        '.ngrok-free.app',
+        '.ngrok.io',
+        '.loca.lt',
+      ],
+    },
+  },
+
+  // Backend API adresi TEK YERDEN yönetiliyor.
+  // Daha önce 17 ayrı fetch çağrısında "http://localhost:8003" sabit
+  // yazılıydı; tünel (cloudflared/ngrok) ya da sunucu dağıtımı için hepsini
+  // tek tek değiştirmek gerekiyordu. Artık yalnızca .env değişiyor:
+  //
+  //   yerel   : NUXT_PUBLIC_API_URL=http://localhost:8003
+  //   tünel   : NUXT_PUBLIC_API_URL=https://<ad>.trycloudflare.com
+  //   aynı ana bilgisayarda ters vekil : NUXT_PUBLIC_API_URL=/api
+  //
+  // NUXT_PUBLIC_ önekli ortam değişkenleri `public` altındaki aynı adlı
+  // anahtarı ÇALIŞMA ZAMANINDA ezer (apiUrl -> NUXT_PUBLIC_API_URL), yani
+  // yeniden derleme gerekmez.
+  runtimeConfig: {
+    public: {
+      apiUrl: process.env.NUXT_PUBLIC_API_URL || 'http://localhost:8003'
+    }
+  },
   
   app: {
     head: {

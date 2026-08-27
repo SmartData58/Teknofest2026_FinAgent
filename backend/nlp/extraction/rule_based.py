@@ -25,12 +25,23 @@ from dataclasses import dataclass
 from typing import Dict, Optional, Any, List, Set
 
 
-from backend.nlp.normalizasyon.money import para_normalize
-from backend.nlp.normalizasyon.date import tarih_normalize
-from backend.nlp.normalizasyon.duration import vade_normalize
-from backend.nlp.normalizasyon.percentage import yuzde_normalize
-
-from backend.nlp.classification.campaign_classifier import siniflandir
+# 🛠️ ÇİFT YOL: bu modül iki farklı kökten çalıştırılıyor — pipeline.py depo
+# kökünden `backend.*` diye, backend konteyneri ise WORKDIR /app (yani
+# backend/) içinden `nlp.*` diye import ediyor. Tek biçim kullanmak diğerinde
+# ModuleNotFoundError veriyordu; bu yüzden geçici bir symlink gerekiyordu.
+# agents.py'deki yerleşik kalıp buraya da uygulandı.
+try:
+    from backend.nlp.normalizasyon.money import para_normalize
+    from backend.nlp.normalizasyon.date import tarih_normalize
+    from backend.nlp.normalizasyon.duration import vade_normalize
+    from backend.nlp.normalizasyon.percentage import yuzde_normalize
+    from backend.nlp.classification.campaign_classifier import siniflandir
+except ModuleNotFoundError:
+    from nlp.normalizasyon.money import para_normalize
+    from nlp.normalizasyon.date import tarih_normalize
+    from nlp.normalizasyon.duration import vade_normalize
+    from nlp.normalizasyon.percentage import yuzde_normalize
+    from nlp.classification.campaign_classifier import siniflandir
 
 
 # =============================================================================

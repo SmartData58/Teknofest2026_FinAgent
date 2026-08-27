@@ -9,7 +9,16 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 # 2. IMPORT İŞLEMİNİ YOL EKLENDİKTEN SONRA YAPIYORUZ
-from backend.nlp.extraction.hybrid import hibrit_cikar
+# 🛠️ ÇİFT YOL: bu modül iki farklı kökten çalıştırılıyor — pipeline.py depo
+# kökünden `backend.*` diye, backend konteyneri ise WORKDIR /app (yani
+# backend/) içinden `nlp.*` diye import ediyor. Tek biçim kullanmak,
+# diğerinde ModuleNotFoundError veriyor ve bu yüzden geçici bir symlink
+# gerekiyordu. agents.py'deki yerleşik kalıp buraya da uygulandı.
+try:
+    from backend.nlp.extraction.hybrid import hibrit_cikar
+except ModuleNotFoundError:
+    from nlp.extraction.hybrid import hibrit_cikar
+
 
 test_metin = "100.000 TL kredide 12 ay vade ve %0.99 faiz imkanı."
 test_baslik = "Kredi Kampanyası"

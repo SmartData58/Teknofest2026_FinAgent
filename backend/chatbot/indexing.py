@@ -331,23 +331,21 @@ def _kampanyalari_oku() -> tuple[list, str]:
     gibi). Üç koleksiyondan birer örnek doküman paylaşılırsa doğru şekilde
     bağlanabilir.
     """
-    from pymongo import MongoClient
+    # Paylaşılan havuz (bkz. chatbot/mongo_baglanti.py).
+    from chatbot.mongo_baglanti import istemci_al
 
-    client = MongoClient(MONGO_URI)
-    try:
-        koleksiyon, db_adi = _koleksiyonu_bul(client, "islenmis_kampanyalar")
-        if koleksiyon is not None:
-            kampanyalar = list(koleksiyon.find({}))
-            if kampanyalar:
-                return kampanyalar, f"{db_adi}.islenmis_kampanyalar"
-
-        kampanyalar = list(client["smartdata"]["processed_campaigns"].find({}))
+    client = istemci_al(MONGO_URI)
+    koleksiyon, db_adi = _koleksiyonu_bul(client, "islenmis_kampanyalar")
+    if koleksiyon is not None:
+        kampanyalar = list(koleksiyon.find({}))
         if kampanyalar:
-            return kampanyalar, "smartdata.processed_campaigns"
-        kampanyalar = list(client["finagent"]["kampanyalar"].find({}))
-        return kampanyalar, "finagent.kampanyalar"
-    finally:
-        client.close()
+            return kampanyalar, f"{db_adi}.islenmis_kampanyalar"
+
+    kampanyalar = list(client["smartdata"]["processed_campaigns"].find({}))
+    if kampanyalar:
+        return kampanyalar, "smartdata.processed_campaigns"
+    kampanyalar = list(client["finagent"]["kampanyalar"].find({}))
+    return kampanyalar, "finagent.kampanyalar"
 
 
 async def auto_init_qdrant(embeddings=None) -> int:

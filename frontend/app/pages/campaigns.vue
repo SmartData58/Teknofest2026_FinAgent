@@ -28,7 +28,10 @@
 
           <div class="flex flex-col gap-1.5">
             <label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">{{ $t('campaigns.search_label', 'Ara') }}</label>
-            <div class="relative">
+            <!-- z-30: arka örtü (z-20) açılır liste açıkken arama kutusunu da
+                 yutuyordu; kullanıcı arama yazmak için iki kez tıklamak
+                 zorunda kalıyordu. -->
+            <div class="relative z-30">
               <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
               <input
                 v-model="search"
@@ -39,7 +42,12 @@
             </div>
           </div>
 
-          <div v-for="def in filterDefs" :key="def.key" class="flex flex-col gap-1.5 relative">
+          <!-- z-30 ŞART: aşağıdaki `fixed inset-0 z-20` arka örtü, açılır liste
+               açıkken TÜM ekranı kaplıyor. Bu sarmalayıcının z-index'i olmayınca
+               alan da örtünün altında kalıyordu; kullanıcı bir filtreyi seçtikten
+               sonra diğerine tıkladığında ilk tıklama yutuluyor, yalnızca liste
+               kapanıyordu (çiplerin ✕ düğmeleri de aynı sebeple çalışmıyordu). -->
+          <div v-for="def in filterDefs" :key="def.key" class="flex flex-col gap-1.5 relative z-30">
             <label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">{{ def.label }}</label>
             <div
               @click="focusFilter(def.key)"
@@ -89,7 +97,7 @@
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center justify-between gap-4 mt-4 pt-4 border-t border-neutral-200/60 dark:border-neutral-700/60 relative z-10">
+        <div class="flex flex-wrap items-center justify-between gap-4 mt-4 pt-4 border-t border-neutral-200/60 dark:border-neutral-700/60 relative z-30">
           <label class="flex items-center gap-2 cursor-pointer group">
             <input type="checkbox" v-model="filters.sadeceOranli" class="w-4 h-4 rounded border-neutral-300 text-cyan-600 focus:ring-cyan-500 dark:border-neutral-600 dark:bg-neutral-900 dark:checked:bg-cyan-500 transition-all cursor-pointer">
             <span class="text-sm font-medium text-neutral-600 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-white transition-colors">
@@ -118,14 +126,17 @@
       <div class="p-4 border-b border-neutral-200/50 dark:border-neutral-700/50 flex justify-between items-center bg-neutral-50/50 dark:bg-neutral-800/50 rounded-t-2xl z-20">
         <span class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
           <span v-if="!pending">
-            <span class="text-cyan-600 dark:text-cyan-400 font-bold">{{ displayedCampaigns.length }}</span>
+            <!-- Sayı BİR KEZ yazılıyor: i18n dizesi zaten {count} içeriyor,
+                 ayrıca bir de öndeki span basılınca "599 599 kampanya
+                 gösteriliyor" çıkıyordu. -->
             {{ $t('campaigns.showing_campaigns', { count: displayedCampaigns.length, total: totalCount }) }}
           </span>
           <span v-else>{{ $t('campaigns.loading_data', 'Veriler yükleniyor...') }}</span>
         </span>
       </div>
 
-      <div class="overflow-y-auto max-h-[580px] custom-scrollbar rounded-b-2xl relative" data-lenis-prevent="true">
+      <div class="overflow-y-auto max-h-[580px] custom-scrollbar rounded-b-2xl relative" data-lenis-prevent="true"
+           @scroll.passive="tabloKaydirildi">
         <table class="w-full text-left border-collapse table-fixed">
           
           <thead class="sticky top-0 z-10 bg-neutral-100/95 dark:bg-neutral-900/95 backdrop-blur-md shadow-sm">
@@ -167,19 +178,19 @@
                   </div>
                 </td>
               </tr>
-              <tr v-for="(camp, i) in displayedCampaigns" :key="camp.id"
+              <tr v-for="(camp, i) in gorunenSatirlar" :key="camp.id"
                   @click="selectCampaign(camp.id)"
                   :style="{ transitionDelay: `${Math.min(i, 15) * 30}ms` }"
                   :class="[
                     revealed ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2',
                     selectedCampaignId === camp.id ? 'bg-cyan-50/80 dark:bg-cyan-900/30' : ''
                   ]"
-                  class="row-anim hover:bg-cyan-50/50 dark:hover:bg-cyan-900/20 transition-all duration-300 cursor-pointer">
+                  class="row-anim hover:bg-cyan-50/50 dark:hover:bg-cyan-900/20 transition duration-300 cursor-pointer">
                 
                 <td v-if="isColumnVisible('banka')" class="px-2.5 py-2.5 font-medium text-neutral-800 dark:text-neutral-200">
                   <div class="flex items-center gap-1.5 min-w-0">
                     <div class="w-5 h-5 rounded-md bg-white p-0.5 flex items-center justify-center shrink-0 border border-neutral-200/60 dark:border-white/20 shadow-2xs">
-                      <img :src="getBankaLogo(camp.banka)" :alt="getBankaAd(camp.banka)" class="w-full h-full object-contain" @error="(e) => e.target.style.display = 'none'" />
+                      <img :src="getBankaLogo(camp.banka)" :alt="getBankaAd(camp.banka)" loading="lazy" decoding="async" class="w-full h-full object-contain" @error="(e) => e.target.style.display = 'none'" />
                     </div>
                     <span class="font-semibold text-xs truncate" :title="getBankaAd(camp.banka)">{{ getBankaAd(camp.banka) }}</span>
                   </div>
@@ -366,6 +377,17 @@ const activeEvidences = ref([])
 const totalCount = ref(0)
 
 const search = ref('')
+/**
+ * `search` kutuya anında yazılır (yazma gecikmesi hissedilmesin), filtreleme ise
+ * bu geciktirilmiş kopyayı kullanır. Öncesinde her tuş vuruşu 599 kaydı yeniden
+ * süzüp reveal animasyonunu baştan başlatıyordu.
+ */
+const aramaSorgusu = ref('')
+let _aramaZaman = null
+watch(search, (v) => {
+  clearTimeout(_aramaZaman)
+  _aramaZaman = setTimeout(() => { aramaSorgusu.value = v }, 180)
+})
 const sortKey = ref('')
 const sortDir = ref('asc')
 
@@ -430,8 +452,24 @@ const filterDefs = computed(() => [
   { key: 'kitle', label: t('campaigns.columns.hedefKitle', 'Hedef Kitle'), options: filterOptions.value.kitleler }
 ])
 
+/**
+ * Arama anahtarı önbelleği. `toLocaleLowerCase('tr')` ICU yolundan geçtiği için
+ * pahalı; onsuz her tuş vuruşunda 599 kayıt x 2 alan = ~1200 çağrı yapılıyordu.
+ * Kayıt başına bir kez hesaplayıp id'ye göre saklıyoruz. Reaktif olmayan düz bir
+ * Map: kampanya nesnesine alan eklemek computed içinde döngü tetikleyebilirdi.
+ */
+const _aramaOnbellegi = new Map()
+const aramaAnahtari = (camp) => {
+  let v = _aramaOnbellegi.get(camp.id)
+  if (v === undefined) {
+    v = `${camp.baslik || ''} ${camp.banka || ''}`.toLocaleLowerCase('tr')
+    _aramaOnbellegi.set(camp.id, v)
+  }
+  return v
+}
+
 const filteredCampaigns = computed(() => {
-  const q = search.value.trim().toLocaleLowerCase('tr')
+  const q = aramaSorgusu.value.trim().toLocaleLowerCase('tr')
   const f = filters.value || { banka: [], tur: [], kitle: [], sadeceOranli: false }
   return campaigns.value.filter(camp => {
     const matchBanka = !f.banka?.length || f.banka.includes(camp.banka)
@@ -443,9 +481,7 @@ const filteredCampaigns = computed(() => {
     
     const matchOran = !f.sadeceOranli || (isValidVal(camp.karPayi) && parseFloat(camp.karPayi) > 0)
     
-    const matchSearch = !q ||
-      (camp.baslik && camp.baslik.toLocaleLowerCase('tr').includes(q)) ||
-      (camp.banka && camp.banka.toLocaleLowerCase('tr').includes(q))
+    const matchSearch = !q || aramaAnahtari(camp).includes(q)
     return matchBanka && matchTur && matchKitle && matchOran && matchSearch
   })
 })
@@ -466,6 +502,26 @@ const displayedCampaigns = computed(() => {
     return String(va).localeCompare(String(vb), 'tr') * dir
   })
 })
+
+/**
+ * Tabloyu pencereleyerek çiziyoruz: 599 satırın tamamı bir anda DOM'a
+ * basıldığında her filtre/sıralama 0.8-1.7 sn sürüyordu (ölçüldü). Sayaç ve
+ * "kampanya bulunamadı" kontrolü hâlâ TAM listeye (displayedCampaigns) bakar,
+ * yani kullanıcıya gösterilen toplam değişmiyor; sadece görünmeyen satırlar
+ * kaydırmayla ekleniyor.
+ */
+const SATIR_ADIMI = 60
+const gorunenSayi = ref(SATIR_ADIMI)
+const gorunenSatirlar = computed(() => displayedCampaigns.value.slice(0, gorunenSayi.value))
+
+// Kaydırma dibe yaklaşınca bir sonraki dilimi ekle.
+const tabloKaydirildi = (olay) => {
+  const el = olay.target
+  if (gorunenSayi.value >= displayedCampaigns.value.length) return
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) {
+    gorunenSayi.value = Math.min(gorunenSayi.value + SATIR_ADIMI, displayedCampaigns.value.length)
+  }
+}
 
 const hasAnyValidRow = (getterFn) => {
   if (!filteredCampaigns.value || filteredCampaigns.value.length === 0) return true
@@ -589,6 +645,9 @@ const clearFilters = () => {
   filters.value.sadeceOranli = false
   filterQuery.value = { banka: '', tur: '', kitle: '' }
   search.value = ''
+  // Temizleme düğmesi anında sonuç vermeli; gecikmeyi burada atlıyoruz.
+  clearTimeout(_aramaZaman)
+  aramaSorgusu.value = ''
   openDropdown.value = null
 }
 
@@ -614,7 +673,7 @@ const selectCampaign = (id) => {
 
 const fetchBanks = async () => {
   try {
-    const res = await fetch('http://localhost:8003/banks')
+    const res = await apiFetch(`/banks`)
     if (res.ok) {
       banks.value = await res.json()
     }
@@ -625,7 +684,7 @@ const fetchBanks = async () => {
 
 const fetchCampaigns = async () => {
   try {
-    const res = await fetch('http://localhost:8003/campaigns?limit=1000&sadece_gecerli=false')
+    const res = await apiFetch(`/campaigns?limit=1000&sadece_gecerli=false`)
     if (!res.ok) throw new Error('API Hatası')
     const data = await res.json()
     
@@ -670,7 +729,7 @@ const fetchCampaigns = async () => {
 
 const fetchCampaignDetail = async (id) => {
   try {
-    const res = await fetch(`http://localhost:8003/campaigns/${id}`)
+    const res = await apiFetch(`/campaigns/${id}`)
     
     if (!res.ok) {
       console.error("Backend'den kampanya detayı alınırken hata döndü. HTTP Kodu:", res.status)
@@ -718,6 +777,9 @@ watch(columns, (newCols) => {
 })
 
 watch([filteredCampaigns, sortKey, sortDir], () => {
+  // Liste değişti: pencereyi başa sar, yoksa filtreden sonra eski kaydırma
+  // konumu yüzünden aşağıdaki satırlar hiç istenmiyor.
+  gorunenSayi.value = SATIR_ADIMI
   revealed.value = false
   nextTick(() => { setTimeout(() => { revealed.value = true }, 30) })
 })
@@ -774,6 +836,7 @@ onUnmounted(() => {
   }
   if (lenisRafId) cancelAnimationFrame(lenisRafId)
   if (lenis) { lenis.destroy(); lenis = null }
+  clearTimeout(_aramaZaman)
 })
 </script>
 

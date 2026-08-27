@@ -5,7 +5,16 @@ from datetime import datetime, timezone
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
-from backend.nlp.extraction.rule_based import tarihleri_cikar
+# 🛠️ ÇİFT YOL: bu modül iki farklı kökten çalıştırılıyor — pipeline.py depo
+# kökünden `backend.*` diye, backend konteyneri ise WORKDIR /app (yani
+# backend/) içinden `nlp.*` diye import ediyor. Tek biçim kullanmak,
+# diğerinde ModuleNotFoundError veriyor ve bu yüzden geçici bir symlink
+# gerekiyordu. agents.py'deki yerleşik kalıp buraya da uygulandı.
+try:
+    from backend.nlp.extraction.rule_based import tarihleri_cikar
+except ModuleNotFoundError:
+    from nlp.extraction.rule_based import tarihleri_cikar
+
 
 # Tarih ayrıştırma fonksiyonunuzu içe aktarın (extractor modülünüz neredeyse oradan çekin)
 # from extractor import tarihleri_cikar, AlanBulgusu

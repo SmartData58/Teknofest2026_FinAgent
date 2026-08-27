@@ -379,6 +379,72 @@ _HESAP_DILI = re.compile(
     r"|how\s+much\s+(would|will|do)\s+i\s+pay|payment\s+plan",
     re.IGNORECASE)
 
+# 🏦 ÜRÜN VERİSİ NİYETLERİ — kampanya dışı iki koleksiyon.
+#
+# Bunlar `hesaplama` niyetinin YERİNE geçti. Eski davranış iki ayrı hataya yol
+# açıyordu:
+#   1) `_HESAP_DILI` içindeki `hesab[ıi]\w*` kalıbı, "katılım HESABI kâr payı
+#      getirisi" cümlesindeki İSMİ, "hesapla" FİİLİ sanıyordu. Tutar ve vade de
+#      çıkarılabildiği için soru kredi taksit hesaplayıcısına düşüyor ve bir
+#      MEVDUAT ürünü için "Aylık Taksit: 125.990 TL" yazıyordu — müşteri para
+#      yatırıp kâr payı kazanırken, sanki kredi geri ödüyormuş gibi.
+#   2) Hesaplayıcı, kullanıcının cümlesindeki oranı her hâlükârda AYLIK kredi
+#      oranı kabul ediyordu; %25,99 yıllık net mevduat getirisi bu yüzden
+#      100.000 TL'yi bir ayda 125.990 TL'ye çıkarmıştı.
+#
+# Artık hesaplama yapılmıyor: her iki ürün de MongoDB'deki gerçek kayıtlarla
+# (bankaların yayımladığı taksit/getiri tutarlarıyla) cevaplanıyor.
+
+# Yalnızca MEVDUAT anlamını yakalar. Sadece "katılım" YETMEZ — "katılım
+# bankalarının kampanyaları" sorusu bir kampanya sorusudur, mevduat sorusu değil.
+_KATILIM_URUNU = re.compile(
+    r"kat[ıi]l[ıi]m\s+hesab\w*|kat[ıi]lma\s+hesab\w*"
+    r"|vadeli\s+(?:hesap\w*|mevduat\w*)|\bmevduat\w*"
+    r"|birikim\s+hesab\w*|tasarruf\s+hesab\w*"
+    r"|net\s+getiri\w*|br[üu]t\s+getiri\w*"
+    r"|k[âa]r\s+pay[ıi]\s+getiri\w*"
+    r"|yat[ıi]r[ıi]lan\s+tutar\w*"
+    r"|deposit\s+account|savings\s+account|participation\s+account",
+    re.IGNORECASE)
+
+# Finansman/kredi ÜRÜNÜ. "taksit" tek başına yetmez: kart kampanyalarının çoğu
+# ("12 taksit fırsatı") aynı kelimeyi kullanıyor ve onlar kampanya sorusudur.
+_FINANSMAN_URUNU = re.compile(
+    r"(?:konut|ta[şs][ıi]t|ara[çc]|iht[ıi]ya[çc]|t[üu]ketici)\s*"
+    r"(?:finansman\w*|kredi\w*)"
+    r"|finansman\s+(?:tutar\w*|[üu]r[üu]n\w*|se[çc]enek\w*|teklif\w*)"
+    r"|ayl[ıi]k\s+taksit\w*|geri\s+[öo]deme\w*|geri\s+[öo]denecek"
+    r"|tahsis\s+[üu]cret\w*"
+    r"|housing\s+financ\w*|vehicle\s+financ\w*|personal\s+(?:loan|financ\w*)"
+    r"|\bmortgage\w*|monthly\s+installment",
+    re.IGNORECASE)
+
+
+# 🛠️ "İKİ KOPUK DÜNYA" — ürün metriği soran kıyaslar finansman verisini
+# göremiyordu.
+#
+# Ölçüldü: "En uzun vade seçeneği sunan finansman hangisi?" sorusuna sistem
+# "9 ay" cevabı veriyordu — çünkü soru kampanya akışına düşüyor ve orada yalnızca
+# kart taksit vadeleri var. Oysa `finansman_urun`'da 120 aylık konut
+# finansmanları duruyor. Aynı kök, "avantajlı kâr payı fırsatı" sorusunda
+# "oran verisi olan tek banka Kuveyt Türk" cevabına yol açıyordu (dört bankanın
+# finansman oranı kayıtlı olmasına rağmen). İkisi de şartname 5.7'de sayılan
+# karşılaştırma ölçütleri.
+#
+# Ayrım kuralı: cümlede "kampanya" geçiyorsa KAMPANYA sorusudur (taksonomide
+# `finansman_kampanyasi` diye bir kampanya türü var, onu çalmamalıyız).
+# Geçmiyorsa ve finansman/kredi bir ÜRÜN METRİĞİ ile birlikte anılıyorsa,
+# cevap ürün tablosundan gelmelidir.
+_KAMPANYA_KELIMESI = re.compile(r"\bkampanya\w*", re.IGNORECASE)
+_FINANSMAN_KELIMESI = re.compile(r"\b(?:finansman|kredi)\w*", re.IGNORECASE)
+_URUN_METRIGI = re.compile(
+    r"\ben\s+(?:uzun|k[ıi]sa|d[üu][şs][üu]k|y[üu]ksek|az|[çc]ok|iyi|avantajl[ıi]|ucuz)\w*"
+    r"|\bvade\w*|\bk[âa]r\s*pay\w*|\boran\w*|\btaksit\w*|\bmasraf\w*"
+    r"|\btahsis\w*|\bmaliyet\w*|\bgeri\s+[öo]deme\w*"
+    r"|\blongest\b|\blowest\b|\bcheapest\b|\bbest\b|\bmaturity\b|\bterm\b",
+    re.IGNORECASE)
+
+
 _KARSILASTIRMA_ALANLARI: tuple[tuple[str, re.Pattern], ...] = (
     ("tahsis_ucreti", re.compile(
         r"en\s+(düşük\w*|az|ucuz\w*)\s+(tahsis\w*|masraf\w*|ücret\w*)|masrafs[ıi]z"
@@ -500,7 +566,11 @@ BANKA_KIYAS_SORUSU = re.compile(
 # rakipleri TAMAMEN dışarıda bırakıyordu — yani sorulanın tam tersini yapıyordu.
 # Bu kalıp eşleştiğinde filtre uygulanmaz, tüm bankalar havuzda kalır.
 RAKIP_KIYAS = re.compile(
-    r"\brakip\w*|\bdi[ğg]er\s+banka\w*|\bba[şs]ka\s+banka\w*|\bt[üu]m\s+banka\w*"
+    # 🛠️ "diğer KATILIM bankalarıyla" kaçıyordu: kalıp "diğer"in hemen ardından
+    # "banka" bekliyordu. Araya tek bir niteleyici (katılım/kamu/özel…) girmesi
+    # kıyas niyetini değiştirmiyor, o yüzden opsiyonel bir kelimeye izin verildi.
+    r"\brakip\w*|\bdi[ğg]er\s+(?:\w+\s+)?banka\w*|\bba[şs]ka\s+(?:\w+\s+)?banka\w*"
+    r"|\bt[üu]m\s+banka\w*"
     r"|\bbankalar\s+aras[ıi]\w*|\bsekt[öo]r\w*|\bpiyasa\w*|\bemsal\w*|\bbizimki\w*"
     r"|\bcompetitor\w*|\bother\s+banks?\b|\ball\s+banks?\b|\bacross\s+banks?\b"
     r"|\bmarket\s+(wide|average)\b|\bpeer\w*",
@@ -838,6 +908,42 @@ def gorsel_reddedildi(soru: str) -> bool:
     return bool(GORSEL_REDDI.search(soru or ""))
 
 
+# 🛠️ ŞARTNAMENİN KENDİ ÖRNEK SORUSU TABLO ÜRETMİYORDU.
+#
+# Şartname s.13, Senaryo 2 birebir şöyle yazıyor:
+#     "A Bankası mı daha avantajlı, C Bankası mı?"
+# Jürinin belgeden kopyalayıp deneyeceği ilk cümle bu. Eski davranışta:
+#   • KARSILASTIRMA_ISTEGI bu yazımı tanımıyordu ("karşılaştır"/"kıyasla"/
+#     "hangisi daha" bekliyordu; burada ikisi de yok),
+#   • buna karşılık ACIKLAYICI_SORU "avantaj" kökünü yakalıyordu.
+# Sonuç: soru bir YORUM sorusu sayılıp `gorsel=None` oluyor, Mongo tablo yolu
+# hiç çalışmıyor ve cevap yalnızca vektör aramasından geliyordu. Ölçüldü:
+# "Albaraka mı daha avantajlı, Dünya Katılım mı?" -> "Dünya Katılım bankasına
+# ait kayıt bulunmamaktadır" (oysa 45 kampanyası var), aynı soru
+# "Albaraka ve Dünya Katılım kampanyalarını karşılaştır" diye sorulduğunda
+# iki bankalı 10 satırlık tablo geliyordu.
+#
+# Kural metinden değil, ADI GEÇEN BANKA SAYISINDAN türetiliyor: iki farklı
+# banka anıldıysa ve cümlede bir kıyas belirteci varsa, bu tanım gereği bir
+# karşılaştırmadır — yorum çerçevesi veriyi gereksiz kılmaz.
+_KIYAS_BELIRTECI = re.compile(
+    r"\bm[ıiuü]\b|\bdaha\b|\bhangisi\b|\bavantajl[ıi]\w*|\büst[üu]n\w*"
+    r"|\biyi\b|\buygun\w*|\bfarkl[ıi]l[ıi]k\w*|\bkar[şs][ıi]la[şs]t[ıi]r\w*"
+    r"|\bbetter\b|\bwhich\s+one\b|\bmore\s+advantageous\b|\bvs\.?\b",
+    re.IGNORECASE)
+
+
+def iki_banka_kiyasi(soru: str) -> bool:
+    """Cümlede İKİ+ farklı banka anılıyor ve bir kıyas belirteci var mı?
+
+    Doğruysa soru, nasıl yazılmış olursa olsun bir karşılaştırmadır ve tablo
+    üretilmelidir (bkz. yukarıdaki not — şartname Senaryo 2).
+    """
+    if len(bankalari_bul(soru)) < 2:
+        return False
+    return bool(_KIYAS_BELIRTECI.search(soru))
+
+
 def gorsel_karari(soru: str, aciklayici: bool = False, kod_sorusu: bool = False) -> Optional[str]:
     """Bu soru için ne çizilmeli: "grafik", "tablo" veya None (hiçbir şey).
 
@@ -876,7 +982,10 @@ def gorsel_karari(soru: str, aciklayici: bool = False, kod_sorusu: bool = False)
     # ⚠️ Kalıp BİLEREK dar tutuldu: "rakiplerle kıyaslandığında hangi
     # segmentlerde daha yüksek getiri sağlıyor?" gibi GERÇEK yorum soruları
     # dışarıda kalmalı (bkz. BANKA_KIYAS_SORUSU notu).
-    if BANKA_KIYAS_SORUSU.search(soru):
+    # İki banka adı + kıyas belirteci: yazım ne olursa olsun tablo (şartname
+    # Senaryo 2). `aciklayici` kontrolünden ÖNCE olmalı — "avantajlı" kelimesi
+    # tam da bu soruları yorum sorusu sanmaya yol açıyordu.
+    if BANKA_KIYAS_SORUSU.search(soru) or iki_banka_kiyasi(soru):
         return "tablo"
     if aciklayici:
         return None
@@ -1137,7 +1246,9 @@ def llm_gorsel_sorulmali(niyet: "Niyet") -> bool:
         return False
     if niyet.aciklayici or niyet.kod_sorusu:
         return False
-    if niyet.tur in ("statik", "tavsiye", "hesaplama"):
+    # Bu niyetler kendi çıktısını (statik metin ya da kendi ürün tablosunu)
+    # üretiyor; LLM'e ayrıca "grafik çizeyim mi" diye sormanın anlamı yok.
+    if niyet.tur in ("statik", "tavsiye", "finansman", "katilim"):
         return False
     # 🚨 ANLAMSIZ GİRDİDE MELEZ KATMANA HİÇ GİTME (bkz. anlamsiz_soru).
     # Banka kısaltması tespit edildiyse girdi anlamlıdır ("KT").
@@ -1203,12 +1314,49 @@ def niyet_bul(soru: str, gecmis: Sequence[Mesaj] = (), dil: str = "tr") -> Niyet
             banka_kodu=banka, ham_soru=soru, dil=dil,
         )
 
-    # 🧮 Taksit hesaplama (TR + EN dil kalıpları).
+    # 🏦 ÜRÜN VERİSİ — hesaplama YOK, doğrudan veritabanı kayıtları.
+    #
+    # Sıra önemli: katılım (mevduat) ÖNCE bakılıyor. "katılım hesabı ... aylık
+    # taksit" gibi karışık bir cümlede ürün mevduattır; finansman kalıbının
+    # önce eşleşmesi, eski hatanın (mevduatı krediye çevirme) tekrarı olurdu.
+    # `kiyas_genis` bu daldan da çıkmalı: "diğer katılım bankalarıyla ve sektör
+    # ortalamasıyla karşılaştır" diyen bir soruda banka filtresi uygulanırsa
+    # geriye tek banka kalır ve kıyas diye bir şey kalmaz. (Aşağıdaki kampanya
+    # akışı bunu zaten hesaplıyordu; ürün dalları oraya varmadan döndüğü için
+    # burada ayrıca hesaplanıyor.)
+    _urun_kiyas = bool(RAKIP_KIYAS.search(soru))
+    _urun_bankalari = bankalari_bul(soru)
+    # "kampanya" geçen cümleler kampanya akışına ait (bkz. _URUN_METRIGI notu).
+    _kampanya_sorusu = bool(_KAMPANYA_KELIMESI.search(s_tr))
+
+    if _KATILIM_URUNU.search(s_tr) and not _kampanya_sorusu:
+        tutar, vade, oran = hesaplama_parametreleri_cikar(soru)
+        return Niyet("katilim", banka_kodu=banka, tutar=tutar, vade=vade,
+                     oran=oran, ham_soru=soru, dil=dil,
+                     banka_kodlari=_urun_bankalari, kiyas_genis=_urun_kiyas)
+
+    # Açık ürün ifadesi ("konut finansmanı") YA DA finansman/kredi + ürün
+    # metriği ("en uzun VADE sunan FİNANSMAN"). İkisi de "kampanya" geçmemesi
+    # koşuluna bağlı.
+    _finansman_urunu = not _kampanya_sorusu and (
+        bool(_FINANSMAN_URUNU.search(s_tr))
+        or bool(_FINANSMAN_KELIMESI.search(s_tr) and _URUN_METRIGI.search(s_tr))
+    )
+    if _finansman_urunu:
+        tutar, vade, oran = hesaplama_parametreleri_cikar(soru)
+        return Niyet("finansman", banka_kodu=banka, tutar=tutar, vade=vade,
+                     oran=oran, ham_soru=soru, dil=dil,
+                     banka_kodlari=_urun_bankalari, kiyas_genis=_urun_kiyas)
+
+    # Eski `hesaplama` niyetinin tetikleyicisi ("50.000 TL 24 ay ... hesapla").
+    # Artık hesap YAPILMIYOR; aynı soru finansman kayıtlarına yönlendiriliyor.
+    # Katılım kontrolü yukarıda yapıldığı için mevduat soruları buraya düşmez.
     if _HESAP_DILI.search(s_tr):
         tutar, vade, oran = hesaplama_parametreleri_cikar(soru)
         if tutar and vade:
-            return Niyet("hesaplama", banka_kodu=banka, tutar=tutar, vade=vade,
-                         oran=oran, ham_soru=soru, dil=dil)
+            return Niyet("finansman", banka_kodu=banka, tutar=tutar, vade=vade,
+                         oran=oran, ham_soru=soru, dil=dil,
+                         banka_kodlari=_urun_bankalari, kiyas_genis=_urun_kiyas)
 
     devam = bool(gecmis) and bool(_DEVAM.search(soru))
     baglam_soru = None

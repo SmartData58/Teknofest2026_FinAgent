@@ -46,7 +46,17 @@ langchain-qdrant
 # PyTorch'un CUDA indeksinden kuruluyor (torchvision==0.25.0 sabit, torch onunla
 # uyumlu sürümde geliyor). Buraya `torch` satırı EKLEME: pip onu PyPI'dan
 # yeniden çözer, farklı sürüm kurar ve Dockerfile'daki kurulumu ezer.
-transformers              # nlp/ner/ner.py, ocr/unlimited.py
+# ⚠️ SÜRÜM SABİT — YÜKSELTMEDEN ÖNCE OKU.
+# baidu/Unlimited-OCR modeli `trust_remote_code` ile geliyor ve uzak kodu
+# transformers 4.x API'sine dayanıyor. 5.x'te model HİÇ YÜKLENMİYOR:
+#     - `transformers.utils.import_utils.is_torch_fx_available` kaldırıldı
+#     - PretrainedConfig varsayılanları (pad_token_id, attention_dropout ...)
+#       kaldırıldı -> ardı ardına AttributeError
+# Sonuç: PDF/görsel yüklemeleri "[HATA: OCR Motoru sistemde aktif değil!]"
+# döndürüyordu. 4.46.3 ile GPU'da doğrulandı (RTX 4080, torch 2.5.1+cu121).
+# NOT: transformers'ı bu projede SADECE ocr/unlimited.py kullanıyor
+# (nlp/ner/ner.py bağımsız bir eğitim betiği, uygulama onu import etmiyor).
+transformers==4.46.3      # ocr/unlimited.py
 safetensors               # transformers model yükleme biçimi
 einops                    # görü modellerinde yaygın; ocr yığını isteyebilir
 addict                    # aynı şekilde (OCR yapılandırma sözlükleri)
@@ -65,6 +75,12 @@ PyMuPDF                   # ⚠️ requirements'ta İKİ KEZ vardı: "PyMuPDF" v
 python-docx
 openpyxl                  # ⚠️ SİLME: doğrudan import edilmiyor ama pandas'ın
                           # .xlsx okuma motoru bu.
+xlrd>=2.0.1               # ⚠️ SİLME: ESKİ .xls biçiminin okuma motoru.
+                          # document_processor/parser.py '.xls' uzantısını
+                          # DESTEKLENENLER arasında ilan ediyordu ama bu paket
+                          # kurulu olmadığı için pandas anlaşılmaz bir hata
+                          # fırlatıyordu; kullanıcı dosyanın neden okunmadığını
+                          # göremiyordu.
 pandas
 matplotlib                # denetimde import görünmedi; grafik üreten bir yol
                           # varsa gerekir. Silmeden önce ara:

@@ -40,13 +40,22 @@ from chatbot.agents import (
     gorsel_niyeti_sor,
     TIMEOUT_ONERI,
     _hata_metni,
+    # Ürün verisi dalı kendi kısa LLM turunu açıyor (tablo + yorum).
+    _llm,
+    MODEL_ANA,
 )
 # 🧭 Banka filtresinin Qdrant payload yolu — yazan taraf (indexing.py) ile aynı
 # sabit. Ayrı ayrı yazılırsa yine ayrışırlar; bu projede daha önce tam olarak
 # bu yüzden bozulmuştu.
 from chatbot.indexing import BANKA_KODU_YOLU
 from chatbot.redis_cache import get_cached_full_response, set_cached_full_response
-from chatbot.tools import gercek_finansman_hesapla
+# 🏦 Kampanya dışı iki ürün koleksiyonu (finansman_urun / katilim_hesap).
+# Chatbot bunları hiç okumuyordu; "konut finansmanı" sorularına "elimde böyle
+# veri yok" cevabı bu yüzden çıkıyordu.
+from chatbot.urun_verisi import (
+    finansman_kayitlari, katilim_kayitlari, kayitlari_daralt,
+    finansman_baglami, katilim_baglami,
+)
 # 🚀 Embedding artık yarışma API'sinden (bge-m3-embed, 1024 boyut).
 # ⚠️ Bu değişiklikten sonra Qdrant koleksiyonu SIFIRDAN kurulmalı:
 #     python -m chatbot.indexing
@@ -750,28 +759,30 @@ def _kampanya_kayitlarini_getir() -> list:
     şimdiye kadar hep listedeki SONRAKİ koleksiyonlara (extracted_fields vb.)
     ya da boşsa finagent.kampanyalar'a düşüyordu, gerçek veriye hiç dokunmuyordu.
     chatbot/indexing.py::_kampanyalari_oku()'da aynı önceliklendirme yapıldı."""
-    client = MongoClient(MONGO_URI)
-    try:
-        db = client["smartdata"]
-        koleksiyonlar = ["islenmis_kampanyalar", "extracted_fields", "structured_campaigns", "processed_campaigns", "kampanyalar"]
-        for kol in koleksiyonlar:
-            try:
-                veri = list(db[kol].find({}).limit(500))
-                if veri:
-                    return veri
-            except Exception as e:
-                logger.warning(f"MongoDB 'smartdata.{kol}' okunamadı: {e}")
-
+    # Paylaşılan havuz (bkz. chatbot/mongo_baglanti.py): bu fonksiyon her sohbet
+    # isteğinde çağrılıyor ve her seferinde yeni bir MongoClient kurmak, istek
+    # başına bağlantı kurulumu + sunucu keşfi maliyeti demekti.
+    from chatbot.mongo_baglanti import istemci_al
+    client = istemci_al(MONGO_URI)
+    db = client["smartdata"]
+    koleksiyonlar = ["islenmis_kampanyalar", "extracted_fields",
+                     "structured_campaigns", "processed_campaigns", "kampanyalar"]
+    for kol in koleksiyonlar:
         try:
-            veri = list(client["finagent"]["kampanyalar"].find({}).limit(500))
+            veri = list(db[kol].find({}).limit(500))
             if veri:
                 return veri
         except Exception as e:
-            logger.warning(f"MongoDB 'finagent.kampanyalar' okunamadı: {e}")
+            logger.warning(f"MongoDB 'smartdata.{kol}' okunamadı: {e}")
 
-        return []
-    finally:
-        client.close()
+    try:
+        veri = list(client["finagent"]["kampanyalar"].find({}).limit(500))
+        if veri:
+            return veri
+    except Exception as e:
+        logger.warning(f"MongoDB 'finagent.kampanyalar' okunamadı: {e}")
+
+    return []
 
 
 # Karşılaştırma niyetindeki "alan" (intent.py) ile Mongo sütun adları arasındaki eşleme.
@@ -1599,6 +1610,10 @@ def grafigi_hazirla_mongo_dinamik(
     # için "kampanyası yok" demek olurdu — bu da yanlış bir cevaptır. Bu yüzden
     # geçerli hiç kalmazsa dolmuş olanlar GÖSTERİLİR, ama açıkça işaretlenir.
     gecerlilik_notu = ""
+    # Kullanıcıya GÖSTERİLEN karşılığı. Modele giden metin yer yer emir kipinde
+    # ("...gibi sunma") yazıldığı için birebir arayüze basılamıyor; boş kalırsa
+    # aşağıda gecerlilik_notu'na düşülür (o dallarda metin zaten olgusal).
+    gecerlilik_notu_kullanici = ""
     dolmus_gosteriliyor = False
     # 🔍 "SÜRESİ DOLMUŞ OLANLAR HANGİLERİ" — SORULANI GETİR.
     #
@@ -1652,7 +1667,50 @@ def grafigi_hazirla_mongo_dinamik(
                     "havuzda tutuldu (aksi hâlde kıyastan düşecekti)."
                 )
 
-        if _gecerliler and _dolmus > 0:
+        # 🚨 GEÇERLİLİK FİLTRESİ PERSONA'YA BAĞLI.
+        #
+        # Müşteri için doğru olan, analist için yanlıştı: süresi dolmuş
+        # kampanyayı MÜŞTERİYE önermek hatadır, ama BANKA ÇALIŞANININ pazar
+        # payı, kategori dağılımı ve trend hesabından onları çıkarmak metriği
+        # bozar. Ölçüm: 599 kaydın 121'i süresi dolmuş; analist görünümünde
+        # bunlar havuzdan atılınca pazar payları %20 eksik tabandan
+        # hesaplanıyordu.
+        #
+        # Veri zaten siliniyor değil (kod tabanında delete/drop yok); eksik
+        # olan yalnızca analistin ona erişmesiydi. Artık analist görünümünde
+        # havuz OLDUĞU GİBİ kalıyor, satırlar "SÜRESİ DOLDU" etiketiyle
+        # işaretli geliyor ve model bunu ayırt etmekle yükümlü.
+        _analist_gorunumu = view_mode != "musteri"
+
+        if _gecerliler and _dolmus > 0 and _analist_gorunumu:
+            gecerlilik_notu = (
+                f"{_dolmus} of the campaigns in scope have expired. They are KEPT "
+                f"in the table because market-share and trend metrics must cover the "
+                f"full portfolio; each expired row is labelled. Do not present them "
+                f"as currently available offers."
+                if dil == "en" else
+                f"Kapsamdaki {_dolmus} kampanyanın süresi DOLMUŞ. Pazar payı ve trend "
+                f"metrikleri portföyün tamamını kapsamak zorunda olduğu için bu kayıtlar "
+                f"tabloda TUTULDU ve süresi dolmuş satırlar etiketlendi. Bunları hâlen "
+                f"geçerli teklifmiş gibi sunma."
+            )
+            # 🛠️ Yukarıdaki metin MODELE yazılmış bir TALİMAT ("...gibi sunma").
+            # Aynı değişken hem db_context'e hem de grafik alt başlığına
+            # gidiyordu; sonuç olarak kullanıcı, arayüzdeki "Kampanya Verileri"
+            # panelinde kendisine değil modele söylenmiş bir emri okuyordu.
+            # Kullanıcıya yalnızca OLGU gösteriliyor.
+            gecerlilik_notu_kullanici = (
+                f"{_dolmus} campaign(s) in scope have expired; they are kept for "
+                f"portfolio metrics and each expired row is labelled."
+                if dil == "en" else
+                f"Kapsamdaki {_dolmus} kampanyanın süresi dolmuş; portföy metrikleri "
+                f"için tabloda tutuldu ve ilgili satırlar etiketlendi."
+            )
+            logger.info(
+                f"📅 {_dolmus} süresi dolmuş kampanya ANALİST görünümünde havuzda "
+                "tutuldu (metrik bütünlüğü için)."
+            )
+        elif _gecerliler and _dolmus > 0:
             temel_havuz = _gecerliler
             gecerlilik_notu = (
                 f"{_dolmus} campaign(s) in scope have already expired and were "
@@ -1661,7 +1719,8 @@ def grafigi_hazirla_mongo_dinamik(
                 f"Kapsamdaki {_dolmus} kampanyanın süresi DOLMUŞ ve listeden "
                 f"çıkarıldı; yalnızca hâlen geçerli kampanyalar gösteriliyor."
             )
-            logger.info(f"📅 {_dolmus} süresi dolmuş kampanya havuzdan çıkarıldı.")
+            logger.info(f"📅 {_dolmus} süresi dolmuş kampanya havuzdan çıkarıldı "
+                        "(müşteri görünümü).")
         elif not _gecerliler:
             dolmus_gosteriliyor = True
             gecerlilik_notu = (
@@ -1670,6 +1729,12 @@ def grafigi_hazirla_mongo_dinamik(
                 if dil == "en" else
                 "⚠️ Kapsamdaki kampanyaların TAMAMININ süresi DOLMUŞ. Yalnızca "
                 "bilgi amaçlı gösteriliyorlar; GÜNCEL/BAŞVURULABİLİR gibi SUNMA."
+            )
+            gecerlilik_notu_kullanici = (
+                "⚠️ Every campaign in scope has expired; shown for reference only."
+                if dil == "en" else
+                "⚠️ Kapsamdaki kampanyaların tamamının süresi dolmuş; yalnızca "
+                "bilgi amaçlı gösteriliyor."
             )
             logger.warning(
                 f"📅 Kapsamdaki {len(temel_havuz)} kaydın tamamı süresi dolmuş — "
@@ -1682,12 +1747,16 @@ def grafigi_hazirla_mongo_dinamik(
                     if d.get("kalan_gun") is not None and 0 <= d["kalan_gun"] <= 14]
         if _yakinda:
             _en_yakin = min(d["kalan_gun"] for d in _yakinda)
-            gecerlilik_notu = (gecerlilik_notu + " " + (
+            _yakinda_notu = (
                 f"{len(_yakinda)} of them end within 14 days (the soonest in "
                 f"{_en_yakin} day(s))." if dil == "en" else
                 f"Bunlardan {len(_yakinda)} tanesi 14 gün içinde bitiyor (en yakını "
                 f"{_en_yakin} gün)."
-            )).strip()
+            )
+            # Olgusal bilgi: her iki tarafa da eklenir.
+            gecerlilik_notu = (gecerlilik_notu + " " + _yakinda_notu).strip()
+            gecerlilik_notu_kullanici = (
+                (gecerlilik_notu_kullanici or "") + " " + _yakinda_notu).strip()
 
     # 🔎 KONU FİLTRESİ (bkz. _konuya_gore_suz notu): kullanıcının sorduğu
     # konuya ait kayıtlar varsa havuz ONLARA daraltılır.
@@ -1900,10 +1969,19 @@ def grafigi_hazirla_mongo_dinamik(
         kapsam_notu = (kapsam_notu + " " + metrik_bos_notu).strip()
     # Geçerlilik notu kapsam notuna giriyor: hem grafik alt başlığında hem de
     # modele giden db_context'in başında görünsün.
+    # 🛠️ İKİ AYRI NOT: modele giden (kapsam_notu) ve kullanıcıya gösterilen
+    # (kapsam_notu_kullanici). Tek değişken kullanıldığında, modele yazılmış
+    # emirler ("Bunları hâlen geçerli teklifmiş gibi sunma") grafik alt
+    # başlığında kullanıcıya görünüyordu.
+    kapsam_notu_kullanici = kapsam_notu
     if gecerlilik_notu:
         kapsam_notu = (kapsam_notu + " " + gecerlilik_notu).strip()
+        kapsam_notu_kullanici = (
+            kapsam_notu_kullanici + " " +
+            (gecerlilik_notu_kullanici or gecerlilik_notu)).strip()
     if konu_notu:
         kapsam_notu = (kapsam_notu + " " + konu_notu).strip()
+        kapsam_notu_kullanici = (kapsam_notu_kullanici + " " + konu_notu).strip()
 
     # 🛠️ HATA DÜZELTMESİ: "düşükten yükseğe sıralasana" dediğinizde sıralama
     # TERSTEN (yüksekten düşüğe) çıkıyordu. Sebep: \bdüşük\b deseni, "düşük"ün
@@ -2556,7 +2634,9 @@ def grafigi_hazirla_mongo_dinamik(
 
         chart_data = {
             "type": chart_type, "title": tablo_baslik,
-            "subtitle": (alt_baslik + (f" {kapsam_notu}" if kapsam_notu else "")),
+            # Kullanıcıya dönük not (modele yazılmış emirleri içermez).
+            "subtitle": (alt_baslik + (f" {kapsam_notu_kullanici}"
+                                       if kapsam_notu_kullanici else "")),
             "prefix": prefix if is_specific else "", "suffix": suffix if is_specific else "",
             "labels": labels, "sub_labels": sub_labels, "values": values,
             "source_indices": source_indices, "full_texts": full_texts, "categories": categories,
@@ -2877,40 +2957,90 @@ async def get_chatbot_response(
             yield niyet.statik_cevap
         return StreamingResponse(static_stream(), media_type="text/plain")
 
-    # 🧮 Taksit hesaplama: tools.py'deki gercek_finansman_hesapla artık gerçekten
-    # tetikleniyor. LLM'e sayısal hesap yaptırmak yerine (uydurma riski) deterministik
-    # bir hesap yapılır; LLM turuna hiç girilmediği için de çok hızlıdır.
-    if niyet.tur == "hesaplama":
-        async def hesaplama_stream():
-            yield "[STATUS]Taksit hesaplanıyor...[/STATUS]\n\n"
-            oran = niyet.oran
-            oran_kaynagi = "belirttiğiniz"
-            if not oran:
-                oran = await asyncio.to_thread(_temsili_oran_bul, niyet.banka_kodu)
-                oran_kaynagi = "sistemdeki güncel ortalama"
-            if not oran:
-                yield (
-                    "Hesaplama yapabilmem için kâr payı/faiz oranını da belirtmeniz gerekiyor "
-                    "(örn: \"100.000 TL, 12 ay, %2.99 oranla taksit hesabı\"). "
-                    "Şu an bu işlem için elimde referans alınabilecek bir oran bulamadım."
-                )
+    # 🏦 ÜRÜN VERİSİ — finansman ürünleri ve katılım hesapları.
+    #
+    # Burada HESAPLAMA YAPILMIYOR. Önceki sürüm taksiti annüite formülüyle
+    # kendisi hesaplıyordu ve iki ayrı yoldan yanlış sonuç veriyordu:
+    #   • Bir MEVDUAT sorusu ("katılım hesabı ... net getiri") kredi
+    #     hesaplayıcısına düşüp "Aylık Taksit: 125.990 TL" yazmıştı.
+    #   • Oran her hâlükârda AYLIK kredi oranı kabul ediliyordu; %25,99 yıllık
+    #     mevduat getirisi 100.000 TL'yi bir ayda 125.990 TL'ye çıkarmıştı.
+    # Bankaların yayımladığı gerçek taksit/getiri tutarları zaten
+    # `finansman_urun` ve `katilim_hesap` koleksiyonlarında duruyor; formül
+    # uygulamak bu gerçek veriyi tahminle değiştirmek olurdu.
+    if niyet.tur in ("finansman", "katilim"):
+        async def urun_stream():
+            katilim_mi = niyet.tur == "katilim"
+            yield ("[STATUS]Katılım hesabı verileri getiriliyor...[/STATUS]\n\n"
+                   if katilim_mi else
+                   "[STATUS]Finansman verileri getiriliyor...[/STATUS]\n\n")
+
+            okuyucu = katilim_kayitlari if katilim_mi else finansman_kayitlari
+            try:
+                tum_kayitlar = await asyncio.to_thread(okuyucu)
+            except Exception as e:
+                logger.error(f"Ürün verisi okunamadı ({niyet.tur}): {_hata_metni(e)}")
+                tum_kayitlar = []
+
+            if not tum_kayitlar:
+                yield ("Şu anda bu ürüne ait veritabanı kaydına ulaşamadım. "
+                       "Veri toplama işlemi henüz tamamlanmamış olabilir.")
                 return
-            tablo = gercek_finansman_hesapla(niyet.tutar, niyet.vade, oran)
-            if not tablo:
-                yield (
-                    f"%0 kâr payı oranıyla ek bir maliyet oluşmaz; "
-                    f"{niyet.tutar:,.2f} TL / {niyet.vade} ay için taksit tutarı doğrudan "
-                    f"{(niyet.tutar / niyet.vade):,.2f} TL/ay olur."
-                )
-                return
-            banka_notu = f" ({niyet.banka_kodu})" if niyet.banka_kodu else ""
-            yield (
-                f"Belirttiğiniz {niyet.tutar:,.2f} TL / {niyet.vade} ay için{banka_notu} hesaplama:\n\n"
-                f"{tablo}\n\n"
-                f"*Not: Bu hesaplama {oran_kaynagi} %{oran} oranı üzerinden yapılmıştır; "
-                f"kesin koşullar banka onayına tabidir ve bu bir yatırım/finansal tavsiye değildir.*"
+
+            # Kıyas istendiğinde banka filtresi UYGULANMAZ: kullanıcı zaten
+            # "diğer bankalarla karşılaştır" diyor.
+            bankalar = [] if niyet.kiyas_genis else (niyet.banka_kodlari or
+                                                     ([niyet.banka_kodu] if niyet.banka_kodu else []))
+            kayitlar = kayitlari_daralt(
+                tum_kayitlar, bankalar, niyet.ham_soru,
+                tutar=niyet.tutar, vade=niyet.vade,
+                urun_filtresi=not katilim_mi,
+                kiyas=niyet.kiyas_genis,
             )
-        return StreamingResponse(hesaplama_stream(), media_type="text/plain")
+            logger.info(
+                f"🏦 Ürün verisi: tur={niyet.tur} kiyas={niyet.kiyas_genis} "
+                f"ham={len(tum_kayitlar)} daraltilmis={len(kayitlar)}"
+            )
+
+            baglam_uret = katilim_baglami if katilim_mi else finansman_baglami
+            chart_data, db_ctx = baglam_uret(kayitlar, language)
+            if not chart_data:
+                yield "Bu koşullara uyan bir kayıt bulamadım."
+                return
+
+            yield f"\n\n[CHART]{json.dumps(chart_data)}[/CHART]\n\n"
+
+            urun_adi = "katılım hesabı" if katilim_mi else "finansman"
+            uyari = ("Bunlar MEVDUAT ürünüdür: müşteri parayı YATIRIR ve kâr payı "
+                     "KAZANIR. Sakın 'geri ödeme' veya 'taksit' dili kullanma."
+                     if katilim_mi else
+                     "Taksit ve toplam geri ödeme tutarları bankaların yayımladığı "
+                     "GERÇEK değerlerdir; yeniden hesaplama, olduğu gibi kullan.")
+            sistem = (
+                f"Sen bir katılım bankacılığı analistisin. {dil} {mod}\n"
+                f"Aşağıda {urun_adi} ürünlerinin GERÇEK veritabanı kayıtları var.\n"
+                f"{uyari}\n"
+                "KURALLAR: Yalnızca aşağıdaki kayıtlardaki sayıları kullan, "
+                "kendin sayı türetme veya hesaplama yapma. Tabloyu tekrar çizme "
+                "(arayüz zaten gösteriyor); onun yerine yorumla: hangi banka daha "
+                "avantajlı, oranlar nasıl dağılıyor, dikkat edilecek noktalar ne. "
+                "Bu bir yatırım tavsiyesi değildir.\n\n"
+                f"VERİLER:\n{db_ctx}"
+            )
+            try:
+                llm = _llm(MODEL_ANA, 0.3, max_tokens=1200)
+                async for parca in llm.astream(
+                    [{"role": "system", "content": sistem},
+                     {"role": "user", "content": niyet.ham_soru or user_message}]
+                ):
+                    if getattr(parca, "content", None):
+                        yield parca.content
+            except Exception as e:
+                logger.error(f"Ürün yorumu üretilemedi: {_hata_metni(e)}")
+                yield ("Kayıtları yukarıdaki tabloda listeledim; "
+                       "yorum katmanına şu an ulaşamadım.")
+
+        return StreamingResponse(urun_stream(), media_type="text/plain")
 
     async def stream_generator():
         q = asyncio.Queue()

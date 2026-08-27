@@ -5,7 +5,7 @@ import yaml
 import os
 import asyncio
 import hashlib
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Any, Union
@@ -93,8 +93,30 @@ class KampanyaOzet(BaseModel):
     promosyon_detay: Optional[PromosyonDetay] = None
     mgm_detay: Optional[MgmDetay] = None
 
+class CikarimKaniti(BaseModel):
+    """`cıkarılan_alanlar` kaydının arayüze uygun hâli.
+
+    Alan adları koleksiyondakinden farklı: koleksiyon `ham_değer` (Türkçe ğ),
+    `norm_deger`, `metod`, `guven_score` kullanıyor; arayüz ise `ham_deger`,
+    `normalize_deger`, `yontem`, `guven_skoru` bekliyor. Eşleme uçta yapılıyor
+    ki arayüz koleksiyonun iç adlandırmasını bilmek zorunda kalmasın.
+    """
+    alan_adi: Optional[str] = None
+    ham_deger: Optional[str] = None
+    kanit_metni: Optional[str] = None
+    normalize_deger: Optional[Any] = None
+    birim: Optional[str] = None
+    yontem: Optional[str] = None
+    guven_skoru: Optional[Any] = None
+
+
 class KampanyaDetay(KampanyaOzet):
-    pass
+    # ⚠️ BU ALAN OLMADAN KANITLAR SESSİZCE KAYBOLUYORDU.
+    # Uç `response_model=KampanyaDetay` ile tanımlı; FastAPI modelde YER
+    # ALMAYAN alanları yanıttan çıkarır. Uç `kanitlar`ı doğru üretiyor ama
+    # model bilmediği için kırpılıyor, arayüzde "çıkarım kanıtı bulunamadı"
+    # görünüyordu (oysa koleksiyonda 4.963 kanıt var).
+    kanitlar: List[CikarimKaniti] = Field(default_factory=list)
 
 class Banka(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
@@ -132,6 +154,47 @@ async def _redise_yaz(anahtar: str, veri, ttl: int = 3600) -> None:
         await redis_db.set(anahtar, json.dumps(veri), ex=ttl)
     except Exception as e:
         logger.debug(f"Redis yazma atlandi ({anahtar}): {e}")
+
+
+# =============================================================================
+# TARAYICI ÖNBELLEĞİ — ETag / 304
+#
+# 🚨 ÖLÇÜLEN SORUN: Redis önbelleği MongoDB'yi koruyor ama FastAPI'yi
+# korumuyor. `/campaigns?limit=1000` yanıtı 1.031 KB ve dashboard, campaigns,
+# comparison sayfalarının HER açılışında yeniden çekiliyordu (son 400 log
+# satırında 18 istek). Redis isabet etse bile sunucu her seferinde 1 MB'ı
+# JSON'a serileştirip ağdan gönderiyor.
+#
+# ETag ile: tarayıcı ikinci istekte `If-None-Match` gönderir, içerik
+# değişmemişse sunucu GÖVDESİZ 304 döner. 1 MB -> ~200 bayt.
+#
+# ETag, Redis'teki yanıtın kendisinden türetiliyor; yani veri değişip
+# önbellek tazelendiğinde ETag da kendiliğinden değişir, bayat içerik
+# servis edilmez.
+# =============================================================================
+_TARAYICI_TTL = 60  # saniye; bu süre boyunca tarayıcı sunucuya hiç sormaz
+
+
+def _etag_uret(veri) -> str:
+    ham = json.dumps(veri, sort_keys=True, ensure_ascii=False, default=str)
+    return 'W/"%s"' % hashlib.md5(ham.encode("utf-8")).hexdigest()
+
+
+def _onbellekli_yanit(veri, istek: Request, yanit: Response, ttl: int = _TARAYICI_TTL):
+    """Veriyi ETag ve Cache-Control ile döndürür; eşleşirse 304 verir.
+
+    Kullanım (uçtaki `return veri` yerine):
+        return _onbellekli_yanit(veri, istek, yanit)
+    """
+    etag = _etag_uret(veri)
+    yanit.headers["ETag"] = etag
+    yanit.headers["Cache-Control"] = f"private, max-age={ttl}, must-revalidate"
+
+    gelen = istek.headers.get("if-none-match", "")
+    # Tarayıcı birden çok ETag gönderebilir (virgülle ayrılmış).
+    if etag in [p.strip() for p in gelen.split(",") if p.strip()]:
+        return Response(status_code=304, headers=dict(yanit.headers))
+    return veri
 
 def _id_duzelt(k: dict) -> dict:
     if "_id" in k:
@@ -173,16 +236,22 @@ def indeksleri_kur() -> None:
         kampanyalar_col.create_index([("genel_bilgi.banka_id", ASCENDING)], background=True)
         kampanyalar_col.create_index([("genel_bilgi.kampanya_turu", ASCENDING)], background=True)
         kampanyalar_col.create_index([("genel_bilgi.hedef_kitle", ASCENDING)], background=True)
+        # 🔎 Kanıt paneli (`/campaigns/{id}`) bu koleksiyonu kampanya_id ile
+        # sorguluyordu ama alan indeksli değildi: explain() COLLSCAN gösteriyor,
+        # yani 4.963 belgenin TAMAMI her detay isteğinde taranıyordu. Şu anki
+        # boyutta maliyet ~1,7ms; ancak koleksiyon kampanya başına ~8 kayıtla
+        # büyüdüğü için tarama süresi veriyle doğrusal artar.
+        db["cıkarılan_alanlar"].create_index([("kampanya_id", ASCENDING)], background=True)
         logger.info(f"YENI SEMA indeksleri hazir.")
     except Exception as e:
         logger.warning(f"MongoDB indeksleri olusturulamadi: {e}")
 
 @router.get("/banks", response_model=List[Banka])
-async def banka_listesi():
+async def banka_listesi(istek: Request, yanit: Response):
     cache_key = f"{CACHE_ONEKI}banks:list"
     onbellek = await _redisten_al(cache_key)
     if onbellek is not None:
-        return onbellek
+        return _onbellekli_yanit(onbellek, istek, yanit)
 
     try:
         sonuclar = await asyncio.to_thread(_bankalari_getir)
@@ -192,10 +261,12 @@ async def banka_listesi():
 
     uyumlu_sonuclar = jsonable_encoder(sonuclar)
     await _redise_yaz(cache_key, uyumlu_sonuclar)
-    return uyumlu_sonuclar
+    return _onbellekli_yanit(uyumlu_sonuclar, istek, yanit)
 
 @router.get("/campaigns", response_model=List[KampanyaOzet])
 async def kampanya_listesi(
+    istek: Request,
+    yanit: Response,
     banka: Optional[str] = Query(None, description="Banka id"),
     tur: Optional[str] = Query(None, description="Kampanya turu"),
     hedef: Optional[str] = Query(None, description="Hedef kitle"),
@@ -207,7 +278,7 @@ async def kampanya_listesi(
 
     onbellek = await _redisten_al(cache_key)
     if onbellek is not None:
-        return onbellek
+        return _onbellekli_yanit(onbellek, istek, yanit)
 
     query = {}
     if banka:
@@ -227,15 +298,15 @@ async def kampanya_listesi(
 
     uyumlu_sonuclar = jsonable_encoder(sonuclar)
     await _redise_yaz(cache_key, uyumlu_sonuclar)
-    return uyumlu_sonuclar
+    return _onbellekli_yanit(uyumlu_sonuclar, istek, yanit)
 
 
 @router.get("/campaigns/top-advantageous")
-async def top_advantageous_campaigns():
+async def top_advantageous_campaigns(istek: Request, yanit: Response):
     cache_key = _cache_key("top_advantageous")
     cached = await _redisten_al(cache_key)
     if cached:
-        return cached
+        return _onbellekli_yanit(cached, istek, yanit)
         
     try:
         # Get all valid campaigns
@@ -295,14 +366,18 @@ async def top_advantageous_campaigns():
     }
     
     await _redise_yaz(cache_key, result, ttl=3600)
-    return result
+    return _onbellekli_yanit(result, istek, yanit)
 
 @router.get("/campaigns/compare")
-async def compare_campaigns(ids: str = Query(..., description="Comma separated campaign IDs")):
+async def compare_campaigns(
+    istek: Request,
+    yanit: Response,
+    ids: str = Query(..., description="Comma separated campaign IDs"),
+):
     cache_key = _cache_key(f"compare_v2_{ids}")
     cached = await _redisten_al(cache_key)
     if cached:
-        return cached
+        return _onbellekli_yanit(cached, istek, yanit)
         
     id_list = [i.strip() for i in ids.split(',') if i.strip()]
     if not id_list:
@@ -337,15 +412,15 @@ async def compare_campaigns(ids: str = Query(..., description="Comma separated c
         
     uyumlu_sonuclar = jsonable_encoder(formatted_results)
     await _redise_yaz(cache_key, uyumlu_sonuclar, ttl=3600)
-    return uyumlu_sonuclar
+    return _onbellekli_yanit(uyumlu_sonuclar, istek, yanit)
 
 @router.get("/campaigns/{kampanya_id}", response_model=KampanyaDetay)
-async def kampanya_detay(kampanya_id: str):
+async def kampanya_detay(kampanya_id: str, istek: Request, yanit: Response):
     cache_key = f"{CACHE_ONEKI}campaign_detail_v2:{hashlib.md5(kampanya_id.encode()).hexdigest()}"
 
     onbellek = await _redisten_al(cache_key)
     if onbellek is not None:
-        return onbellek
+        return _onbellekli_yanit(onbellek, istek, yanit)
 
     try:
         k = await asyncio.to_thread(_detayi_getir, kampanya_id)
@@ -356,9 +431,48 @@ async def kampanya_detay(kampanya_id: str):
     if k is None:
         raise HTTPException(status_code=404, detail=f"Kampanya bulunamadi: id={kampanya_id}")
 
-    uyumlu_sonuc = jsonable_encoder(_id_duzelt(k))
+    # 🚨 ÇIKARIM KANITLARI HİÇ DÖNDÜRÜLMÜYORDU.
+    # Arayüzdeki "Çıkarım Kanıtları" paneli `data.kanitlar` okuyor ve bu uç
+    # o alanı hiç üretmiyordu; panel her kampanya için "çıkarım kanıtı
+    # bulunamadı" diyordu. Oysa `cıkarılan_alanlar` koleksiyonunda 4.963 kanıt
+    # var ve `kampanya_id` bu belgenin _id'siyle birebir eşleşiyor —
+    # yani veri hazırdı, yalnızca birleştirme eksikti.
+    #
+    # Alan adları da uyuşmuyordu; koleksiyon `ham_değer` (Türkçe ğ ile),
+    # `norm_deger`, `metod`, `guven_score` kullanıyor, arayüz ise
+    # `ham_deger` / `normalize_deger` / `yontem` / `guven_skoru` bekliyor.
+    # Eşleme burada yapılıyor ki arayüz koleksiyonun iç adlandırmasını
+    # bilmek zorunda kalmasın.
+    try:
+        kanit_ham = await asyncio.to_thread(
+            lambda: list(db["cıkarılan_alanlar"].find({"kampanya_id": kampanya_id}))
+        )
+    except Exception as e:
+        logger.warning(f"Çıkarım kanıtları okunamadi ({kampanya_id}): {e}")
+        kanit_ham = []
+
+    kanitlar = []
+    for ev in kanit_ham:
+        kanitlar.append({
+            "alan_adi": ev.get("alan_adi"),
+            # "Metindeki ifade": önce ham eşleşen değer, yoksa çevresindeki
+            # kanıt cümlesi.
+            "ham_deger": ev.get("ham_değer") or ev.get("ham_deger") or ev.get("evidence_text"),
+            "kanit_metni": ev.get("evidence_text"),
+            "normalize_deger": ev.get("norm_deger"),
+            "birim": ev.get("unit"),
+            "yontem": ev.get("metod"),
+            "guven_skoru": ev.get("guven_score"),
+        })
+    # Yüksek güvenli kanıtlar üstte; aynı güvende alan adına göre kararlı sıra.
+    kanitlar.sort(key=lambda x: (-(x["guven_skoru"] or 0), str(x["alan_adi"] or "")))
+
+    sonuc = _id_duzelt(k)
+    sonuc["kanitlar"] = kanitlar
+
+    uyumlu_sonuc = jsonable_encoder(sonuc)
     await _redise_yaz(cache_key, uyumlu_sonuc)
-    return uyumlu_sonuc
+    return _onbellekli_yanit(uyumlu_sonuc, istek, yanit)
 
 
 BANK_CODE_MAP = {
@@ -419,6 +533,8 @@ def _parse_num(val: Any) -> float:
 
 @router.get("/finansman")
 async def get_finansman_urunleri(
+    istek: Request,
+    yanit: Response,
     banka: Optional[str] = Query(None, description="Banka kodu (virgülle ayrılmış çoklu olabilir)"),
     urun: Optional[str] = Query(None, description="Ürün türü: ihtiyac, konut, tasit"),
     tutar: Optional[float] = Query(None, description="Finansman tutarı"),
@@ -429,7 +545,7 @@ async def get_finansman_urunleri(
     cache_key = _cache_key(f"finansman_{banka}_{urun}_{tutar}_{vade}_{sort_by}_{order}")
     cached = await _redisten_al(cache_key)
     if cached is not None:
-        return cached
+        return _onbellekli_yanit(cached, istek, yanit)
 
     # Bankalar sözlüğü
     bankalar_cursor = bankalar_col.find({})
@@ -485,7 +601,16 @@ async def get_finansman_urunleri(
         b_id = BANK_CODE_MAP.get(b_raw, b_raw)
         b_info = banka_dict.get(b_id, {})
 
+        # 🚨 ALAN ADI UYUŞMAZLIĞI — TAŞIT FİNANSMANLARINDA ORAN 0 GÖRÜNÜYORDU.
+        # `finansman_urun` koleksiyonunda oran İKİ FARKLI ADLA tutuluyor:
+        # kazıyıcıya göre `kar_orani` (36 kayıt) ya da `kar_orani_aylik`
+        # (12 kayıt — ziraat/albaraka/dünya taşıt ve bazı konut kayıtları).
+        # Uç yalnızca ilkini okuduğu için ikinci gruptaki oranlar (%3,39,
+        # %3,21 …) arayüze 0,00 olarak yansıyordu; sıralama ve "en düşük
+        # oran" istatistiği de bu kayıtları en sona atıyordu.
         kar_orani_raw = doc.get("kar_orani")
+        if kar_orani_raw in (None, ""):
+            kar_orani_raw = doc.get("kar_orani_aylik")
         kar_orani_val = _parse_num(kar_orani_raw)
 
         taksit_raw = doc.get("aylik_taksit_tutari")
@@ -587,12 +712,14 @@ async def get_finansman_urunleri(
 
     result_encoded = jsonable_encoder(result)
     await _redise_yaz(cache_key, result_encoded, ttl=1800)
-    return result_encoded
+    return _onbellekli_yanit(result_encoded, istek, yanit)
 
 
 @router.get("/katilim-hesap")
 @router.get("/katilim-hesaplari")
 async def get_katilim_hesaplari(
+    istek: Request,
+    yanit: Response,
     banka: Optional[str] = Query(None, description="Banka kodu (virgülle ayrılmış çoklu olabilir)"),
     tutar: Optional[float] = Query(None, description="Yatırılan tutar"),
     vade: Optional[str] = Query(None, description="Vade süresi"),
@@ -602,7 +729,7 @@ async def get_katilim_hesaplari(
     cache_key = _cache_key(f"katilim_hesap_{banka}_{tutar}_{vade}_{sort_by}_{order}")
     cached = await _redisten_al(cache_key)
     if cached is not None:
-        return cached
+        return _onbellekli_yanit(cached, istek, yanit)
 
     # Bankalar sözlüğü
     bankalar_cursor = bankalar_col.find({})
@@ -777,24 +904,31 @@ async def get_katilim_hesaplari(
 
     result_encoded = jsonable_encoder(result)
     await _redise_yaz(cache_key, result_encoded, ttl=1800)
-    return result_encoded
+    return _onbellekli_yanit(result_encoded, istek, yanit)
 
 
 _TAXONOMY_CACHE = None
 
 @router.get("/taxonomy")
-async def get_taxonomy():
-    """Kampanya türleri, hedef kitleler ve kategorilerin TR/EN eşlemelerini döner."""
+async def get_taxonomy(istek: Request, yanit: Response):
+    """Kampanya türleri, hedef kitleler ve kategorilerin TR/EN eşlemelerini döner.
+
+    Bu uçta zaten süreç-içi bir önbellek (`_TAXONOMY_CACHE`) vardı; eksik olan
+    TARAYICI tarafıydı. Taksonomi neredeyse hiç değişmediği için ETag ile
+    döndürmek, her sayfa açılışındaki isteği gövdesiz 304'e indiriyor.
+    Süreç-içi önbellek çok işlemli (worker) dağıtımda her işçide ayrı ayrı
+    doluyor; ETag bu maliyeti de ortadan kaldırıyor.
+    """
     global _TAXONOMY_CACHE
     if _TAXONOMY_CACHE is not None:
-        return _TAXONOMY_CACHE
+        return _onbellekli_yanit(_TAXONOMY_CACHE, istek, yanit, ttl=600)
 
     tax_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "configs", "taxonomy.yaml")
     if os.path.exists(tax_path):
         try:
             with open(tax_path, "r", encoding="utf-8") as f:
                 _TAXONOMY_CACHE = yaml.safe_load(f) or {}
-                return _TAXONOMY_CACHE
+                return _onbellekli_yanit(_TAXONOMY_CACHE, istek, yanit, ttl=600)
         except Exception as e:
             return {"error": f"taxonomy.yaml okunamadı: {str(e)}", "turler": {}, "hedef_kitleler": {}, "kategoriler": {}}
     return {"turler": {}, "hedef_kitleler": {}, "kategoriler": {}}

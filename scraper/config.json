@@ -1,12 +1,7 @@
 {
   "vakifkatilim.com.tr": {
-    "item_selector": ".campaign-item", 
+    "item_selector": ".campaign-item",
     "title_selector": "h3",
     "desc_selector": ".description"
-  },
-  "site2.com": {
-    "item_selector": ".card",
-    "title_selector": ".card-title",
-    "desc_selector": ".card-text"
   }
 }

@@ -10,7 +10,7 @@
       <p class="text-sm md:text-base text-neutral-500 dark:text-neutral-400">
         {{ $t('katilim_hesap.subtitle', 'Katılım bankalarının güncel kâr payı dağıtım oranları, brüt/net getiri tutarları ve vade sonu birikimlerini karşılaştırın.') }}
       </p>
-      <div class="h-1 w-24 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 mt-1 title-underline"></div>
+      <div class="h-1 w-24 rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 mt-1 title-underline"></div>
     </div>
 
     <!-- 2. ÖZET İSTATİSTİK KARTLARI (KPIs) - DİNAMİK FİLTRE HESAPLAMALI -->
@@ -356,7 +356,7 @@
             <!-- Sol Alan: Banka Bilgisi, Logo & Vade -->
             <div class="flex items-center gap-3 sm:gap-4 lg:w-64 shrink-0">
               <div class="w-12 h-12 rounded-2xl bg-white border border-neutral-200/80 dark:border-white/20 flex items-center justify-center p-2 shrink-0 shadow-xs group-hover:scale-105 transition-transform">
-                <img :src="account.logo_url" :alt="account.banka_adi" class="w-full h-full object-contain" />
+                <img :src="account.logo_url" loading="lazy" decoding="async" :alt="account.banka_adi" class="w-full h-full object-contain" />
               </div>
               <div class="min-w-0">
                 <div class="flex items-center gap-1.5 flex-wrap">
@@ -416,8 +416,9 @@
               <!-- Net Kâr Getirisi -->
               <div class="flex flex-col justify-center">
                 <span class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">{{ $t('katilim_hesap.net_profit', 'Net Kâr Getirisi') }}</span>
-                <span class="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5" :class="isMaxNetProfit(account) ? 'text-teal-600 dark:text-teal-400' : ''">
+                <span class="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5 flex items-center gap-1.5" :class="isMaxNetProfit(account) ? 'text-teal-600 dark:text-teal-400' : ''">
                   {{ account.net_kar_str }}
+                  <OrtalamaOku :konum="netKarKonumu(account)" :ipucu="netKarIpucu(account)" ters />
                 </span>
                 <span class="text-[10px] text-red-500/80">
                   {{ $t('katilim_hesap.col_tax', 'Stopaj') }}: {{ account.stopaj_kesintisi_str }}
@@ -467,7 +468,7 @@
               <div class="flex items-start justify-between gap-3 pb-3 border-b border-neutral-100 dark:border-neutral-700/60">
                 <div class="flex items-center gap-2.5">
                   <div class="w-10 h-10 rounded-2xl bg-white border border-neutral-200/80 dark:border-white/20 flex items-center justify-center p-1.5 shrink-0 shadow-xs">
-                    <img :src="account.logo_url" :alt="account.banka_adi" class="w-full h-full object-contain" />
+                    <img :src="account.logo_url" loading="lazy" decoding="async" :alt="account.banka_adi" class="w-full h-full object-contain" />
                   </div>
                   <div>
                     <h3 class="text-sm font-extrabold text-neutral-900 dark:text-white leading-snug">{{ account.banka_adi }}</h3>
@@ -545,8 +546,9 @@
 
                 <div class="flex items-center justify-between py-1 border-b border-neutral-100 dark:border-neutral-800">
                   <span class="font-bold text-neutral-800 dark:text-neutral-200">{{ $t('katilim_hesap.net_profit', 'Net Kâr Getirisi') }}</span>
-                  <span class="font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                  <span class="font-black text-emerald-600 dark:text-emerald-400 text-sm inline-flex items-center gap-1.5">
                     {{ account.net_kar_str }}
+                    <OrtalamaOku :konum="netKarKonumu(account)" :ipucu="netKarIpucu(account)" ters />
                   </span>
                 </div>
 
@@ -605,7 +607,7 @@
             >
               <td class="py-3.5 px-4 font-bold text-neutral-900 dark:text-white flex items-center gap-2.5">
                 <div class="w-6 h-6 rounded-md bg-white p-0.5 flex items-center justify-center shrink-0 shadow-2xs border border-neutral-200/60 dark:border-white/20">
-                  <img :src="account.logo_url" :alt="account.banka_adi" class="w-full h-full object-contain" />
+                  <img :src="account.logo_url" loading="lazy" decoding="async" :alt="account.banka_adi" class="w-full h-full object-contain" />
                 </div>
                 <div class="flex items-center gap-1.5 flex-wrap">
                   <span>{{ account.banka_adi }}</span>
@@ -638,7 +640,10 @@
                 {{ account.stopaj_kesintisi_str }}
               </td>
               <td class="py-3.5 px-4 text-right font-black text-emerald-600 dark:text-emerald-400 text-sm">
-                {{ account.net_kar_str }}
+                <span class="inline-flex items-center justify-end gap-1.5">
+                  {{ account.net_kar_str }}
+                  <OrtalamaOku :konum="netKarKonumu(account)" :ipucu="netKarIpucu(account)" ters />
+                </span>
               </td>
               <td class="py-3.5 px-4 text-right font-black text-neutral-900 dark:text-white text-sm">
                 {{ account.toplam_str }}
@@ -822,6 +827,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { useChatStore } from '~/stores/chatStore'
 import { useI18n } from 'vue-i18n'
 import Lenis from 'lenis'
 import { gsap } from 'gsap'
@@ -832,6 +838,7 @@ gsap.registerPlugin(ScrollTrigger)
 const { t } = useI18n()
 const router = useRouter()
 
+const chatStore = useChatStore()
 let lenis = null
 let lenisRafId = null
 
@@ -899,6 +906,61 @@ const availableTiers = computed(() => {
 })
 
 // Filtrelenmiş ve Sıralanmış Hesaplar
+// ---------------------------------------------------------------------------
+// YATIRILAN TUTARA GÖRE ORTALAMA NET GETİRİ (yalnızca banka çalışanı görünümü)
+//
+// Ortalama, YATIRILAN TUTAR başına ayrı hesaplanıyor. 100.000 TL ile
+// 250.000 TL'nin net getirileri doğal olarak farklı büyüklükte; hepsini tek
+// havuzda ortalamak, küçük tutarların tamamını "ortalamanın altında"
+// gösterirdi. Karşılaştırma ancak aynı tutar dilimi içinde anlamlı.
+//
+// Ortalama, ekrandaki FİLTRELİ listeden değil tüm veriden alınıyor; aksi
+// hâlde kullanıcı bir bankayı seçtiğinde ortalama kayar ve aynı hesap bir
+// bakışta üstte, diğerinde altta görünürdü.
+const tutaraGoreOrtalamaNetKar = computed(() => {
+  const kova = {}
+  for (const a of (allAccounts.value || [])) {
+    const tutar = Number(a?.yatirilan_tutar)
+    const net = Number(a?.net_kar)
+    if (!(tutar > 0) || !(net > 0)) continue
+    ;(kova[tutar] || (kova[tutar] = [])).push(net)
+  }
+  const sonuc = {}
+  for (const [tutar, degerler] of Object.entries(kova)) {
+    sonuc[tutar] = degerler.reduce((x, y) => x + y, 0) / degerler.length
+  }
+  return sonuc
+})
+
+/**
+ * Hesabın kendi tutar dilimindeki ortalama net getiriye göre konumu.
+ * Döner: 'yuksek' | 'dusuk' | null
+ *
+ * ⚠️ YÖN, FİNANSMAN SAYFASININ TERSİ. Orada düşük kâr payı oranı iyidir
+ * (yeşil aşağı ok); burada yüksek net getiri iyidir, o yüzden YEŞİL YUKARI.
+ * İpucu metni her iki sayfada da durumu açıkça yazıyor ki karışmasın.
+ */
+const netKarKonumu = (a) => {
+  if (!isBankaci.value) return null
+  const net = Number(a?.net_kar)
+  if (!(net > 0)) return null
+  const ort = tutaraGoreOrtalamaNetKar.value[Number(a?.yatirilan_tutar)]
+  if (!ort) return null
+  // Ortalamaya çok yakınken ok göstermek yanıltıcı olur (binde bir eşiği).
+  if (Math.abs(net - ort) / ort < 0.001) return null
+  return net > ort ? 'yuksek' : 'dusuk'
+}
+
+const netKarIpucu = (a) => {
+  const ort = tutaraGoreOrtalamaNetKar.value[Number(a?.yatirilan_tutar)]
+  const bicimli = ort
+    ? ` (${ort.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL)`
+    : ''
+  return netKarKonumu(a) === 'yuksek'
+    ? t('katilim_hesap.above_avg_net', 'Ortalama net gelirin yukarısında') + bicimli
+    : t('katilim_hesap.below_avg_net', 'Ortalama net gelirin altında') + bicimli
+}
+
 const filteredAccounts = computed(() => {
   let list = [...allAccounts.value]
 
@@ -1047,7 +1109,7 @@ const simCalculated = computed(() => {
 const fetchAccountsData = async () => {
   isLoading.value = true
   try {
-    const res = await fetch('http://localhost:8003/katilim-hesap')
+    const res = await apiFetch(`/katilim-hesap`)
     if (res.ok) {
       const data = await res.json()
       allAccounts.value = data.accounts || []
@@ -1077,7 +1139,7 @@ const fetchAccountsData = async () => {
 // FinAgent AI Analiz Köprüsü
 const askAiAboutAccount = async (account) => {
   try {
-    const res = await fetch('http://localhost:8003/api/analiz-koprusu', {
+    const res = await fetch(apiUrl(`/api/analiz-koprusu`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1096,8 +1158,7 @@ const askAiAboutAccount = async (account) => {
     if (res.ok) {
       const data = await res.json()
       if (data.prompt) {
-        sessionStorage.setItem('finagent_direct_prompt', data.prompt)
-        sessionStorage.setItem('finagent_auto_send', '1')
+      chatStore.setChatData(data.prompt, [])
         router.push('/chat')
         return
       }
@@ -1108,8 +1169,7 @@ const askAiAboutAccount = async (account) => {
 
   // Yedek doğrudan yönlendirme
   const fallbackPrompt = `${account.banka_adi} katılım bankasının ${account.yatirilan_tutar_str} tutarındaki ${account.vade} vadeli katılım hesabı teklifini (${account.net_oran_str} net kâr payı oranı) sektör ortalamasıyla karşılaştırarak analiz et.`
-  sessionStorage.setItem('finagent_direct_prompt', fallbackPrompt)
-  sessionStorage.setItem('finagent_auto_send', '1')
+  chatStore.setChatData(fallbackPrompt, [])
   router.push('/chat')
 }
 
@@ -1646,40 +1706,47 @@ onUnmounted(() => {
 
 <style scoped>
 .gradient-text {
-  background-image: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+  background-image: linear-gradient(90deg, #2563eb, #06b6d4, #6366f1, #2563eb);
+  background-size: 300% 100%;
+  animation: gradShift 7s ease infinite;
+}
+@keyframes gradShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 .finagent-glow-btn {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(6, 182, 212, 0.08), rgba(20, 184, 166, 0.08));
-  border: 1.5px solid rgba(16, 185, 129, 0.25);
-  box-shadow: 0 0 15px -3px rgba(16, 185, 129, 0.15), 0 0 6px -2px rgba(6, 182, 212, 0.2);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(6, 182, 212, 0.08), rgba(99, 102, 241, 0.08));
+  border: 1.5px solid rgba(6, 182, 212, 0.25);
+  box-shadow: 0 0 15px -3px rgba(6, 182, 212, 0.15), 0 0 6px -2px rgba(99, 102, 241, 0.2);
 }
 
 :global(.dark) .finagent-glow-btn {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(6, 182, 212, 0.15), rgba(20, 184, 166, 0.15));
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15), rgba(6, 182, 212, 0.15), rgba(99, 102, 241, 0.15));
   border: 1.5px solid rgba(6, 182, 212, 0.35);
-  box-shadow: 0 0 15px -3px rgba(16, 185, 129, 0.25), 0 0 6px -2px rgba(6, 182, 212, 0.3);
+  box-shadow: 0 0 15px -3px rgba(6, 182, 212, 0.25), 0 0 6px -2px rgba(99, 102, 241, 0.3);
 }
 
 .finagent-glow-btn:hover {
-  border-color: rgba(16, 185, 129, 0.6);
-  box-shadow: 0 0 20px 2px rgba(16, 185, 129, 0.35), 0 0 10px 0px rgba(6, 182, 212, 0.4);
+  border-color: rgba(6, 182, 212, 0.6);
+  box-shadow: 0 0 20px 2px rgba(6, 182, 212, 0.35), 0 0 10px 0px rgba(37, 99, 235, 0.4);
 }
 
 .logo-glow {
-  filter: drop-shadow(0 0 5px rgba(16, 185, 129, 0.55)) drop-shadow(0 0 10px rgba(6, 182, 212, 0.35));
+  filter: drop-shadow(0 0 5px rgba(6, 182, 212, 0.55)) drop-shadow(0 0 10px rgba(37, 99, 235, 0.35));
   animation: logoGlowShift 4s ease-in-out infinite alternate;
 }
 
 @keyframes logoGlowShift {
   0% {
-    filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.5)) drop-shadow(0 0 8px rgba(6, 182, 212, 0.35));
+    filter: drop-shadow(0 0 4px rgba(37, 99, 235, 0.5)) drop-shadow(0 0 8px rgba(6, 182, 212, 0.35));
   }
   50% {
-    filter: drop-shadow(0 0 7px rgba(6, 182, 212, 0.75)) drop-shadow(0 0 14px rgba(20, 184, 166, 0.55));
+    filter: drop-shadow(0 0 7px rgba(6, 182, 212, 0.75)) drop-shadow(0 0 14px rgba(99, 102, 241, 0.55));
   }
   100% {
-    filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.5)) drop-shadow(0 0 8px rgba(6, 182, 212, 0.35));
+    filter: drop-shadow(0 0 4px rgba(37, 99, 235, 0.5)) drop-shadow(0 0 8px rgba(6, 182, 212, 0.35));
   }
 }
 

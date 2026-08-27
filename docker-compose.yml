@@ -146,6 +146,42 @@ services:
     networks:
       - smartdata-net
 
+  # ---- TAM KURUM İÇİ (ON-PREM) MOD: yerel LLM + yerel embedding ----
+  #
+  # Şartname 5.9 çözümün "dış servislere bağımlı olmadan" çalışabilmesini
+  # istiyor. Mimari bunu KOD DEĞİŞİKLİĞİ OLMADAN karşılıyor: LLM, embedding ve
+  # vektör adreslerinin üçü de ortam değişkeni (bkz. chatbot/evren_client.py —
+  # BASE_URL, MODEL_ANA, MODEL_HIZLI, EVREN_QDRANT_URL). Ollama OpenAI uyumlu
+  # bir /v1 ucu yayımladığı için mevcut ChatOpenAI istemcisi olduğu gibi çalışır.
+  #
+  # Tamamen kurum içi çalıştırmak için:
+  #     docker compose --profile yerel-llm --profile yerel-vektor up -d ollama qdrant
+  #     docker exec smartdata-ollama ollama pull qwen2.5:7b-instruct
+  #     docker exec smartdata-ollama ollama pull bge-m3
+  # .env'de:
+  #     EVREN_BASE_URL=http://ollama:11434/v1
+  #     EVREN_API_KEY=yerel            (Ollama anahtar doğrulamaz, boş olmasın)
+  #     EVREN_MODEL=qwen2.5:7b-instruct
+  #     EVREN_MODEL_HIZLI=qwen2.5:7b-instruct
+  #     EVREN_EMBED_MODEL=bge-m3
+  #     EVREN_QDRANT_URL=http://qdrant:6333
+  #     EVREN_QDRANT_KEY=              (boş)
+  #     EVREN_TEAM=                    (boş)
+  # sonra vektörleri yerelde yeniden kur:
+  #     docker exec teknofest2026_finagent-backend-1 python -m chatbot.indexing
+  #
+  # Bu modda hiçbir istek kurum ağının dışına çıkmaz; kural tabanlı bilgi
+  # çıkarımı (nlp/extraction/rule_based.py) zaten LLM'siz çalışıyor.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: smartdata-ollama
+    profiles: ["yerel-llm"]
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - smartdata-net
+    # GPU'yu kullanmak için docker-compose.nvidia.yml ile birlikte başlatın.
+
 networks:
   smartdata-net:
     driver: bridge
@@ -153,4 +189,5 @@ networks:
 volumes:
   mongo_data:
   qdrant_data:
-  # ollama_data KALDIRILDI — llm servisi yok.
+  # yerel-llm profili için (tam kurum içi mod).
+  ollama_data:

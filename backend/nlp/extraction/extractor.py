@@ -4,7 +4,16 @@ from datetime import date, datetime, timezone
 from pymongo import MongoClient, UpdateOne
 from pymongo.errors import PyMongoError
 
-from backend.db.banka_istatistikleri import banka_istatistiklerini_guncelle
+# 🛠️ ÇİFT YOL: bu modül iki farklı kökten çalıştırılıyor — pipeline.py depo
+# kökünden `backend.*` diye, backend konteyneri ise WORKDIR /app (yani
+# backend/) içinden `nlp.*` diye import ediyor. Tek biçim kullanmak,
+# diğerinde ModuleNotFoundError veriyor ve bu yüzden geçici bir symlink
+# gerekiyordu. agents.py'deki yerleşik kalıp buraya da uygulandı.
+try:
+    from backend.db.banka_istatistikleri import banka_istatistiklerini_guncelle
+except ModuleNotFoundError:
+    from db.banka_istatistikleri import banka_istatistiklerini_guncelle
+
 
 # Göreceli Import
 from .hybrid import hibrit_cikar, _llm_var_mi
@@ -108,7 +117,10 @@ def _tarih_metni_ayristir(tarih_str):
     def _coz(parca: str):
         """Bir parçayı datetime'a çevirir; sayısal ve sözel biçimleri kapsar."""
         parca = parca.strip()
-        for kalip in ("%d.%m.%Y", "%d/%m/%Y", "%Y-%m-%d"):
+        # `%d-%m-%Y` EKLENDİ: Ziraat Katılım tarihleri tireli yazıyor
+        # ("10-07-2025"). Bu kalıp yokken tüm Ziraat kayıtlarında bitiş
+        # tarihi boş kalıyordu (139 boş kaydın büyük çoğunluğu).
+        for kalip in ("%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"):
             try:
                 return datetime.strptime(parca, kalip)
             except ValueError:
@@ -116,7 +128,19 @@ def _tarih_metni_ayristir(tarih_str):
         d = tarih_normalize(parca)
         return datetime.combine(d, datetime.min.time()) if d else None
 
-    parcalar = re.split(r"\s*[-–—]\s*", tarih_str.strip())
+    ham = tarih_str.strip()
+
+    # ⚠️ AYRAÇ BELİRSİZLİĞİ.
+    # "08-08-2026 - 07-09-2026" ifadesinde tire HEM tarihin içindeki ayraç
+    # HEM de aralık işareti. Koşulsuz `[-–—]` ile bölmek altı parça üretiyor
+    # ve hiçbiri tarih olmuyordu. Türkçe metinlerde aralık işareti neredeyse
+    # her zaman BOŞLUKLA yazılıyor; önce boşluklu ayraç deneniyor, yalnızca
+    # o işe yaramazsa çıplak tireye düşülüyor.
+    parcalar = re.split(r"\s+[-–—]\s+", ham)
+    if len(parcalar) == 1:
+        parcalar = re.split(r"\s*[–—]\s*", ham)
+    if len(parcalar) == 1:
+        parcalar = re.split(r"\s*-\s*", ham)
 
     if len(parcalar) == 2:
         ilk, ikinci = parcalar[0], parcalar[1]
@@ -127,7 +151,15 @@ def _tarih_metni_ayristir(tarih_str):
         # ayrıştırıyor, sonra sıralama bozuksa başlangıcı bir yıl geri
         # alıyoruz — "5 Aralık 2024 – 15 Ocak 2025" doğru okumadır.
         yil_ilkte = re.search(r"\d{4}", ilk)
-        if not yil_ilkte and bitis is not None:
+        if re.fullmatch(r"\d{1,2}", ilk.strip()) and bitis is not None:
+            # "22 - 30 Nisan 2026": ilk parça YALNIZCA GÜN. Ay ve yıl ikinci
+            # parçada yazılı; ikisini de ödünç alıyoruz. Önceden yalnızca yıl
+            # ödünç alınıyordu, ay eksik kaldığı için parça çözülemiyordu.
+            try:
+                baslangic = bitis.replace(day=int(ilk.strip()))
+            except ValueError:      # ör. 31 - 30 Nisan
+                baslangic = None
+        elif not yil_ilkte and bitis is not None:
             baslangic = _coz("%s %d" % (ilk, bitis.year))
         else:
             baslangic = _coz(ilk)

@@ -128,7 +128,7 @@ const menuItems = computed(() => [
 </script>
 
 <template>
-  <div class="flex h-screen w-full bg-neutral-50 dark:bg-neutral-900 text-neutral-800 dark:text-neutral-100 font-sans overflow-hidden">
+  <div class="flex ekran-yuksekligi w-full bg-neutral-50 dark:bg-neutral-900 text-neutral-800 dark:text-neutral-100 font-sans overflow-hidden">
 
     <Transition name="backdrop">
       <div
@@ -183,12 +183,15 @@ const menuItems = computed(() => [
             </div>
           </div>
 
-          <div class="relative group flex items-center">
+          <!-- Telefonda gizli: 375px'te başlık 414px yer istiyordu, sağdaki
+               görünüm/dil/tema düğmeleri ekran dışında kalıp tıklanamıyordu.
+               Bu iki logo dekoratif; marka zaten kenar çubuğunda duruyor. -->
+          <div class="relative group hidden sm:flex items-center">
             <img src="/teknofest.svg" alt="Teknofest" class="h-5 sm:h-6 w-auto object-contain opacity-90 hover:opacity-100 hover:scale-110 transition-all duration-300 cursor-pointer" />
             <div class="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 text-xs font-medium bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900 rounded opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap shadow-lg">Teknofest</div>
           </div>
 
-          <div class="relative group flex items-center">
+          <div class="relative group hidden sm:flex items-center">
             <div class="opacity-90 hover:opacity-100 hover:scale-110 transition-all duration-300 cursor-pointer">
               <img src="/biquery.svg" alt="BiQuery" class="h-3.5 sm:h-4 w-auto object-contain block dark:hidden" />
               <img src="/biqueryblack.svg" alt="BiQuery" class="h-3.5 sm:h-4 w-auto object-contain hidden dark:block" />
@@ -202,7 +205,7 @@ const menuItems = computed(() => [
           <!-- Görünüm Modu Toggle (Müşteri / Banka Çalışanı) - Mobil ve Masaüstü Uyumlu -->
           <div class="flex p-0.5 sm:p-1 rounded-lg border border-neutral-300/50 dark:border-neutral-600/50 bg-white/40 dark:bg-neutral-800/40 backdrop-blur-md shadow-sm">
             <div class="relative group flex items-center">
-              <button @click="setViewMode('musteri')" :class="viewMode === 'musteri' ? 'bg-white dark:bg-neutral-700 shadow-sm text-blue-600 dark:text-cyan-400' : 'text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white'" class="px-2 sm:px-3 py-1 sm:py-1.5 text-[11px] sm:text-xs font-bold rounded-md transition-all flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
+              <button @click="setViewMode('musteri')" :class="viewMode === 'musteri' ? 'bg-white dark:bg-neutral-700 shadow-sm text-blue-600 dark:text-cyan-400' : 'text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white'" class="px-2.5 sm:px-3 py-2 sm:py-1.5 text-[11px] sm:text-xs font-bold rounded-md transition-all flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
                 <svg class="w-3.5 h-3.5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
                 <span>{{ t('header.customer', 'Müşteri') }}</span>
               </button>
@@ -212,7 +215,7 @@ const menuItems = computed(() => [
             </div>
 
             <div class="relative group flex items-center">
-              <button @click="setViewMode('bankaci')" :class="viewMode === 'bankaci' ? 'bg-white dark:bg-neutral-700 shadow-sm text-blue-600 dark:text-cyan-400' : 'text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white'" class="px-2 sm:px-3 py-1 sm:py-1.5 text-[11px] sm:text-xs font-bold rounded-md transition-all flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
+              <button @click="setViewMode('bankaci')" :class="viewMode === 'bankaci' ? 'bg-white dark:bg-neutral-700 shadow-sm text-blue-600 dark:text-cyan-400' : 'text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white'" class="px-2.5 sm:px-3 py-2 sm:py-1.5 text-[11px] sm:text-xs font-bold rounded-md transition-all flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
                 <svg class="w-3.5 h-3.5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                 <span class="hidden sm:inline">{{ t('header.bank_employee', 'Banka Çalışanı') }}</span>
                 <span class="sm:hidden">{{ t('header.bank_short', 'Banka') }}</span>
@@ -225,7 +228,7 @@ const menuItems = computed(() => [
 
           <div class="flex items-center space-x-1.5 sm:space-x-2 border-l border-neutral-300/50 dark:border-neutral-600/50 pl-2 sm:pl-4">
             <div class="relative group flex items-center">
-              <button @click="toggleLanguage" class="px-2 sm:px-2.5 py-1 rounded-md border border-neutral-300/50 dark:border-neutral-600/50 text-[11px] sm:text-xs font-bold text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200/80 dark:hover:bg-neutral-700/80 hover:-translate-y-0.5 bg-white/40 dark:bg-neutral-800/40 backdrop-blur-md transition-all duration-300 shadow-sm active:scale-95">
+              <button @click="toggleLanguage" class="px-2.5 sm:px-2.5 py-2 sm:py-1 rounded-md border border-neutral-300/50 dark:border-neutral-600/50 text-[11px] sm:text-xs font-bold text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200/80 dark:hover:bg-neutral-700/80 hover:-translate-y-0.5 bg-white/40 dark:bg-neutral-800/40 backdrop-blur-md transition-all duration-300 shadow-sm active:scale-95">
                 <Transition name="lang" mode="out-in">
                   <span :key="locale">{{ locale.toUpperCase() }}</span>
                 </Transition>
@@ -236,7 +239,7 @@ const menuItems = computed(() => [
             </div>
 
             <div class="relative group flex items-center">
-              <button @click="toggleTheme" class="p-1 sm:p-1.5 rounded-lg border border-neutral-300/50 dark:border-neutral-600/50 hover:bg-neutral-200/80 dark:hover:bg-neutral-700/80 hover:-translate-y-0.5 text-neutral-600 dark:text-neutral-300 bg-white/40 dark:bg-neutral-800/40 backdrop-blur-md transition-all duration-300 shadow-sm active:scale-95 overflow-hidden">
+              <button @click="toggleTheme" class="p-2 sm:p-1.5 rounded-lg border border-neutral-300/50 dark:border-neutral-600/50 hover:bg-neutral-200/80 dark:hover:bg-neutral-700/80 hover:-translate-y-0.5 text-neutral-600 dark:text-neutral-300 bg-white/40 dark:bg-neutral-800/40 backdrop-blur-md transition-all duration-300 shadow-sm active:scale-95 overflow-hidden">
                 <Transition name="theme" mode="out-in">
                   <svg v-if="colorMode.value === 'dark'" key="sun" xmlns="http://www.w3.org/2000/svg" class="h-3.5 sm:h-4 w-3.5 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
                   <svg v-else key="moon" xmlns="http://www.w3.org/2000/svg" class="h-3.5 sm:h-4 w-3.5 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>

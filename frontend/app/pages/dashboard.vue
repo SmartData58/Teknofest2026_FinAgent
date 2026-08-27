@@ -86,7 +86,7 @@ const barChartRef = ref(null)
 
 const fetchTopAdvantageous = async () => {
   try {
-    const res = await fetch('http://localhost:8003/campaigns/top-advantageous')
+    const res = await apiFetch(`/campaigns/top-advantageous`)
     if (res.ok) {
       topCampaigns.value = await res.json()
     }
@@ -133,7 +133,7 @@ const openCampaignModal = async (id) => {
   
   // 2. Metin ve eksik alanların tam gelmesi için her zaman detay endpoint'ini çağır
   try {
-    const res = await fetch(`http://localhost:8003/campaigns/${id}`)
+    const res = await apiFetch(`/campaigns/${id}`)
     if (res.ok) {
       const data = await res.json()
       selectedModalCampaign.value = data
@@ -308,7 +308,7 @@ const exportToExcel = async (chartRefName) => {
       // 4. Bölüm 3: Kategori Dağılımı
       masterRows.push([{ v: '=== 3. KATEGORİ BAZLI KAMPANYA DAĞILIMI ===', s: sectionStyle }])
       masterRows.push(mapHeaderRow(['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad + ' (Adet)'), 'Sektör Ortalaması (Adet)']))
-      categories.forEach((cat, idx) => {
+      categories.value.forEach((cat, idx) => {
         const isEven = idx % 2 === 0
         const rowBg = isEven ? 'FFFFFF' : 'F8FAFC'
         const row = [
@@ -326,7 +326,7 @@ const exportToExcel = async (chartRefName) => {
       // 5. Bölüm 4: Ortalama Süreler
       masterRows.push([{ v: '=== 4. KATEGORİ BAZLI ORTALAMA KAMPANYA YAYIN SÜRELERİ ===', s: sectionStyle }])
       masterRows.push(mapHeaderRow(['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad + ' (Ay)'), 'Sektör Ortalaması (Ay)']))
-      categories.forEach((cat, idx) => {
+      categories.value.forEach((cat, idx) => {
         const isEven = idx % 2 === 0
         const rowBg = isEven ? 'FFFFFF' : 'F8FAFC'
         const row = [
@@ -403,7 +403,7 @@ const exportToExcel = async (chartRefName) => {
         [{ v: `Kurum: ${bankName} | Tarih: ${today}`, s: metaStyle }],
         [],
         mapHeaderRow(['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad), 'Sektör Ortalaması']),
-        ...categories.map((cat, idx) => {
+        ...categories.value.map((cat, idx) => {
           const rowBg = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC'
           return [
             { v: cat, s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
@@ -426,7 +426,7 @@ const exportToExcel = async (chartRefName) => {
         [{ v: `Kurum: ${bankName} | Tarih: ${today}`, s: metaStyle }],
         [],
         mapHeaderRow(['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad + ' (Ay)'), 'Sektör Ortalaması (Ay)']),
-        ...categories.map((cat, idx) => {
+        ...categories.value.map((cat, idx) => {
           const rowBg = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC'
           return [
             { v: cat, s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
@@ -508,7 +508,7 @@ const exportToExcel = async (chartRefName) => {
         [{ v: `Kurum: ${bankName} | Rapor Tarihi: ${today}`, s: metaStyle }],
         [],
         mapHeaderRow(['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad), 'Sektör Ortalaması']),
-        ...categories.map((cat, idx) => {
+        ...categories.value.map((cat, idx) => {
           const rowBg = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC'
           return [
             { v: cat, s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
@@ -531,7 +531,7 @@ const exportToExcel = async (chartRefName) => {
         [{ v: `Kurum: ${bankName} | Rapor Tarihi: ${today}`, s: metaStyle }],
         [],
         mapHeaderRow(['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad + ' (Ay)'), 'Sektör Ortalaması (Ay)']),
-        ...categories.map((cat, idx) => {
+        ...categories.value.map((cat, idx) => {
           const rowBg = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC'
           return [
             { v: cat, s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
@@ -674,7 +674,7 @@ const exportToPDF = async (chartRefName) => {
                       </tr>
                   </thead>
                   <tbody>
-                      ${categories.map((cat, idx) => `
+                      ${categories.value.map((cat, idx) => `
                           <tr>
                               <td style="padding: 6px 10px; border: 1px solid #d1d5db; font-weight: bold;">${escapeHtml(cat)}</td>
                               ${activeCompareBanks.value.map(b => `<td style="padding: 6px 10px; border: 1px solid #d1d5db; text-align: center;">${getCategoryCounts(getBankCampaigns(b))[idx] || 0}</td>`).join('')}
@@ -703,7 +703,7 @@ const exportToPDF = async (chartRefName) => {
                       </tr>
                   </thead>
                   <tbody>
-                      ${categories.map((cat, idx) => `
+                      ${categories.value.map((cat, idx) => `
                           <tr>
                               <td style="padding: 6px 10px; border: 1px solid #d1d5db; font-weight: bold;">${escapeHtml(cat)}</td>
                               ${activeCompareBanks.value.map(b => `<td style="padding: 6px 10px; border: 1px solid #d1d5db; text-align: center;">${getCategoryDurations(getBankCampaigns(b))[idx] || 0} Ay</td>`).join('')}
@@ -919,8 +919,8 @@ const fetchVeriler = async () => {
   loading.value = true
   try {
     const [bRes, cRes] = await Promise.all([
-      fetch('http://localhost:8003/banks').then(res => res.json()),
-      fetch('http://localhost:8003/campaigns?limit=1000').then(res => res.json())
+      apiFetch(`/banks`).then(res => res.json()),
+      apiFetch(`/campaigns?limit=1000`).then(res => res.json())
     ])
     fetchTopAdvantageous()
     banks.value = Array.isArray(bRes) ? bRes : []
@@ -1138,7 +1138,7 @@ const goToChat = async () => {
 
   aiYukleniyor.value = true
   try {
-    const res = await fetch('http://localhost:8003/api/analiz-koprusu', {
+    const res = await fetch(apiUrl(`/api/analiz-koprusu`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1177,25 +1177,57 @@ const goToChat = async () => {
 }
 
 // --- Grafikler İçin Veri ---
-const categories = ['Konut', 'Taşıt', 'İhtiyaç', 'Kart', 'MGM', 'Yatırım', 'Diğer']
+// ---------------------------------------------------------------------------
+// KATEGORİ DAĞILIMI = SEKTÖR DAĞILIMI
+//
+// Eksenler artık kampanya TÜRÜ değil SEKTÖR. İki nedenle:
+//
+// 1) Eski eksenler (Konut/Taşıt/İhtiyaç/Kart/MGM/Yatırım/Diğer) kampanya
+//    ADINDA kelime arayan bir tahmin zinciriyle dolduruluyordu. Bu hem
+//    hatalıydı hem de "Kart" kovasını şişiriyordu: 599 kaydın 513'ü oraya
+//    düşünce radar tek bir dikene dönüşüyor, karşılaştırma anlamını
+//    yitiriyordu (ekran görüntüsündeki ince çizgi tam olarak buydu).
+//
+// 2) Sektör bilgisi ARTIK VERİDE HAZIR: backend `sektor_kurallari` ile
+//    `genel_bilgi.sektor` alanını dolduruyor. Tahmin etmeye gerek yok,
+//    doğrudan okunuyor.
+//
+// Eksen sırası `sektor_kurallari` ile aynı; veride bulunan ama listede
+// olmayan sektörler (kurallar sonradan genişletilirse) sona ekleniyor, böylece
+// bu liste ile backend arasında sessiz bir kayma oluşamaz.
+const SEKTOR_SIRASI = [
+  'Market ve Gıda',
+  'E-Ticaret ve Pazaryerleri',
+  'Akaryakıt ve Otomotiv',
+  'Teknoloji ve Elektronik',
+  'Giyim ve Aksesuar',
+  'Seyahat ve Turizm',
+  'Eğitim ve Kırtasiye',
+]
+
+// "Genel / Sektör Bağımsız" bilinçli olarak DIŞARIDA: bir sektör değil,
+// sektörü belirlenemeyenlerin kovası. Kayıtların ~%35'i orada olduğu için
+// eksene konulsaydı diğer yedi ekseni yine ezip radarı düzleştirirdi.
+const SEKTORSUZ_ETIKET = 'Genel / Sektör Bağımsız'
+
+const categories = computed(() => {
+  const veridekiler = new Set(
+    (campaigns.value || [])
+      .map(c => c.genel_bilgi?.sektor)
+      .filter(s => s && s !== SEKTORSUZ_ETIKET && s !== 'Genel')
+  )
+  const ekstra = [...veridekiler].filter(s => !SEKTOR_SIRASI.includes(s)).sort()
+  return [...SEKTOR_SIRASI, ...ekstra]
+})
 
 const getCategoryCounts = (camps) => {
-  const counts = [0, 0, 0, 0, 0, 0, 0]
-  camps.forEach(c => {
-    const t = c.genel_bilgi?.kampanya_turu || ''
-    const adi = c.genel_bilgi?.kampanya_adi?.toLowerCase() || ''
-    
-    if (t.includes('finansman') || adi.includes('konut') || adi.includes('taşıt') || adi.includes('ihtiyaç')) {
-      if (adi.includes('taşıt') || adi.includes('arac')) counts[1]++
-      else if (adi.includes('konut') || adi.includes('ev')) counts[0]++
-      else counts[2]++
-    }
-    else if (t.includes('kart') || adi.includes('kart') || adi.includes('puan')) counts[3]++
-    else if (adi.includes('davet') || adi.includes('mgm') || adi.includes('getir') || c.mgm_detay?.is_mgm) counts[4]++
-    else if (adi.includes('yatırım') || adi.includes('mevduat') || adi.includes('katılma')) counts[5]++
-    else counts[6]++
+  const eksenler = categories.value
+  const sayac = new Map(eksenler.map(e => [e, 0]))
+  ;(camps || []).forEach(c => {
+    const s = c.genel_bilgi?.sektor
+    if (s && sayac.has(s)) sayac.set(s, sayac.get(s) + 1)
   })
-  return counts
+  return eksenler.map(e => sayac.get(e))
 }
 
 const getBaskinKategori = (b) => {
@@ -1221,20 +1253,22 @@ const getBaskinKategori = (b) => {
     }
   }
   return {
-    ad: categories[maxIdx],
+    ad: categories.value[maxIdx],
     yuzde: Math.round((maxVal / total) * 100)
   }
 }
 
 // Süre Analizi
 const getCategoryDurations = (camps) => {
-  const sums = [0, 0, 0, 0, 0, 0, 0]
-  const counts = [0, 0, 0, 0, 0, 0, 0]
+  // Kovalar artık SEKTÖR ekseniyle aynı (bkz. categories). Eskiden burada
+  // kampanya adında kelime arayan ayrı bir tahmin zinciri vardı; radar
+  // sektöre geçince bu iki grafik farklı eksen kümesi kullanır hâle
+  // gelecekti ve aynı sayfada tutarsız iki "kategori" tanımı olurdu.
+  const eksenler = categories.value
+  const sums = eksenler.map(() => 0)
+  const counts = eksenler.map(() => 0)
   
   camps.forEach(c => {
-    const t = c.genel_bilgi?.kampanya_turu || ''
-    const adi = c.genel_bilgi?.kampanya_adi?.toLowerCase() || ''
-    
     let months = 1.5 
     const bas = c.genel_bilgi?.baslangic_tarihi || c.genel_bilgi?.cekilis_tarihi
     const bit = c.genel_bilgi?.bitis_tarihi
@@ -1254,16 +1288,11 @@ const getCategoryDurations = (camps) => {
       }
     }
     
-    let idx = 6
-    if (t.includes('finansman') || adi.includes('konut') || adi.includes('taşıt') || adi.includes('ihtiyaç')) {
-      if (adi.includes('taşıt') || adi.includes('arac')) idx = 1
-      else if (adi.includes('konut') || adi.includes('ev')) idx = 0
-      else idx = 2
-    }
-    else if (t.includes('kart') || adi.includes('kart') || adi.includes('puan')) idx = 3
-    else if (adi.includes('davet') || adi.includes('mgm') || adi.includes('getir') || c.mgm_detay?.is_mgm) idx = 4
-    else if (adi.includes('yatırım') || adi.includes('mevduat') || adi.includes('katılma')) idx = 5
-    
+    // Sektörü belirlenemeyen kayıtlar hiçbir eksene ait değil; ortalamayı
+    // bozmamaları için atlanıyor.
+    const idx = eksenler.indexOf(c.genel_bilgi?.sektor)
+    if (idx === -1) return
+
     sums[idx] += months
     counts[idx]++
   })
@@ -1370,7 +1399,7 @@ const colors = [
       })
     }
   
-    return { labels: categories, datasets }
+    return { labels: categories.value, datasets }
   })
   
   const radarOptions = computed(() => ({
@@ -1478,8 +1507,8 @@ const colors = [
         data: sektorDurations.value
       })
     }
-  
-    return { labels: categories, datasets }
+
+    return { labels: categories.value, datasets }
   })
   
   const durationBarOptions = computed(() => ({
@@ -2177,7 +2206,7 @@ const mgmCampaigns = computed(() => {
             <!-- Satır 1: Trend ve Radar -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <!-- Line Grafiği (Başlangıç Trendi) -->
-              <div id="chart-box-lineChartRef" class="bg-white dark:bg-neutral-950 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm transition-all duration-300 flex flex-col justify-between">
+              <div id="chart-box-lineChartRef" class="bg-white dark:bg-neutral-950 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm transition-all duration-300 flex flex-col justify-between" :style="{ minHeight: expandedCharts.line ? '700px' : null }">
                 <div class="flex justify-between items-center mb-1">
                   <h3 class="text-base font-bold text-neutral-900 dark:text-white">{{ $t('dashboard.trend_title', 'Kampanya Başlangıç Trendi') }} <span v-if="expandedCharts.line" class="text-blue-600 font-extrabold">({{ $t('dashboard.expanded_view', 'Genişletilmiş Görünüm') }})</span></h3>
                   
@@ -2197,16 +2226,16 @@ const mgmCampaigns = computed(() => {
                   </div>
                 </div>
                 <p class="text-xs font-semibold text-neutral-500 mb-6">{{ $t('dashboard.trend_subtitle', 'Son 6 ayda başlayan yeni kampanya ivmesi') }}</p>
-                <div @click="chartInteracts.radar = true" @mouseleave="chartInteracts.radar = false" class="relative transition-all duration-300 w-full" :class="(expandedCharts.line || expandedCharts.radar) ? 'h-[550px]' : 'h-64'">
+                <div @click="chartInteracts.radar = true" @mouseleave="chartInteracts.radar = false" class="relative transition-all duration-300 w-full" :style="{ height: (expandedCharts.line || expandedCharts.radar) ? '550px' : '16rem', flexShrink: 0 }">
                    <Line ref="lineChartRef" v-if="expandedCharts.line" :data="lineChartData" :options="lineOptions" />
                    <Line ref="lineChartRef" v-else :data="lineChartData" :options="lineOptions" />
                 </div>
               </div>
               
               <!-- Radar Grafiği -->
-              <div id="chart-box-radarChartRef" class="bg-white dark:bg-neutral-950 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm transition-all duration-300 flex flex-col justify-between">
+              <div id="chart-box-radarChartRef" class="bg-white dark:bg-neutral-950 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm transition-all duration-300 flex flex-col justify-between" :style="{ minHeight: expandedCharts.radar ? '700px' : null }">
                 <div class="flex justify-between items-center mb-1">
-                  <h3 class="text-base font-bold text-neutral-900 dark:text-white">{{ $t('dashboard.distribution_title', 'Kampanya Dağılımı') }} <span v-if="expandedCharts.radar" class="text-blue-600 font-extrabold">({{ $t('dashboard.sub_breakdowns', 'Alt Kırılımlar') }})</span></h3>
+                  <h3 class="text-base font-bold text-neutral-900 dark:text-white">{{ $t('dashboard.distribution_title', 'Kampanya Dağılımı') }} <span v-if="expandedCharts.radar" class="text-blue-600 font-extrabold">({{ $t('dashboard.expanded_view', 'Genişletilmiş Görünüm') }})</span></h3>
                   
                   <div class="flex items-center gap-1.5" data-png-gizle>
                     <button @click="exportChart('radarChartRef', 'csv')" :title="$t('dashboard.export_excel', 'Excel Olarak İndir')" class="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
@@ -2224,9 +2253,19 @@ const mgmCampaigns = computed(() => {
                   </div>
                 </div>
                 <p class="text-xs font-semibold text-neutral-500 mb-6">{{ $t('dashboard.distribution_subtitle', 'Banka vs Sektör Ortalaması - Çeşitlilik') }}</p>
-                <div @click="chartInteracts.line = true" @mouseleave="chartInteracts.line = false" class="relative transition-all duration-300 flex items-center justify-center w-full" :class="(expandedCharts.line || expandedCharts.radar) ? 'h-[550px]' : 'h-64'">
-                   <Radar ref="radarChartRef" v-if="expandedCharts.radar" :data="detailedRadarData" :options="detailedRadarOptions" />
-                   <Radar ref="radarChartRef" v-else :data="radarChartData" :options="radarOptions" />
+                <div @click="chartInteracts.line = true" @mouseleave="chartInteracts.line = false" class="relative transition-all duration-300 flex items-center justify-center w-full" :style="{ height: (expandedCharts.line || expandedCharts.radar) ? '550px' : '16rem', flexShrink: 0 }">
+                   <!-- "Detay" AYNI grafiği büyütür. Eskiden farklı bir veri
+                        setine (detailedRadarData) geçiyordu; kullanıcı aynı
+                        görünümün büyüğünü bekliyordu, karşısına başka bir
+                        grafik çıkıyordu. Yükseklik yukarıdaki :class ile
+                        16rem -> 550px olarak zaten büyüyor.
+
+                        ⚠️ Yükseklik Tailwind sınıfı değil SATIR İÇİ STİL:
+                        `h-[550px]` keyfi değeri bu derlemede üretilmiyordu,
+                        sınıf uygulanıyor ama karşılığı olan CSS olmadığı için
+                        kapsayıcı 256px'te kalıyor ve "Detay" hiçbir şey
+                        büyütmüyordu. -->
+                   <Radar ref="radarChartRef" :data="radarChartData" :options="radarOptions" />
                 </div>
               </div>
             </div>
@@ -2254,7 +2293,7 @@ const mgmCampaigns = computed(() => {
                   </div>
                 </div>
                 <p class="text-xs font-semibold text-neutral-500 mb-6">{{ $t('dashboard.duration_subtitle', 'Tür bazında kampanya yayın süresi dağılımı (ay)') }}</p>
-                <div @click="chartInteracts.duration = true" @mouseleave="chartInteracts.duration = false" class="relative transition-all duration-300" :class="expandedCharts.duration ? 'h-[550px]' : 'h-80'">
+                <div @click="chartInteracts.duration = true" @mouseleave="chartInteracts.duration = false" class="relative transition-all duration-300" :style="{ height: expandedCharts.duration ? '550px' : '20rem', flexShrink: 0 }">
                    <Bar ref="barChartRef" v-if="expandedCharts.duration" :data="detailedBarData" :options="detailedBarOptions" />
                    <Bar ref="barChartRef" v-else :data="durationBarChartData" :options="durationBarOptions" />
                 </div>

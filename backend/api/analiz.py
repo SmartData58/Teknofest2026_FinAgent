@@ -212,7 +212,10 @@ def _tr_sayi(deger: Optional[float], ondalik: int = 0) -> str:
 
 
 def _mongo():
-    return MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)[DB_ADI]
+    # Paylaşılan havuz: her çağrıda yeni MongoClient kurmak, istek başına
+    # bağlantı kurulumu + sunucu keşfi maliyeti demekti (bkz. mongo_baglanti).
+    from chatbot.mongo_baglanti import veritabani
+    return veritabani(MONGO_URI, DB_ADI, zaman_asimi_ms=5000)
 
 
 def _sayi(ham: Any) -> Optional[float]:

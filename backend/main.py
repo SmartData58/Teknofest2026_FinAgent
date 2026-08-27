@@ -1,6 +1,7 @@
 import os
 import json
 import shutil
+import time
 import asyncio
 import uuid
 import inspect
@@ -180,15 +181,40 @@ class ScrapePayload(BaseModel):
     url: str
 
 
+# ⏱️ /health, docker-compose healthcheck'i tarafından 15 SANİYEDE BİR çağrılıyor
+# (bkz. docker-compose.yml). Her çağrı UZAK Qdrant servisine canlı bir istek
+# atıyordu; ölçüldü: istek başına 0,39-0,54 sn. Yani hiç kullanıcı yokken bile
+# dakikada 4 kez yarım saniyelik ağ çağrısı yapılıyor ve bir olay döngüsü yuvası
+# o süre boyunca tutuluyordu. Qdrant durumu bu ölçekte saniyeler içinde
+# değişmediği için kısa ömürlü bir bellek-içi önbellek yeterli; healthcheck
+# aralığının (15sn) altında tutuldu ki gerçek bir arıza yine hızla görünsün.
+_SAGLIK_TTL = 10.0
+_saglik_onbellek: dict = {"zaman": 0.0, "qdrant": None}
+
+
+async def _qdrant_durumu_onbellekli():
+    simdi = time.monotonic()
+    if (_saglik_onbellek["qdrant"] is not None
+            and simdi - _saglik_onbellek["zaman"] < _SAGLIK_TTL):
+        return _saglik_onbellek["qdrant"]
+    durum = await asyncio.to_thread(qdrant_durumu)
+    _saglik_onbellek.update(zaman=simdi, qdrant=durum)
+    return durum
+
+
 @app.get("/health")
-async def health():
-    """Servisin ve Qdrant koleksiyonunun CANLI durumu.
+async def health(taze: bool = False):
+    """Servisin ve Qdrant koleksiyonunun durumu.
 
     Vektörlemeyi kendi pipeline'ınız yaptığı için bu uç, uygulamanın ne
     yazdığını değil, Qdrant'ta GERÇEKTEN ne olduğunu okur (salt okunur) ve
     payload sözleşmesi bozuksa ('belge' / 'banka_kodu' alanları) uyarır.
+
+    Qdrant sorgusu en fazla 10 saniye önbelleklenir; `?taze=true` ile bu
+    atlanıp canlı okuma zorlanabilir.
     """
-    qdrant = await asyncio.to_thread(qdrant_durumu)
+    qdrant = (await asyncio.to_thread(qdrant_durumu) if taze
+              else await _qdrant_durumu_onbellekli())
     # 🚀 Yarışma servisinin yapılandırması ve modellerin ısınıp ısınmadığı da
     # burada görünüyor (ağ çağrısı yapmaz, sadece son durumu raporlar).
     return {"status": "ok", "qdrant": qdrant, "evren": evren_durum()}

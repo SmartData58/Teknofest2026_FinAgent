@@ -23,7 +23,33 @@ except ModuleNotFoundError:
 #   • Ajanlar (llm_json)    -> llm-fast  : medyan 0,91sn — niyet/öneri/denetim
 #     gibi tek satırlık JSON işleri için büyük modeli meşgul etmeye gerek yok.
 # İkisi de EVREN_MODEL / EVREN_MODEL_HIZLI ile değiştirilebilir.
+# 🚀 MUHAKEMEYİ KAPATMA — AJANLARA DA UYGULANIYOR.
+#
+# `evren_client._govde_kur` isteğe `chat_template_kwargs.enable_thinking=False`
+# koyuyor; ama ajanlar evren_client'ı değil LangChain'in ChatOpenAI'ını
+# kullanıyor ve bu alan oraya HİÇ GEÇMİYORDU. Sonuç: ana cevap muhakemesiz
+# (hızlı) üretilirken, tek satırlık JSON döndüren ajanlar tam muhakeme
+# maliyetini ödüyordu.
+#
+# Ölçüm (aynı model, aynı istem, "{\"ok\":true}" döndür):
+#     düşünme AÇIK  : 2.7 sn / 13 karakter
+#     düşünme KAPALI: 0.2 sn / 11 karakter      -> ~13 kat
+#
+# Etkisi bileşik: denetçi 13.7 sn + öneri motoru 20.9 sn paralel çalışıyor ve
+# her önbelleklenmemiş cevaba ~20 saniye ekliyordu.
+#
+# Anahtar tek kaynaktan (evren_client) okunuyor ki EVREN_DUSUNME ayarı iki
+# yerde ayrışmasın.
+try:
+    from chatbot.evren_client import DUSUNME_KAPALI as _DUSUNME_KAPALI
+except Exception:  # evren_client yoksa davranışı değiştirme
+    _DUSUNME_KAPALI = False
+
+_DUSUNMESIZ_GOVDE = {"chat_template_kwargs": {"enable_thinking": False}}
+
+
 def _llm(model: str, temperature: float, max_tokens: int = 2048, timeout: float = 120.0):
+    ek = {"extra_body": _DUSUNMESIZ_GOVDE} if _DUSUNME_KAPALI else {}
     return ChatOpenAI(
         model=model,
         temperature=temperature,
@@ -32,6 +58,7 @@ def _llm(model: str, temperature: float, max_tokens: int = 2048, timeout: float 
         max_tokens=max_tokens,
         timeout=timeout,
         max_retries=2,
+        **ek,
     )
 
 
