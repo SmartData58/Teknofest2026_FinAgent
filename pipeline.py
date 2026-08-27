@@ -38,6 +38,7 @@ def run_step_2_runner(banka: str = None, hepsi: bool = False):
 
     try:
         from scraper.runner import main as runner_main
+        from scraper.runner2 import main as runner2_main
 
         # Scraper runner'ının beklediği sys.argv simülasyonu
         if hepsi:
@@ -46,6 +47,7 @@ def run_step_2_runner(banka: str = None, hepsi: bool = False):
             sys.argv = ["runner.py", banka]
 
         runner_main()
+        runner2_main()
     except Exception as e:
         print(f"❌ Scraper / Runner çalıştırma hatası: {e}")
         sys.exit(1)

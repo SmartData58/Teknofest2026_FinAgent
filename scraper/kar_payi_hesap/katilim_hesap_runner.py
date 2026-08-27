@@ -15,11 +15,6 @@ import sys
 from datetime import datetime, timezone  # Bu satırı geri ekledik
 from pymongo import MongoClient
 
-<<<<<<< HEAD:scraper/kar_payi_hesap/katilim_hesap_runner.py
-
-from scraper.kar_payi_hesap import vakif_katilim_hesap
-from scraper.kar_payi_hesap import ziraat_katilim_hesap
-=======
 # Bulunduğu klasörü Python'un modül arama yollarına ekler
 mevcut_dizin = os.path.dirname(os.path.abspath(__file__))
 if mevcut_dizin not in sys.path:
@@ -27,7 +22,6 @@ if mevcut_dizin not in sys.path:
 
 import vakif_katılım_hesap  
 import ziraat_katılım_hesap
->>>>>>> e2f8b0024c451bb0e329982af4a68310163b475e:scraper/kar_payi_hesap/katılım_hesap_runner.py
 
 
 try:
