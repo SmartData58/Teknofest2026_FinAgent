@@ -301,7 +301,7 @@
     </div>
 
     <!-- ================= 4. İÇERİK LİSTESİ ================= -->
-    <div id="katilim-hesap-list-container" class="relative min-h-[400px]">
+    <div id="katilim-content-area" class="relative min-h-[400px]">
       
       <!-- Yükleniyor Durumu -->
       <div v-if="isLoading" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -420,7 +420,7 @@
                   {{ account.net_kar_str }}
                 </span>
                 <span class="text-[10px] text-red-500/80">
-                  Stopaj: {{ account.stopaj_kesintisi_str }}
+                  {{ $t('katilim_hesap.col_tax', 'Stopaj') }}: {{ account.stopaj_kesintisi_str }}
                 </span>
               </div>
 
@@ -431,7 +431,7 @@
                   {{ account.toplam_str }}
                 </span>
                 <span class="text-[10px] text-neutral-400">
-                  Ana Para + Kâr Payı
+                  {{ $t('katilim_hesap.principal_plus_profit', 'Ana Para + Kâr Payı') }}
                 </span>
               </div>
 
@@ -671,138 +671,150 @@
 
     </div>
 
-    <!-- ================= 5. YAN DRAWER MODAL (HESAPLAYICI & DETAYLAR) ================= -->
-    <transition enter-active-class="transition duration-300 ease-out" enter-from-class="opacity-0" enter-to-class="opacity-100" leave-active-class="transition duration-200 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
-      <div v-if="selectedAccount" class="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm" @click.self="selectedAccount = null">
-        
-        <div class="w-full max-w-lg bg-white dark:bg-neutral-900 h-full shadow-2xl flex flex-col justify-between overflow-y-auto border-l border-neutral-200 dark:border-neutral-800 p-6 md:p-8 space-y-6">
+    <!-- ================= 5. KATILIM HESABI DETAY PANELİ (DRAWER / MODAL - NO BLUR) ================= -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transform transition-all duration-300 ease-out" 
+        enter-from-class="translate-x-[120%] opacity-0 scale-95" 
+        enter-to-class="translate-x-0 opacity-100 scale-100" 
+        leave-active-class="transform transition-all duration-300 ease-in" 
+        leave-from-class="translate-x-0 opacity-100 scale-100" 
+        leave-to-class="translate-x-[120%] opacity-0 scale-95"
+      >
+        <div v-if="selectedAccount" class="fixed right-4 top-4 bottom-4 w-[340px] sm:w-[420px] lg:w-[480px] bg-white dark:bg-[#121212] rounded-[24px] shadow-[0_12px_40px_rgba(0,0,0,0.15)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.7)] border border-neutral-200 dark:border-neutral-700 flex flex-col z-[100] overflow-hidden">
           
-          <div class="space-y-6">
+          <!-- Drawer Header -->
+          <div class="flex justify-between items-center p-4 border-b border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800">
+            <h3 class="text-[14px] font-bold flex items-center gap-2 text-neutral-800 dark:text-white">
+              <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              {{ $t('katilim_hesap.calc_and_details', 'Katılım Hesabı Detayları') }}
+            </h3>
+            <button @click="selectedAccount = null" class="p-1 text-neutral-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors active:scale-90 transform duration-200" :title="$t('financing.close', 'Kapat')">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
+
+          <!-- Drawer Body -->
+          <div class="flex-1 overflow-y-auto p-4 lg:p-6 custom-scrollbar space-y-4">
             
-            <!-- Modal Başlığı -->
-            <div class="flex items-center justify-between pb-4 border-b border-neutral-100 dark:border-neutral-800">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-white border border-neutral-200/80 dark:border-white/20 p-1.5 flex items-center justify-center shrink-0 shadow-sm">
-                  <img :src="selectedAccount.logo_url" :alt="selectedAccount.banka_adi" class="w-full h-full object-contain" />
+            <!-- Banka Bilgisi ve Hesap Başlığı -->
+            <div class="flex items-center gap-3 p-3.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-100 dark:border-neutral-800">
+              <div class="w-12 h-12 rounded-2xl bg-white border border-neutral-200/80 dark:border-white/20 flex items-center justify-center p-2 shrink-0 shadow-sm">
+                <img :src="selectedAccount.logo_url" :alt="selectedAccount.banka_adi" class="w-full h-full object-contain" />
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h2 class="text-base font-black text-neutral-900 dark:text-white leading-snug">{{ selectedAccount.banka_adi }}</h2>
+                  <span v-if="selectedAccount.tier" class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-cyan-300 border border-blue-200/60 dark:border-blue-800/40 uppercase">
+                    {{ selectedAccount.tier }}
+                  </span>
                 </div>
-                <div>
-                  <h3 class="text-base font-bold text-neutral-900 dark:text-white">
-                    {{ selectedAccount.banka_adi }}
-                  </h3>
-                  <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                    {{ selectedAccount.resmi_ad || selectedAccount.banka_adi }}
-                  </p>
+                <div class="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5">
+                  {{ selectedAccount.resmi_ad || selectedAccount.banka_adi }}
                 </div>
               </div>
-
-              <button 
-                @click="selectedAccount = null"
-                class="p-2 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-all"
-              >
-                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
             </div>
 
-            <!-- İnteraktif Kâr Payı Simülatörü -->
-            <div class="p-5 rounded-2xl bg-gradient-to-br from-emerald-500/5 via-teal-500/5 to-cyan-500/5 border border-emerald-500/20 space-y-4">
+            <!-- Vurgulu Finansal Parametreler (Grid) -->
+            <div class="grid grid-cols-2 gap-2.5">
+              
+              <!-- Net Kâr Oranı -->
+              <div class="bg-neutral-50 dark:bg-neutral-800/50 p-3.5 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('katilim_hesap.col_net_rate', 'Net Kâr Oranı') }}</div>
+                <div class="text-lg font-black text-emerald-600 dark:text-emerald-400">{{ selectedAccount.net_oran_str }}</div>
+              </div>
+
+              <!-- Yatırılan Tutar -->
+              <div class="bg-neutral-50 dark:bg-neutral-800/50 p-3.5 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('katilim_hesap.col_amount', 'Yatırılan Tutar') }}</div>
+                <div class="text-base font-extrabold text-neutral-900 dark:text-white">{{ selectedAccount.yatirilan_tutar_str || formatCurrency(selectedAccount.yatirilan_tutar) }}</div>
+              </div>
+
+              <!-- Vade Süresi -->
+              <div class="bg-neutral-50 dark:bg-neutral-800/50 p-3.5 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('katilim_hesap.col_term', 'Vade') }}</div>
+                <div class="text-base font-extrabold text-neutral-900 dark:text-white">{{ selectedAccount.vade }}</div>
+              </div>
+
+              <!-- Brüt Kâr Oranı -->
+              <div class="bg-neutral-50 dark:bg-neutral-800/50 p-3.5 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('katilim_hesap.col_gross_rate', 'Brüt Kâr Oranı') }}</div>
+                <div class="text-base font-black text-blue-600 dark:text-cyan-400">{{ selectedAccount.brut_oran_str }}</div>
+              </div>
+
+            </div>
+
+            <!-- Toplam Bakiye & Net Kâr Kartı -->
+            <div class="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/80 to-blue-50/80 dark:from-indigo-950/40 dark:to-blue-950/40 border border-indigo-200/70 dark:border-indigo-800/60">
               <div class="flex items-center justify-between">
-                <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                  </svg>
-                  <span>{{ $t('katilim_hesap.sim_title', 'Kâr Payı Hesaplayıcı (Simülatör)') }}</span>
-                </h4>
-                <span class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
-                  {{ selectedAccount.net_oran_str }} Net
-                </span>
-              </div>
-
-              <!-- Simülasyon Tutarı Girdisi -->
-              <div class="space-y-1.5">
-                <label class="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-                  {{ $t('katilim_hesap.sim_deposit_input', 'Hesaplanacak Mevduat Tutarı (TL)') }}
-                </label>
-                <div class="relative">
-                  <input 
-                    v-model.number="simAmount"
-                    type="number" 
-                    step="5000"
-                    min="1000"
-                    class="w-full px-3 py-2 pr-8 text-sm font-bold bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-neutral-900 dark:text-white"
-                  />
-                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-neutral-400">₺</span>
+                <div>
+                  <span class="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider block">
+                    {{ $t('katilim_hesap.col_total', 'Vade Sonu Toplam Bakiye') }}
+                  </span>
+                  <span class="text-xl font-black text-indigo-900 dark:text-indigo-200 mt-1 block">
+                    {{ selectedAccount.toplam_str || formatCurrency(selectedAccount.toplam) }}
+                  </span>
+                </div>
+                <div class="text-right text-xs text-indigo-600/80 dark:text-indigo-400">
+                  <span class="text-[10px] block text-neutral-500 dark:text-neutral-400">{{ $t('katilim_hesap.col_net_profit', 'Net Kâr Getirisi') }}</span>
+                  <span class="font-extrabold text-sm text-emerald-600 dark:text-emerald-400">
+                    {{ selectedAccount.net_kar_str || formatCurrency(selectedAccount.net_kar) }}
+                  </span>
                 </div>
               </div>
+            </div>
 
-              <!-- Hızlı Tutar Butonları -->
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <button 
-                  v-for="preset in [50000, 100000, 250000, 500000, 1000000]" 
-                  :key="preset"
-                  @click="simAmount = preset"
-                  class="px-2 py-1 text-[10px] font-bold rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:border-emerald-500 transition-all"
-                >
-                  {{ formatCompactNumber(preset) }} ₺
-                </button>
+            <!-- Getiri & Kesinti Dökümü -->
+            <div class="bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-2.5">
+              <div class="text-[11px] font-bold text-neutral-400 uppercase tracking-wider mb-1">{{ $t('katilim_hesap.profit_breakdown', 'Getiri & Kesinti Dökümü') }}</div>
+              
+              <div class="flex items-center justify-between text-xs py-1 border-b border-neutral-200/50 dark:border-neutral-700/50">
+                <span class="text-neutral-600 dark:text-neutral-400">{{ $t('katilim_hesap.col_gross_profit', 'Hesaplanan Brüt Kâr') }}</span>
+                <span class="font-bold text-neutral-800 dark:text-neutral-200">{{ selectedAccount.brut_kar_str || formatCurrency(selectedAccount.brut_kar) }}</span>
               </div>
 
-              <!-- Simülasyon Sonuç Tablosu -->
-              <div class="p-3.5 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700/80 space-y-2 text-xs">
-                <div class="flex items-center justify-between text-neutral-600 dark:text-neutral-400">
-                  <span>{{ $t('katilim_hesap.sim_gross_earn', 'Hesaplanan Brüt Kâr:') }}</span>
-                  <span class="font-bold text-neutral-800 dark:text-neutral-200">{{ formatCurrency(simCalculated.gross) }}</span>
-                </div>
-                <div class="flex items-center justify-between text-neutral-600 dark:text-neutral-400">
-                  <span>{{ $t('katilim_hesap.sim_tax_cut', 'Yasal Stopaj Kesintisi (%7,5):') }}</span>
-                  <span class="font-bold text-red-500">-{{ formatCurrency(simCalculated.tax) }}</span>
-                </div>
-                <div class="pt-2 border-t border-neutral-100 dark:border-neutral-700 flex items-center justify-between">
-                  <span class="font-bold text-neutral-800 dark:text-neutral-200">{{ $t('katilim_hesap.sim_net_earn', 'Net Kâr Payı Getirisi:') }}</span>
-                  <span class="font-black text-sm text-emerald-600 dark:text-emerald-400">{{ formatCurrency(simCalculated.net) }}</span>
-                </div>
-                <div class="pt-1 flex items-center justify-between">
-                  <span class="font-bold text-neutral-800 dark:text-neutral-200">{{ $t('katilim_hesap.sim_total_payout', 'Vade Sonu Toplam Bakiye:') }}</span>
-                  <span class="font-black text-sm text-neutral-900 dark:text-white">{{ formatCurrency(simCalculated.total) }}</span>
-                </div>
+              <div class="flex items-center justify-between text-xs py-1 border-b border-neutral-200/50 dark:border-neutral-700/50">
+                <span class="text-neutral-600 dark:text-neutral-400">{{ $t('katilim_hesap.withholding_tax', 'Yasal Stopaj Kesintisi (%7,5)') }}</span>
+                <span class="font-bold text-red-500">{{ selectedAccount.stopaj_kesintisi_str || ('-' + formatCurrency(selectedAccount.stopaj_kesintisi)) }}</span>
               </div>
 
+              <div class="flex items-center justify-between text-xs py-1">
+                <span class="text-neutral-600 dark:text-neutral-400 font-semibold">{{ $t('katilim_hesap.col_net_profit', 'Net Kâr Payı Getirisi') }}</span>
+                <span class="font-extrabold text-emerald-600 dark:text-emerald-400">{{ selectedAccount.net_kar_str || formatCurrency(selectedAccount.net_kar) }}</span>
+              </div>
             </div>
 
             <!-- Yasal Bilgilendirme ve Güvence -->
-            <div class="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 space-y-2 text-xs text-neutral-600 dark:text-neutral-400">
+            <div class="bg-neutral-50 dark:bg-neutral-800/50 p-3.5 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-2 text-xs text-neutral-600 dark:text-neutral-400">
               <div class="font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
                 <svg class="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
                 <span>{{ $t('katilim_hesap.tmsf_guarantee_title', 'TMSF ve Katılım Fonu Güvencesi') }}</span>
               </div>
-              <p>
+              <p class="leading-relaxed text-[11px]">
                 {{ $t('katilim_hesap.tmsf_guarantee_desc', 'Katılım bankalarındaki gerçek kişilere ait katılım fonları, Tasarruf Mevduatı Sigorta Fonu (TMSF) güvencesi altındadır.') }}
               </p>
-              <p class="text-[11px] text-neutral-500">
+              <p class="text-[10.5px] text-neutral-400 leading-relaxed">
                 {{ $t('katilim_hesap.profit_share_disclaimer', 'Katılım hesapları kâr-zarar ortaklığı prensibiyle çalışır; oranlar geçmiş dönem getirilerine ve piyasa şartlarına göre değişkenlik gösterebilir.') }}
               </p>
             </div>
 
-          </div>
+            <!-- FinAgent ile Analiz Yap -->
+            <div class="pt-2">
+              <button 
+                @click="askAiAboutAccount(selectedAccount)"
+                class="w-full flex items-center justify-center gap-2.5 px-4 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-md hover:shadow-lg transition-all active:scale-98"
+              >
+                <img src="/logo.svg" class="w-4 h-4 object-contain brightness-0 invert" alt="" />
+                <span>{{ $t('katilim_hesap.ai_ask_full_btn', "FinAgent ile Bu Getiriyi Analiz Et") }}</span>
+              </button>
+            </div>
 
-          <!-- Alt Buton: FinAgent ile Kapsamlı Analiz -->
-          <div class="pt-4 border-t border-neutral-100 dark:border-neutral-800">
-            <button 
-              @click="askAiAboutAccount(selectedAccount)"
-              class="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:to-cyan-700 text-white font-bold text-xs rounded-2xl shadow-lg hover:shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 active:scale-95 group"
-            >
-              <img src="/logo.svg" alt="FinAgent" class="w-4 h-4 object-contain filter drop-shadow-[0_0_6px_rgba(255,255,255,0.8)] group-hover:scale-110 transition-transform" />
-              <span>{{ $t('katilim_hesap.ai_ask_full_btn', "FinAgent ile Bu Getiriyi Analiz Et") }}</span>
-            </button>
           </div>
-
         </div>
-
-      </div>
-    </transition>
+      </Transition>
+    </Teleport>
 
   </div>
 </template>
@@ -1123,30 +1135,475 @@ const formatCompactNumber = (val) => {
   return val.toString()
 }
 
-// Dışa Aktarma (Excel, PDF, PNG)
-const exportData = (type) => {
+const betigiYukle = (src, globalName) => {
+  return new Promise((resolve, reject) => {
+    if (typeof window !== 'undefined' && window[globalName]) {
+      return resolve(window[globalName])
+    }
+    const existing = document.querySelector(`script[src="${src}"]`)
+    if (existing) {
+      if (window[globalName]) return resolve(window[globalName])
+      existing.addEventListener('load', () => resolve(window[globalName]))
+      existing.addEventListener('error', (err) => reject(err))
+      setTimeout(() => {
+        if (window[globalName]) resolve(window[globalName])
+        else resolve(window[globalName])
+      }, 1500)
+      return
+    }
+    const s = document.createElement('script')
+    s.src = src
+    s.async = true
+    s.onload = () => resolve(window[globalName])
+    s.onerror = (err) => reject(err)
+    document.head.appendChild(s)
+  })
+}
+
+const escapeHtml = (str) => {
+  if (str === null || str === undefined) return ''
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+// Dışa Aktarma (Excel XLSX, Vektörel PDF, Ultra-HD PNG)
+const exportData = async (type) => {
+  if (filteredAccounts.value.length === 0) return
+
   if (type === 'excel') {
-    let csv = 'Banka,Tier,Vade,Yatırılan Tutar,Brüt Oran,Net Oran,Brüt Kâr,Stopaj Kesintisi,Net Kâr Getirisi,Vade Sonu Toplam\n'
-    filteredAccounts.value.forEach(a => {
-      csv += `"${a.banka_adi}","${a.tier}","${a.vade}","${a.yatirilan_tutar}","%${a.brut_oran}","%${a.net_oran}","${a.brut_kar}","${a.stopaj_kesintisi}","${a.net_kar}","${a.toplam}"\n`
-    })
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.setAttribute('download', `Katilim_Hesaplari_${new Date().toISOString().slice(0, 10)}.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    try {
+      await betigiYukle('https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js', 'XLSX')
+      const XLSX = window.XLSX
+      const wb = XLSX.utils.book_new()
+
+      const today = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })
+      const activeFilterSummary = []
+      if (selectedBanks.value.length > 0) {
+        const bNames = selectedBanks.value.map(code => {
+          const bObj = availableBanks.value.find(b => b.code === code)
+          return bObj ? bObj.name : code
+        })
+        activeFilterSummary.push(`Banka: ${bNames.join(', ')}`)
+      }
+      if (selectedTiers.value.length > 0) activeFilterSummary.push(`Tier: ${selectedTiers.value.join(', ')}`)
+      if (selectedAmount.value !== null) activeFilterSummary.push(`Tutar: ${formatCurrency(selectedAmount.value)}`)
+      if (selectedTerm.value !== null) activeFilterSummary.push(`Vade: ${selectedTerm.value}`)
+
+      const dataRows = []
+      
+      // 1. Rapor Ana Başlığı
+      dataRows.push([
+        { v: 'FINAGENT · KATILIM HESABI KÂR PAYI GETİRİLERİ RAPORU', s: { font: { bold: true, sz: 14, color: { rgb: '1E40AF' } }, alignment: { horizontal: 'left' } } }
+      ])
+      
+      // 2. Meta & Filtre Bilgileri
+      dataRows.push([
+        { v: `Rapor Tarihi: ${today} | Toplam Hesap Seçeneği: ${filteredAccounts.value.length}${activeFilterSummary.length ? ' | Filtreler: ' + activeFilterSummary.join(', ') : ''}`, s: { font: { italic: true, sz: 9, color: { rgb: '6B7280' } } } }
+      ])
+      dataRows.push([]) // Boş satır
+
+      // 3. Tablo Başlıkları
+      const headers = [
+        'Banka',
+        'Tier',
+        'Vade',
+        'Yatırılan Tutar (TL)',
+        'Brüt Kâr Oranı (%)',
+        'Net Kâr Oranı (%)',
+        'Brüt Kâr Getirisi (TL)',
+        'Stopaj Kesintisi (%7,5) (TL)',
+        'Net Kâr Payı Getirisi (TL)',
+        'Vade Sonu Toplam Bakiye (TL)'
+      ]
+
+      const headerCells = headers.map(h => ({
+        v: h,
+        s: {
+          fill: { fgColor: { rgb: '2563EB' } },
+          font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 },
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+          border: {
+            top: { style: 'thin', color: { rgb: '93C5FD' } },
+            bottom: { style: 'thin', color: { rgb: '93C5FD' } },
+            left: { style: 'thin', color: { rgb: '93C5FD' } },
+            right: { style: 'thin', color: { rgb: '93C5FD' } }
+          }
+        }
+      }))
+      dataRows.push(headerCells)
+
+      // 4. Veri Satırları
+      filteredAccounts.value.forEach((a, idx) => {
+        const isEven = idx % 2 === 0
+        const rowBg = isEven ? 'FFFFFF' : 'F8FAFC'
+        const borderStyle = {
+          top: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          left: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          right: { style: 'thin', color: { rgb: 'E2E8F0' } }
+        }
+
+        const brutRateVal = a.brut_oran ? a.brut_oran / 100 : (a.brut_oran_str ? parseFloat(a.brut_oran_str.replace('%', '').replace(',', '.')) / 100 : 0)
+        const netRateVal = a.net_oran ? a.net_oran / 100 : (a.net_oran_str ? parseFloat(a.net_oran_str.replace('%', '').replace(',', '.')) / 100 : 0)
+
+        const row = [
+          { v: a.banka_adi || '', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+          { v: a.tier || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+          { v: a.vade || '', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+          { v: a.yatirilan_tutar || 0, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } },
+          { v: brutRateVal, t: 'n', z: '0.00%', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+          { v: netRateVal, t: 'n', z: '0.00%', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '059669' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+          { v: a.brut_kar || (a.brut_kar_str ? parseFloat(a.brut_kar_str.replace(/[^\d.,]/g, '').replace('.', '').replace(',', '.')) : 0), t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } },
+          { v: a.stopaj_kesintisi || (a.stopaj_kesintisi_str ? parseFloat(a.stopaj_kesintisi_str.replace(/[^\d.,]/g, '').replace('.', '').replace(',', '.')) : 0), t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9, color: { rgb: 'DC2626' } }, border: borderStyle, alignment: { horizontal: 'right' } } },
+          { v: a.net_kar || (a.net_kar_str ? parseFloat(a.net_kar_str.replace(/[^\d.,]/g, '').replace('.', '').replace(',', '.')) : 0), t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '059669' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } },
+          { v: a.toplam || (a.toplam_str ? parseFloat(a.toplam_str.replace(/[^\d.,]/g, '').replace('.', '').replace(',', '.')) : 0), t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '4338CA' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } }
+        ]
+        dataRows.push(row)
+      })
+
+      const ws = XLSX.utils.aoa_to_sheet(dataRows)
+      ws['!cols'] = [
+        { wch: 22 }, // Banka
+        { wch: 10 }, // Tier
+        { wch: 14 }, // Vade
+        { wch: 22 }, // Yatırılan Tutar
+        { wch: 18 }, // Brüt Oran
+        { wch: 18 }, // Net Oran
+        { wch: 20 }, // Brüt Kâr
+        { wch: 22 }, // Stopaj Kesintisi
+        { wch: 22 }, // Net Kâr
+        { wch: 24 }  // Vade Sonu Toplam
+      ]
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Katılım Hesapları')
+      XLSX.writeFile(wb, `FinAgent_Katilim_Hesaplari_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    } catch (e) {
+      console.error('Excel export hatası:', e)
+    }
   } else if (type === 'pdf') {
-    window.print()
+    try {
+      await betigiYukle('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js', 'html2pdf')
+
+      const today = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      const activeFilterSummary = []
+      if (selectedBanks.value.length > 0) {
+        const bNames = selectedBanks.value.map(code => {
+          const bObj = availableBanks.value.find(b => b.code === code)
+          return bObj ? bObj.name : code
+        })
+        activeFilterSummary.push(`Banka: ${bNames.join(', ')}`)
+      }
+      if (selectedTiers.value.length > 0) activeFilterSummary.push(`Tier: ${selectedTiers.value.join(', ')}`)
+      if (selectedAmount.value !== null) activeFilterSummary.push(`Tutar: ${formatCurrency(selectedAmount.value)}`)
+      if (selectedTerm.value !== null) activeFilterSummary.push(`Vade: ${selectedTerm.value}`)
+
+      // Sayfalara bölme
+      const PAGE1_CHUNK_SIZE = 40
+      const NEXT_PAGES_CHUNK_SIZE = 52
+
+      const pages = []
+      const remaining = [...filteredAccounts.value]
+
+      // 1. Sayfa
+      pages.push({
+        isFirst: true,
+        items: remaining.splice(0, PAGE1_CHUNK_SIZE)
+      })
+
+      // Sonraki Sayfalar
+      while (remaining.length > 0) {
+        pages.push({
+          isFirst: false,
+          items: remaining.splice(0, NEXT_PAGES_CHUNK_SIZE)
+        })
+      }
+
+      const totalPages = pages.length
+
+      let html = `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #171717; background-color: #ffffff; width: 720px; margin: 0 auto; box-sizing: border-box;">`
+
+      pages.forEach((page, pageIdx) => {
+        const isLastPage = pageIdx === totalPages - 1
+        const pageNumber = pageIdx + 1
+
+        html += `
+          <div style="box-sizing: border-box; width: 720px; min-height: 1020px; display: flex; flex-direction: column; justify-content: space-between; padding: 10px 5px 10px 5px; ${!isLastPage ? 'page-break-after: always;' : ''}">
+            
+            <!-- ÜST İÇERİK ALANI -->
+            <div style="width: 100%;">
+              ${page.isFirst ? `
+                <!-- 1. SAYFA ANA BAŞLIK & MARKA -->
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2563eb; padding-bottom: 8px; margin-bottom: 10px;">
+                    <div>
+                        <h1 style="color: #2563eb; margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -0.5px;">
+                            FinAgent · Katılım Hesabı Kâr Payı Oranları Raporu
+                        </h1>
+                        <p style="color: #6b7280; font-size: 10px; margin: 2px 0 0 0;">
+                            Rapor Tarihi: ${escapeHtml(today)} ${activeFilterSummary.length ? `| Filtreler: ${escapeHtml(activeFilterSummary.join(', '))}` : ''}
+                        </p>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="font-size: 10.5px; font-weight: 700; color: #1e40af; background: #eff6ff; border: 1px solid #bfdbfe; padding: 2px 7px; border-radius: 5px;">
+                            ${filteredAccounts.value.length} Hesap Seçeneği
+                        </span>
+                    </div>
+                </div>
+
+                <!-- ÖZET İSTATİSTİK KUTULARI (KPIs) -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px;">
+                    <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 6px 4px; text-align: center;">
+                        <div style="font-size: 8.5px; font-weight: 700; color: #1e40af; text-transform: uppercase;">En Yüksek Net Oran</div>
+                        <div style="font-size: 14px; font-weight: 900; color: #2563eb; margin-top: 1px;">${stats.value.max_net_rate > 0 ? '%' + stats.value.max_net_rate.toFixed(2).replace('.', ',') : '-'}</div>
+                        <div style="font-size: 7.5px; color: #1d4ed8; font-weight: 600;">${escapeHtml(stats.value.best_bank || '-')}</div>
+                    </div>
+                    <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 4px; text-align: center;">
+                        <div style="font-size: 8.5px; font-weight: 700; color: #475569; text-transform: uppercase;">En Yüksek Net Getiri</div>
+                        <div style="font-size: 13.5px; font-weight: 900; color: #0f172a; margin-top: 1px;">${formatCurrency(stats.value.max_net_profit)}</div>
+                        <div style="font-size: 7.5px; color: #64748b;">Seçili tutar/vadede</div>
+                    </div>
+                    <div style="background-color: #eef2ff; border: 1px solid #c7d2fe; border-radius: 6px; padding: 6px 4px; text-align: center;">
+                        <div style="font-size: 8.5px; font-weight: 700; color: #3730a3; text-transform: uppercase;">En Yüksek Brüt Oran</div>
+                        <div style="font-size: 13.5px; font-weight: 900; color: #4f46e5; margin-top: 1px;">${stats.value.max_gross_rate > 0 ? '%' + stats.value.max_gross_rate.toFixed(2).replace('.', ',') : '-'}</div>
+                        <div style="font-size: 7.5px; color: #4338ca;">Brüt kâr oranı</div>
+                    </div>
+                    <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 6px 4px; text-align: center;">
+                        <div style="font-size: 8.5px; font-weight: 700; color: #92400e; text-transform: uppercase;">Sektör Ortalaması</div>
+                        <div style="font-size: 14px; font-weight: 900; color: #d97706; margin-top: 1px;">${stats.value.avg_net_rate > 0 ? '%' + stats.value.avg_net_rate.toFixed(2).replace('.', ',') : '-'}</div>
+                        <div style="font-size: 7.5px; color: #b45309;">${filteredAccounts.value.length} hesap ortalaması</div>
+                    </div>
+                </div>
+              ` : `
+                <!-- DEVAM SAYFALARI ÜST BAŞLIĞI -->
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 8px;">
+                    <div style="font-size: 11.5px; font-weight: 800; color: #2563eb;">
+                        FinAgent · Katılım Hesabı Kâr Payı Oranları Raporu
+                    </div>
+                    <div style="font-size: 9px; color: #64748b;">
+                        Rapor Tarihi: ${escapeHtml(today)}
+                    </div>
+                </div>
+              `}
+
+              <!-- KATILIM HESAPLARI TABLOSU -->
+              <table style="width: 100%; border-collapse: collapse; font-size: 7.8px; table-layout: fixed; line-height: 1.15;">
+                  <thead>
+                      <tr style="background-color: #f1f5f9;">
+                          <th style="width: 18%; padding: 4px 4px; border: 1px solid #cbd5e1; text-align: left; color: #1e293b; font-weight: 700;">Banka</th>
+                          <th style="width: 8%; padding: 4px 3px; border: 1px solid #cbd5e1; text-align: center; color: #1e293b; font-weight: 700;">Tier</th>
+                          <th style="width: 10%; padding: 4px 3px; border: 1px solid #cbd5e1; text-align: center; color: #1e293b; font-weight: 700;">Vade</th>
+                          <th style="width: 14%; padding: 4px 4px; border: 1px solid #cbd5e1; text-align: right; color: #1e293b; font-weight: 700;">Tutar</th>
+                          <th style="width: 10%; padding: 4px 3px; border: 1px solid #cbd5e1; text-align: center; color: #1e293b; font-weight: 700;">Brüt Oran</th>
+                          <th style="width: 10%; padding: 4px 3px; border: 1px solid #cbd5e1; text-align: center; color: #059669; font-weight: 800;">Net Oran</th>
+                          <th style="width: 13%; padding: 4px 4px; border: 1px solid #cbd5e1; text-align: right; color: #1e293b; font-weight: 700;">Brüt Kâr</th>
+                          <th style="width: 13%; padding: 4px 4px; border: 1px solid #cbd5e1; text-align: right; color: #059669; font-weight: 800;">Net Kâr</th>
+                          <th style="width: 14%; padding: 4px 4px; border: 1px solid #cbd5e1; text-align: right; color: #4338ca; font-weight: 800;">Toplam Bakiye</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                    ${page.items.map((a, idx) => `
+                      <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
+                        <td style="padding: 2.8px 4px; border: 1px solid #e2e8f0; font-weight: 700; color: #1e40af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(a.banka_adi)}</td>
+                        <td style="padding: 2.8px 3px; border: 1px solid #e2e8f0; text-align: center; color: #64748b; white-space: nowrap;">${escapeHtml(a.tier || '-')}</td>
+                        <td style="padding: 2.8px 3px; border: 1px solid #e2e8f0; text-align: center; white-space: nowrap;">${escapeHtml(a.vade)}</td>
+                        <td style="padding: 2.8px 4px; border: 1px solid #e2e8f0; text-align: right; font-weight: 600; white-space: nowrap;">${a.yatirilan_tutar_str || formatCurrency(a.yatirilan_tutar)}</td>
+                        <td style="padding: 2.8px 3px; border: 1px solid #e2e8f0; text-align: center; white-space: nowrap;">${a.brut_oran_str}</td>
+                        <td style="padding: 2.8px 3px; border: 1px solid #e2e8f0; text-align: center; font-weight: 800; color: #059669; white-space: nowrap;">${a.net_oran_str}</td>
+                        <td style="padding: 2.8px 4px; border: 1px solid #e2e8f0; text-align: right; color: #475569; white-space: nowrap;">${a.brut_kar_str}</td>
+                        <td style="padding: 2.8px 4px; border: 1px solid #e2e8f0; text-align: right; font-weight: 800; color: #059669; white-space: nowrap;">${a.net_kar_str}</td>
+                        <td style="padding: 2.8px 4px; border: 1px solid #e2e8f0; text-align: right; font-weight: 800; color: #4338ca; white-space: nowrap;">${a.toplam_str}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+              </table>
+            </div>
+
+            <!-- HER SAYFANIN ALTINDAKİ YASAL UYARI & ALTBİLGİ ALANI -->
+            <div style="width: 100%; margin-top: auto; padding-top: 10px;">
+              <div style="padding: 6px 10px; background-color: #f8fafc; border-left: 3px solid #2563eb; border-radius: 4px; font-size: 8px; color: #475569; font-style: italic; line-height: 1.35;">
+                  Bu raporda yer alan veriler katılım bankalarının kamuya açık katılım fonu kâr payı dağıtım tablolarından derlenmiştir. Gerçek kişilere ait katılım fonları TMSF güvencesi altındadır. Kâr payı oranları geçmiş dönem getirilerini yansıtır.
+              </div>
+
+              <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; color: #9ca3af;">
+                  <span>Katılım Hesapları Kâr Payı Oranları · Bu rapor, FinAgent Yapay Zekâ platformu tarafından otomatik olarak oluşturulmuştur.</span>
+                  <span style="font-weight: 700; color: #2563eb;">Sayfa ${pageNumber} / ${totalPages}</span>
+              </div>
+            </div>
+
+          </div>
+        `
+      })
+
+      html += `</div>`
+
+      const tempDiv = document.createElement('div')
+      tempDiv.innerHTML = html
+
+      await window.html2pdf().set({
+        margin:       [0.3, 0.3, 0.3, 0.3],
+        filename:     `FinAgent_Katilim_Hesaplari_Raporu_${Date.now()}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, backgroundColor: '#ffffff', useCORS: true },
+        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' },
+        pagebreak:    { mode: ['css', 'legacy'] },
+      }).from(tempDiv).save()
+
+    } catch (e) {
+      console.error('PDF export hatası:', e)
+    }
   } else if (type === 'png') {
-    window.print()
+    try {
+      await betigiYukle('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'html2canvas')
+
+      const today = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      const activeFilterSummary = []
+      if (selectedBanks.value.length > 0) {
+        const bNames = selectedBanks.value.map(code => {
+          const bObj = availableBanks.value.find(b => b.code === code)
+          return bObj ? bObj.name : code
+        })
+        activeFilterSummary.push(`Banka: ${bNames.join(', ')}`)
+      }
+      if (selectedTiers.value.length > 0) activeFilterSummary.push(`Tier: ${selectedTiers.value.join(', ')}`)
+      if (selectedAmount.value !== null) activeFilterSummary.push(`Tutar: ${formatCurrency(selectedAmount.value)}`)
+      if (selectedTerm.value !== null) activeFilterSummary.push(`Vade: ${selectedTerm.value}`)
+
+      let html = `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #171717; background-color: #ffffff; width: 1000px; padding: 24px; box-sizing: border-box;">
+          
+          <!-- ÜST BAŞLIK -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 16px;">
+              <div>
+                  <h1 style="color: #2563eb; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">
+                      FinAgent · Katılım Hesabı Kâr Payı Oranları Raporu
+                  </h1>
+                  <p style="color: #6b7280; font-size: 11px; margin: 4px 0 0 0;">
+                      Rapor Tarihi: ${escapeHtml(today)} ${activeFilterSummary.length ? `| Filtreler: ${escapeHtml(activeFilterSummary.join(', '))}` : ''}
+                  </p>
+              </div>
+              <div style="text-align: right;">
+                  <span style="font-size: 12px; font-weight: 700; color: #1e40af; background: #eff6ff; border: 1px solid #bfdbfe; padding: 4px 10px; border-radius: 8px;">
+                      ${filteredAccounts.value.length} Hesap Seçeneği
+                  </span>
+              </div>
+          </div>
+
+          <!-- ÖZET İSTATİSTİK KUTULARI (KPIs) -->
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px;">
+              <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 8px; text-align: center;">
+                  <div style="font-size: 10px; font-weight: 700; color: #1e40af; text-transform: uppercase;">En Yüksek Net Oran</div>
+                  <div style="font-size: 18px; font-weight: 900; color: #2563eb; margin-top: 2px;">${stats.value.max_net_rate > 0 ? '%' + stats.value.max_net_rate.toFixed(2).replace('.', ',') : '-'}</div>
+                  <div style="font-size: 9px; color: #1d4ed8; font-weight: 600;">${escapeHtml(stats.value.best_bank || '-')}</div>
+              </div>
+              <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 8px; text-align: center;">
+                  <div style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">En Yüksek Net Getiri</div>
+                  <div style="font-size: 17px; font-weight: 900; color: #0f172a; margin-top: 2px;">${formatCurrency(stats.value.max_net_profit)}</div>
+                  <div style="font-size: 9px; color: #64748b;">Seçili tutar/vadede</div>
+              </div>
+              <div style="background-color: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px; padding: 10px 8px; text-align: center;">
+                  <div style="font-size: 10px; font-weight: 700; color: #3730a3; text-transform: uppercase;">En Yüksek Brüt Oran</div>
+                  <div style="font-size: 17px; font-weight: 900; color: #4f46e5; margin-top: 2px;">${stats.value.max_gross_rate > 0 ? '%' + stats.value.max_gross_rate.toFixed(2).replace('.', ',') : '-'}</div>
+                  <div style="font-size: 9px; color: #4338ca;">Brüt kâr oranı</div>
+              </div>
+              <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 8px; text-align: center;">
+                  <div style="font-size: 10px; font-weight: 700; color: #92400e; text-transform: uppercase;">Sektör Ortalaması</div>
+                  <div style="font-size: 18px; font-weight: 900; color: #d97706; margin-top: 2px;">${stats.value.avg_net_rate > 0 ? '%' + stats.value.avg_net_rate.toFixed(2).replace('.', ',') : '-'}</div>
+                  <div style="font-size: 9px; color: #b45309;">${filteredAccounts.value.length} hesap ortalaması</div>
+              </div>
+          </div>
+
+          <!-- TABLO -->
+          <table style="width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; line-height: 1.3;">
+              <thead>
+                  <tr style="background-color: #2563eb; color: #ffffff;">
+                      <th style="width: 18%; padding: 7px 6px; border: 1px solid #93c5fd; text-align: left; font-weight: 700;">Banka</th>
+                      <th style="width: 8%; padding: 7px 4px; border: 1px solid #93c5fd; text-align: center; font-weight: 700;">Tier</th>
+                      <th style="width: 10%; padding: 7px 4px; border: 1px solid #93c5fd; text-align: center; font-weight: 700;">Vade</th>
+                      <th style="width: 14%; padding: 7px 6px; border: 1px solid #93c5fd; text-align: right; font-weight: 700;">Yatırılan Tutar</th>
+                      <th style="width: 10%; padding: 7px 4px; border: 1px solid #93c5fd; text-align: center; font-weight: 700;">Brüt Oran</th>
+                      <th style="width: 10%; padding: 7px 4px; border: 1px solid #93c5fd; text-align: center; font-weight: 800;">Net Oran</th>
+                      <th style="width: 13%; padding: 7px 6px; border: 1px solid #93c5fd; text-align: right; font-weight: 700;">Brüt Kâr</th>
+                      <th style="width: 13%; padding: 7px 6px; border: 1px solid #93c5fd; text-align: right; font-weight: 800;">Net Kâr</th>
+                      <th style="width: 14%; padding: 7px 6px; border: 1px solid #93c5fd; text-align: right; font-weight: 800;">Toplam Bakiye</th>
+                  </tr>
+              </thead>
+              <tbody>
+                ${filteredAccounts.value.map((a, idx) => `
+                  <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : 'background-color: #ffffff;'}">
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; font-weight: 700; color: #1e40af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(a.banka_adi)}</td>
+                    <td style="padding: 5px 4px; border: 1px solid #e2e8f0; text-align: center; color: #64748b; white-space: nowrap;">${escapeHtml(a.tier || '-')}</td>
+                    <td style="padding: 5px 4px; border: 1px solid #e2e8f0; text-align: center; white-space: nowrap;">${escapeHtml(a.vade)}</td>
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; text-align: right; font-weight: 600; white-space: nowrap;">${a.yatirilan_tutar_str || formatCurrency(a.yatirilan_tutar)}</td>
+                    <td style="padding: 5px 4px; border: 1px solid #e2e8f0; text-align: center; white-space: nowrap;">${a.brut_oran_str}</td>
+                    <td style="padding: 5px 4px; border: 1px solid #e2e8f0; text-align: center; font-weight: 800; color: #059669; white-space: nowrap;">${a.net_oran_str}</td>
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; text-align: right; color: #475569; white-space: nowrap;">${a.brut_kar_str}</td>
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; text-align: right; font-weight: 800; color: #059669; white-space: nowrap;">${a.net_kar_str}</td>
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; text-align: right; font-weight: 800; color: #4338ca; white-space: nowrap;">${a.toplam_str}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+          </table>
+
+          <!-- ALTBİLGİ -->
+          <div style="margin-top: 16px; padding: 8px 12px; background-color: #f8fafc; border-left: 3px solid #2563eb; border-radius: 4px; font-size: 9px; color: #64748b; font-style: italic; display: flex; justify-content: space-between; align-items: center;">
+              <span>Bu raporda yer alan veriler katılım bankalarının kamuya açık katılım fonu kâr payı dağıtım tablolarından derlenmiştir. Gerçek kişilere ait katılım fonları TMSF güvencesi altındadır.</span>
+              <span style="font-weight: 700; color: #2563eb; margin-left: 12px; white-space: nowrap;">FinAgent AI</span>
+          </div>
+
+        </div>
+      `
+
+      const tempDiv = document.createElement('div')
+      tempDiv.style.position = 'fixed'
+      tempDiv.style.left = '0px'
+      tempDiv.style.top = '0px'
+      tempDiv.style.zIndex = '-99999'
+      tempDiv.style.width = '1000px'
+      tempDiv.style.background = '#ffffff'
+      tempDiv.style.pointerEvents = 'none'
+      tempDiv.innerHTML = html
+      document.body.appendChild(tempDiv)
+
+      const targetEl = tempDiv.firstElementChild || tempDiv
+
+      const canvas = await window.html2canvas(targetEl, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        logging: false,
+        windowWidth: 1050,
+        scrollX: 0,
+        scrollY: 0,
+        x: 0,
+        y: 0
+      })
+
+      document.body.removeChild(tempDiv)
+
+      const link = document.createElement('a')
+      link.download = `FinAgent_Katilim_Hesaplari_${new Date().toISOString().slice(0, 10)}.png`
+      link.href = canvas.toDataURL('image/png')
+      link.click()
+    } catch (e) {
+      console.error('PNG kaydetme hatası:', e)
+    }
+  }
+}
+
+const handleKeyDown = (e) => {
+  if (e.key === 'Escape' && selectedAccount.value) {
+    selectedAccount.value = null
   }
 }
 
 onMounted(() => {
   fetchAccountsData()
   if (process.client) {
+    window.addEventListener('keydown', handleKeyDown)
     nextTick(() => {
       const scrollerEl = document.getElementById('main-scroller')
       if (scrollerEl) {
@@ -1172,6 +1629,9 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (process.client) {
+    window.removeEventListener('keydown', handleKeyDown)
+  }
   if (lenisRafId) {
     cancelAnimationFrame(lenisRafId)
     lenisRafId = null
@@ -1229,5 +1689,19 @@ onUnmounted(() => {
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 9999px;
+}
+:global(.dark) .custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #334155;
 }
 </style>

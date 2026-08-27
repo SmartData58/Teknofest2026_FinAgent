@@ -923,9 +923,16 @@ const fetchFinancingData = async () => {
   }
 }
 
+const handleKeyDown = (e) => {
+  if (e.key === 'Escape' && selectedProduct.value) {
+    selectedProduct.value = null
+  }
+}
+
 onMounted(() => {
   fetchFinancingData()
   if (process.client) {
+    window.addEventListener('keydown', handleKeyDown)
     nextTick(() => {
       const scrollerEl = document.getElementById('main-scroller')
       if (scrollerEl) {
@@ -951,6 +958,9 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (process.client) {
+    window.removeEventListener('keydown', handleKeyDown)
+  }
   if (lenisRafId) {
     cancelAnimationFrame(lenisRafId)
     lenisRafId = null
@@ -1134,11 +1144,25 @@ const formatFee = (val) => {
 // Dışa Aktarma
 const betigiYukle = (src, globalName) => {
   return new Promise((resolve, reject) => {
-    if (window[globalName]) return resolve()
+    if (typeof window !== 'undefined' && window[globalName]) {
+      return resolve(window[globalName])
+    }
+    const existing = document.querySelector(`script[src="${src}"]`)
+    if (existing) {
+      if (window[globalName]) return resolve(window[globalName])
+      existing.addEventListener('load', () => resolve(window[globalName]))
+      existing.addEventListener('error', (err) => reject(err))
+      setTimeout(() => {
+        if (window[globalName]) resolve(window[globalName])
+        else resolve(window[globalName])
+      }, 1500)
+      return
+    }
     const s = document.createElement('script')
     s.src = src
-    s.onload = resolve
-    s.onerror = reject
+    s.async = true
+    s.onload = () => resolve(window[globalName])
+    s.onerror = (err) => reject(err)
     document.head.appendChild(s)
   })
 }
@@ -1147,15 +1171,135 @@ const exportData = async (type) => {
   if (filteredProducts.value.length === 0) return
 
   if (type === 'excel') {
-    let csv = '\uFEFFBanka;Kategori;Tier;Finansman Tutari (TL);Vade (Ay);Kar Orani;Aylik Taksit (TL);Toplam Geri Odeme (TL);Tahsis Ucreti;Guncellenme Tarihi\n'
-    filteredProducts.value.forEach(p => {
-      csv += `"${p.banka_adi}";"${getCategoryLabel(p.urun)}";"${p.tier || ''}";"${p.finansman_tutari}";"${p.vade}";"${formatProfitRate(p)}";"${p.aylik_taksit_str}";"${p.geri_odenecek_toplam_str}";"${p.tahsis_ucreti_str}";"${p.guncellenme_tarihi}"\n`
-    })
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `katilim_finansman_oranlari_${new Date().toISOString().slice(0, 10)}.csv`
-    link.click()
+    try {
+      await betigiYukle('https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js', 'XLSX')
+      const XLSX = window.XLSX
+      if (!XLSX || !XLSX.utils) {
+        throw new Error('XLSX kütüphanesi yüklenemedi.')
+      }
+      const wb = XLSX.utils.book_new()
+
+      const today = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })
+      const activeFilterSummary = []
+      if (selectedCategory.value) activeFilterSummary.push(`Kategori: ${getCategoryLabel(selectedCategory.value)}`)
+      if (selectedBanks.value.length > 0) {
+        const bNames = selectedBanks.value.map(code => {
+          const bObj = availableBanks.value.find(b => b.code === code)
+          return bObj ? bObj.name : code
+        })
+        activeFilterSummary.push(`Banka: ${bNames.join(', ')}`)
+      }
+      if (selectedTiers.value.length > 0) activeFilterSummary.push(`Tier: ${selectedTiers.value.join(', ')}`)
+      if (selectedAmount.value !== null) activeFilterSummary.push(`Tutar: ${formatCurrency(selectedAmount.value)}`)
+      if (selectedTerm.value !== null) activeFilterSummary.push(`Vade: ${selectedTerm.value} Ay`)
+
+      const dataRows = []
+      
+      // 1. Rapor Ana Başlığı
+      dataRows.push([
+        { v: 'FINAGENT · KATILIM FİNANSMAN ORANLARI RAPORU', s: { font: { bold: true, sz: 14, color: { rgb: '1E40AF' } }, alignment: { horizontal: 'left' } } }
+      ])
+      
+      // 2. Meta & Filtre Bilgileri
+      dataRows.push([
+        { v: `Rapor Tarihi: ${today} | Listelenen Ürün: ${filteredProducts.value.length}${activeFilterSummary.length ? ' | Filtreler: ' + activeFilterSummary.join(', ') : ''}`, s: { font: { italic: true, sz: 9, color: { rgb: '6B7280' } } } }
+      ])
+      dataRows.push([]) // Boşluk
+
+      // 3. Tablo Başlıkları
+      const headers = [
+        'Banka',
+        'Finansman Türü',
+        'Tier',
+        'Finansman Tutarı (TL)',
+        'Vade (Ay)',
+        'Kâr Payı Oranı (%)',
+        'Aylık Taksit (TL)',
+        'Toplam Geri Ödeme (TL)',
+        'Toplam Kâr Payı (TL)',
+        'Tahsis Ücreti (TL)',
+        'Ekspertiz Ücreti (TL)',
+        'İpotek Ücreti (TL)',
+        'Güncelleme Tarihi'
+      ]
+
+      const headerCells = headers.map(h => ({
+        v: h,
+        s: {
+          fill: { fgColor: { rgb: '2563EB' } },
+          font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 },
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+          border: {
+            top: { style: 'thin', color: { rgb: '93C5FD' } },
+            bottom: { style: 'thin', color: { rgb: '93C5FD' } },
+            left: { style: 'thin', color: { rgb: '93C5FD' } },
+            right: { style: 'thin', color: { rgb: '93C5FD' } }
+          }
+        }
+      }))
+      dataRows.push(headerCells)
+
+      // 4. Veri Satırları
+      filteredProducts.value.forEach((p, idx) => {
+        const isEven = idx % 2 === 0
+        const rowBg = isEven ? 'FFFFFF' : 'F8FAFC'
+        const borderStyle = {
+          top: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          left: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          right: { style: 'thin', color: { rgb: 'E2E8F0' } }
+        }
+
+        const tutarVal = typeof p.finansman_tutari === 'number' ? p.finansman_tutari : (parseFloat(String(p.finansman_tutari || '').replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.')) || 0)
+        const vadeVal = typeof p.vade === 'number' ? p.vade : (parseInt(String(p.vade || '').replace(/\D/g, '')) || 0)
+        const rateVal = typeof p.kar_orani === 'number' && p.kar_orani > 0 ? p.kar_orani / 100 : (p.kar_orani_str ? parseFloat(String(p.kar_orani_str).replace('%', '').replace(',', '.')) / 100 : 0)
+        const taksitVal = typeof p.aylik_taksit_tutari === 'number' ? p.aylik_taksit_tutari : (typeof p.aylik_taksit === 'number' ? p.aylik_taksit : (parseFloat(String(p.aylik_taksit_str || '').replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.')) || 0))
+        const toplamVal = typeof p.geri_odenecek_toplam_tutar === 'number' ? p.geri_odenecek_toplam_tutar : (parseFloat(String(p.geri_odenecek_toplam_str || '').replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.')) || 0)
+        const totalProfit = Math.max(0, toplamVal - tutarVal)
+        const tahsisVal = typeof p.tahsis_ucreti === 'number' ? p.tahsis_ucreti : (parseFloat(String(p.tahsis_ucreti_str || p.tahsis_ucreti || '').replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.')) || 0)
+        const ekspertizVal = typeof p.ekspertiz_ucreti === 'number' ? p.ekspertiz_ucreti : (parseFloat(String(p.ekspertiz_ucreti_str || p.ekspertiz_ucreti || '').replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.')) || 0)
+        const ipotekVal = typeof p.ipotek_tesis_ucreti === 'number' ? p.ipotek_tesis_ucreti : (parseFloat(String(p.ipotek_tesis_ucreti_str || p.ipotek_tesis_ucreti || '').replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.')) || 0)
+
+        const row = [
+          { v: p.banka_adi || '', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+          { v: getCategoryLabel(p.urun) || '', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+          { v: p.tier || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+          { v: tutarVal, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } },
+          { v: vadeVal, t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+          { v: rateVal, t: 'n', z: '0.00%', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '059669' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+          { v: taksitVal, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '0F172A' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } },
+          { v: toplamVal, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '4338CA' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } },
+          { v: totalProfit, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } },
+          { v: tahsisVal, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9, color: { rgb: '64748B' } }, border: borderStyle, alignment: { horizontal: 'right' } } },
+          { v: ekspertizVal, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9, color: { rgb: '64748B' } }, border: borderStyle, alignment: { horizontal: 'right' } } },
+          { v: ipotekVal, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9, color: { rgb: '64748B' } }, border: borderStyle, alignment: { horizontal: 'right' } } },
+          { v: p.guncellenme_tarihi || '', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 8.5, color: { rgb: '94A3B8' } }, border: borderStyle, alignment: { horizontal: 'center' } } }
+        ]
+        dataRows.push(row)
+      })
+
+      const ws = XLSX.utils.aoa_to_sheet(dataRows)
+      ws['!cols'] = [
+        { wch: 22 }, // Banka
+        { wch: 18 }, // Tür
+        { wch: 10 }, // Tier
+        { wch: 22 }, // Finansman Tutarı
+        { wch: 12 }, // Vade
+        { wch: 15 }, // Kâr Oranı
+        { wch: 18 }, // Aylık Taksit
+        { wch: 22 }, // Toplam Geri Ödeme
+        { wch: 20 }, // Toplam Kâr Payı
+        { wch: 16 }, // Tahsis Ücreti
+        { wch: 16 }, // Ekspertiz Ücreti
+        { wch: 16 }, // İpotek Ücreti
+        { wch: 18 }  // Tarih
+      ]
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Finansman Oranları')
+      XLSX.writeFile(wb, `FinAgent_Katilim_Finansman_Oranlari_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    } catch (e) {
+      console.error('Excel export hatası:', e)
+    }
   } else if (type === 'pdf') {
     try {
       await betigiYukle('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js', 'html2pdf')
@@ -1284,8 +1428,8 @@ const exportData = async (type) => {
                         <td style="padding: 2.8px 4px; border: 1px solid #e2e8f0; text-align: right; font-weight: 600; white-space: nowrap;">${formatCurrency(p.finansman_tutari)}</td>
                         <td style="padding: 2.8px 3px; border: 1px solid #e2e8f0; text-align: center; white-space: nowrap;">${p.vade} Ay</td>
                         <td style="padding: 2.8px 3px; border: 1px solid #e2e8f0; text-align: center; font-weight: 800; color: #059669; white-space: nowrap;">${formatProfitRate(p)}</td>
-                        <td style="padding: 2.8px 4px; border: 1px solid #e2e8f0; text-align: right; font-weight: 700; color: #0f172a; white-space: nowrap;">${p.aylik_taksit_str}</td>
-                        <td style="padding: 2.8px 4px; border: 1px solid #e2e8f0; text-align: right; font-weight: 800; color: #4338ca; white-space: nowrap;">${p.geri_odenecek_toplam_str}</td>
+                        <td style="padding: 2.8px 4px; border: 1px solid #e2e8f0; text-align: right; font-weight: 700; color: #0f172a; white-space: nowrap;">${p.aylik_taksit_str || formatCurrency(p.aylik_taksit_tutari)}</td>
+                        <td style="padding: 2.8px 4px; border: 1px solid #e2e8f0; text-align: right; font-weight: 800; color: #4338ca; white-space: nowrap;">${p.geri_odenecek_toplam_str || formatCurrency(p.geri_odenecek_toplam_tutar)}</td>
                         <td style="padding: 2.8px 3px; border: 1px solid #e2e8f0; text-align: right; color: #64748b; white-space: nowrap;">${formatFee(p.tahsis_ucreti)}</td>
                       </tr>
                     `).join('')}
@@ -1329,22 +1473,133 @@ const exportData = async (type) => {
   } else if (type === 'png') {
     try {
       await betigiYukle('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'html2canvas')
-      const target = document.getElementById('financing-content-area')
-      if (!target) return
 
-      const gizlenecekler = target.querySelectorAll('[data-png-gizle]')
-      gizlenecekler.forEach(el => el.style.display = 'none')
+      const today = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      const activeFilterSummary = []
+      if (selectedCategory.value) activeFilterSummary.push(`Kategori: ${getCategoryLabel(selectedCategory.value)}`)
+      if (selectedBanks.value.length > 0) {
+        const bNames = selectedBanks.value.map(code => {
+          const bObj = availableBanks.value.find(b => b.code === code)
+          return bObj ? bObj.name : code
+        })
+        activeFilterSummary.push(`Banka: ${bNames.join(', ')}`)
+      }
+      if (selectedTiers.value.length > 0) activeFilterSummary.push(`Tier: ${selectedTiers.value.join(', ')}`)
+      if (selectedAmount.value !== null) activeFilterSummary.push(`Tutar: ${formatCurrency(selectedAmount.value)}`)
+      if (selectedTerm.value !== null) activeFilterSummary.push(`Vade: ${selectedTerm.value} Ay`)
 
-      const canvas = await window.html2canvas(target, {
+      let html = `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #171717; background-color: #ffffff; width: 1000px; padding: 24px; box-sizing: border-box;">
+          
+          <!-- ÜST BAŞLIK -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 16px;">
+              <div>
+                  <h1 style="color: #2563eb; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">
+                      FinAgent · Katılım Finansman Oranları Raporu
+                  </h1>
+                  <p style="color: #6b7280; font-size: 11px; margin: 4px 0 0 0;">
+                      Rapor Tarihi: ${escapeHtml(today)} ${activeFilterSummary.length ? `| Filtreler: ${escapeHtml(activeFilterSummary.join(', '))}` : ''}
+                  </p>
+              </div>
+              <div style="text-align: right;">
+                  <span style="font-size: 12px; font-weight: 700; color: #1e40af; background: #eff6ff; border: 1px solid #bfdbfe; padding: 4px 10px; border-radius: 8px;">
+                      ${filteredProducts.value.length} Ürün Listelendi
+                  </span>
+              </div>
+          </div>
+
+          <!-- ÖZET İSTATİSTİK KUTULARI (KPIs) -->
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px;">
+              <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 8px; text-align: center;">
+                  <div style="font-size: 10px; font-weight: 700; color: #166534; text-transform: uppercase;">En Düşük Kâr Oranı</div>
+                  <div style="font-size: 18px; font-weight: 900; color: #059669; margin-top: 2px;">${stats.value.min_rate > 0 ? '%' + stats.value.min_rate.toFixed(2).replace('.', ',') : '-'}</div>
+                  <div style="font-size: 9px; color: #15803d; font-weight: 600;">${escapeHtml(stats.value.best_bank || '-')}</div>
+              </div>
+              <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 8px; text-align: center;">
+                  <div style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">En Düşük Taksit</div>
+                  <div style="font-size: 17px; font-weight: 900; color: #0f172a; margin-top: 2px;">${formatCurrency(stats.value.min_installment)}</div>
+                  <div style="font-size: 9px; color: #64748b;">Seçili filtrelerde</div>
+              </div>
+              <div style="background-color: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px; padding: 10px 8px; text-align: center;">
+                  <div style="font-size: 10px; font-weight: 700; color: #3730a3; text-transform: uppercase;">En Düşük Toplam Ödeme</div>
+                  <div style="font-size: 17px; font-weight: 900; color: #4f46e5; margin-top: 2px;">${formatCurrency(stats.value.min_total)}</div>
+                  <div style="font-size: 9px; color: #4338ca;">Tüm masraflar dahil</div>
+              </div>
+              <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 8px; text-align: center;">
+                  <div style="font-size: 10px; font-weight: 700; color: #92400e; text-transform: uppercase;">Sektör Ortalaması</div>
+                  <div style="font-size: 18px; font-weight: 900; color: #d97706; margin-top: 2px;">${stats.value.avg_rate > 0 ? '%' + stats.value.avg_rate.toFixed(2).replace('.', ',') : '-'}</div>
+                  <div style="font-size: 9px; color: #b45309;">${filteredProducts.value.length} ürün ortalaması</div>
+              </div>
+          </div>
+
+          <!-- TABLO -->
+          <table style="width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; line-height: 1.3;">
+              <thead>
+                  <tr style="background-color: #2563eb; color: #ffffff;">
+                      <th style="width: 18%; padding: 7px 6px; border: 1px solid #93c5fd; text-align: left; font-weight: 700;">Banka</th>
+                      <th style="width: 14%; padding: 7px 6px; border: 1px solid #93c5fd; text-align: left; font-weight: 700;">Kategori</th>
+                      <th style="width: 8%; padding: 7px 4px; border: 1px solid #93c5fd; text-align: center; font-weight: 700;">Tier</th>
+                      <th style="width: 14%; padding: 7px 6px; border: 1px solid #93c5fd; text-align: right; font-weight: 700;">Finansman Tutarı</th>
+                      <th style="width: 8%; padding: 7px 4px; border: 1px solid #93c5fd; text-align: center; font-weight: 700;">Vade</th>
+                      <th style="width: 10%; padding: 7px 4px; border: 1px solid #93c5fd; text-align: center; font-weight: 800;">Kâr Oranı</th>
+                      <th style="width: 14%; padding: 7px 6px; border: 1px solid #93c5fd; text-align: right; font-weight: 700;">Aylık Taksit</th>
+                      <th style="width: 14%; padding: 7px 6px; border: 1px solid #93c5fd; text-align: right; font-weight: 800;">Toplam Ödeme</th>
+                  </tr>
+              </thead>
+              <tbody>
+                ${filteredProducts.value.map((p, idx) => `
+                  <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : 'background-color: #ffffff;'}">
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; font-weight: 700; color: #1e40af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(p.banka_adi)}</td>
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; font-weight: 500; text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(getCategoryLabel(p.urun))}</td>
+                    <td style="padding: 5px 4px; border: 1px solid #e2e8f0; text-align: center; color: #64748b; white-space: nowrap;">${escapeHtml(p.tier || '-')}</td>
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; text-align: right; font-weight: 600; white-space: nowrap;">${formatCurrency(p.finansman_tutari)}</td>
+                    <td style="padding: 5px 4px; border: 1px solid #e2e8f0; text-align: center; white-space: nowrap;">${p.vade} Ay</td>
+                    <td style="padding: 5px 4px; border: 1px solid #e2e8f0; text-align: center; font-weight: 800; color: #059669; white-space: nowrap;">${formatProfitRate(p)}</td>
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; text-align: right; font-weight: 700; color: #0f172a; white-space: nowrap;">${p.aylik_taksit_str || formatCurrency(p.aylik_taksit_tutari)}</td>
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; text-align: right; font-weight: 800; color: #4338ca; white-space: nowrap;">${p.geri_odenecek_toplam_str || formatCurrency(p.geri_odenecek_toplam_tutar)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+          </table>
+
+          <!-- ALTBİLGİ -->
+          <div style="margin-top: 16px; padding: 8px 12px; background-color: #f8fafc; border-left: 3px solid #2563eb; border-radius: 4px; font-size: 9px; color: #64748b; font-style: italic; display: flex; justify-content: space-between; align-items: center;">
+              <span>Bu raporda yer alan veriler katılım bankalarının kamuya açık kâr payı tablolarından derlenmiştir. Kesin finansman koşulları ilgili bankaların yetkisindedir.</span>
+              <span style="font-weight: 700; color: #2563eb; margin-left: 12px; white-space: nowrap;">FinAgent AI</span>
+          </div>
+
+        </div>
+      `
+
+      const tempDiv = document.createElement('div')
+      tempDiv.style.position = 'fixed'
+      tempDiv.style.left = '0px'
+      tempDiv.style.top = '0px'
+      tempDiv.style.zIndex = '-99999'
+      tempDiv.style.width = '1000px'
+      tempDiv.style.background = '#ffffff'
+      tempDiv.style.pointerEvents = 'none'
+      tempDiv.innerHTML = html
+      document.body.appendChild(tempDiv)
+
+      const targetEl = tempDiv.firstElementChild || tempDiv
+
+      const canvas = await window.html2canvas(targetEl, {
         scale: 2,
+        backgroundColor: '#ffffff',
         useCORS: true,
-        backgroundColor: document.documentElement.classList.contains('dark') ? '#171717' : '#ffffff'
+        logging: false,
+        windowWidth: 1050,
+        scrollX: 0,
+        scrollY: 0,
+        x: 0,
+        y: 0
       })
 
-      gizlenecekler.forEach(el => el.style.display = '')
+      document.body.removeChild(tempDiv)
 
       const link = document.createElement('a')
-      link.download = `finansman_oranlari_${Date.now()}.png`
+      link.download = `FinAgent_Katilim_Finansman_Oranlari_${new Date().toISOString().slice(0, 10)}.png`
       link.href = canvas.toDataURL('image/png')
       link.click()
     } catch (e) {

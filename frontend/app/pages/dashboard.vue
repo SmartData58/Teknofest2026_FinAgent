@@ -149,11 +149,25 @@ const openCampaignModal = async (id) => {
 // ===================== EXCEL (XLSX), VEKTÖREL PDF VE ULTRA-HD PNG DIŞA AKTARMA =====================
 const betigiYukle = (src, globalName) => {
   return new Promise((resolve, reject) => {
-    if (window[globalName]) return resolve()
+    if (typeof window !== 'undefined' && window[globalName]) {
+      return resolve(window[globalName])
+    }
+    const existing = document.querySelector(`script[src="${src}"]`)
+    if (existing) {
+      if (window[globalName]) return resolve(window[globalName])
+      existing.addEventListener('load', () => resolve(window[globalName]))
+      existing.addEventListener('error', (err) => reject(err))
+      setTimeout(() => {
+        if (window[globalName]) resolve(window[globalName])
+        else resolve(window[globalName])
+      }, 1500)
+      return
+    }
     const s = document.createElement('script')
     s.src = src
-    s.onload = resolve
-    s.onerror = reject
+    s.async = true
+    s.onload = () => resolve(window[globalName])
+    s.onerror = (err) => reject(err)
     document.head.appendChild(s)
   })
 }
@@ -211,207 +225,326 @@ const tuvaliDuzlestir = (tuval, arkaPlan) => {
   return nihai
 }
 
-// --------------------------- 1. EXCEL (.XLSX) DIŞA AKTARMA (TEK SAYFADA TÜM TABLOLAR + AYRI SAYFALAR) ---------------------------
+// --------------------------- 1. EXCEL (.XLSX) DIŞA AKTARMA (ŞABLONLU KURUMSAL MAVİ TEMA) ---------------------------
 const exportToExcel = async (chartRefName) => {
   try {
     await betigiYukle('https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js', 'XLSX')
     const XLSX = window.XLSX
+    if (!XLSX || !XLSX.utils) {
+      throw new Error('XLSX kütüphanesi yüklenemedi.')
+    }
     const wb = XLSX.utils.book_new()
-    const bankName = activeCompareBanks.value.length === 1 ? activeCompareBanks.value[0].kisa_ad : 'Sektor_Karsilastirma'
-    const cleanBankName = bankName.replace(/[^a-zA-Z0-9_À-ſ]/g, '_')
+    const bankName = activeCompareBanks.value.length === 1 ? activeCompareBanks.value[0].kisa_ad : 'Sektör Karşılaştırma Analizi'
+    const cleanBankName = (activeCompareBanks.value.length === 1 ? activeCompareBanks.value[0].kisa_ad : 'Sektor_Karsilastirma').replace(/[^a-zA-Z0-9_À-ſ]/g, '_')
     const today = new Date().toLocaleDateString('tr-TR', { year: 'numeric', month: 'long', day: 'numeric' })
     const activeCamps = activeCompareBanks.value.flatMap(b => getBankCampaigns(b))
     const firstBank = activeCompareBanks.value[0]
     const baskin = firstBank ? getBaskinKategori(firstBank) : null
 
-    if (chartRefName === 'all-comparison') {
-      // === MASTER SAYFA: TÜM ANALİZ RAPORU (BÜTÜN TABLOLAR TEK BİR SAYFADA SIRAYLA) ===
-      const masterRows = [
-        ['FINAGENT - BANKACILIK PAZAR VE REKABET ANALİZ RAPORU'],
-        [`Kurum: ${bankName}`, `Tarih: ${today}`, `Toplam Aktif Kampanya: ${activeCamps.length}`],
-        [],
-        ['=== 1. TEMEL PERFORMANS VE STATÜ GÖSTERGELERİ (KPI) ==='],
-        ['Kurum', 'Statü (Tier)', 'Mülkiyet Türü', 'Aktif Büyüklük (Milyar TL)', 'Aktif Kampanya Sayısı', 'Baskın Kategori'],
-        [
-          firstBank?.kisa_ad || bankName,
-          firstBank?.tier || 'Tier 1',
-          firstBank?.mulkiyet_turu || 'Katılım Bankası',
-          firstBank?.aktif_buyukluk_milyar_tl ? `${firstBank.aktif_buyukluk_milyar_tl} Milyar ₺` : '-',
-          activeCamps.length,
-          baskin ? `${baskin.ad} (%${baskin.yuzde})` : 'Dengeli'
-        ],
-        [],
-        ['=== 2. SON 6 AY KAMPANYA BAŞLANGIÇ TRENDİ & İVME ==='],
-        ['Ay', ...activeCompareBanks.value.map(b => b.kisa_ad), 'Sektör Ortalaması']
-      ]
+    // Ortak Kurumsal Mavi Stil Tanımları
+    const titleStyle = { font: { bold: true, sz: 14, color: { rgb: '1E40AF' } }, alignment: { horizontal: 'left' } }
+    const metaStyle = { font: { italic: true, sz: 9, color: { rgb: '6B7280' } } }
+    const sectionStyle = { fill: { fgColor: { rgb: 'EFF6FF' } }, font: { bold: true, sz: 11, color: { rgb: '1E40AF' } }, alignment: { horizontal: 'left' } }
+    const headerStyle = {
+      fill: { fgColor: { rgb: '2563EB' } },
+      font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: {
+        top: { style: 'thin', color: { rgb: '93C5FD' } },
+        bottom: { style: 'thin', color: { rgb: '93C5FD' } },
+        left: { style: 'thin', color: { rgb: '93C5FD' } },
+        right: { style: 'thin', color: { rgb: '93C5FD' } }
+      }
+    }
+    const borderStyle = {
+      top: { style: 'thin', color: { rgb: 'E2E8F0' } },
+      bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
+      left: { style: 'thin', color: { rgb: 'E2E8F0' } },
+      right: { style: 'thin', color: { rgb: 'E2E8F0' } }
+    }
 
+    const mapHeaderRow = (headers) => headers.map(h => ({ v: h, s: headerStyle }))
+
+    if (chartRefName === 'all-comparison') {
+      // === MASTER SAYFA: TÜM ANALİZ RAPORU ===
+      const masterRows = []
+
+      // 1. Rapor Başlığı & Meta Bilgileri
+      masterRows.push([{ v: 'FINAGENT · BANKACILIK PAZAR VE REKABET ANALİZ RAPORU', s: titleStyle }])
+      masterRows.push([{ v: `Kurum: ${bankName} | Rapor Tarihi: ${today} | Toplam Aktif Kampanya: ${activeCamps.length}`, s: metaStyle }])
+      masterRows.push([])
+
+      // 2. Bölüm 1: KPI
+      masterRows.push([{ v: '=== 1. TEMEL PERFORMANS VE STATÜ GÖSTERGELERİ (KPI) ===', s: sectionStyle }])
+      masterRows.push(mapHeaderRow(['Kurum', 'Statü (Tier)', 'Mülkiyet Türü', 'Aktif Büyüklük (Milyar TL)', 'Aktif Kampanya Sayısı', 'Baskın Kategori']))
+      masterRows.push([
+        { v: firstBank?.kisa_ad || bankName, s: { fill: { fgColor: { rgb: 'FFFFFF' } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+        { v: firstBank?.tier || 'Tier 1', s: { fill: { fgColor: { rgb: 'FFFFFF' } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+        { v: firstBank?.mulkiyet_turu || 'Katılım Bankası', s: { fill: { fgColor: { rgb: 'FFFFFF' } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+        { v: firstBank?.aktif_buyukluk_milyar_tl ? Number(firstBank.aktif_buyukluk_milyar_tl) : 0, t: 'n', z: '#,##0.00 "Milyar ₺"', s: { fill: { fgColor: { rgb: 'FFFFFF' } }, font: { bold: true, sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } },
+        { v: activeCamps.length, t: 'n', s: { fill: { fgColor: { rgb: 'FFFFFF' } }, font: { bold: true, color: { rgb: '2563EB' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+        { v: baskin ? `${baskin.ad} (%${baskin.yuzde})` : 'Dengeli', s: { fill: { fgColor: { rgb: 'FFFFFF' } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } }
+      ])
+      masterRows.push([])
+
+      // 3. Bölüm 2: Trend
+      masterRows.push([{ v: '=== 2. SON 6 AY KAMPANYA BAŞLANGIÇ TRENDİ & İVME ===', s: sectionStyle }])
+      masterRows.push(mapHeaderRow(['Ay', ...activeCompareBanks.value.map(b => b.kisa_ad), 'Sektör Ortalaması']))
       last6Months.value.forEach((m, idx) => {
-        const row = [m]
+        const isEven = idx % 2 === 0
+        const rowBg = isEven ? 'FFFFFF' : 'F8FAFC'
+        const row = [
+          { v: m, s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } }
+        ]
         activeCompareBanks.value.forEach(b => {
           const trendData = getBankTrend(getBankCampaigns(b))
-          row.push(trendData[idx] || 0)
+          row.push({ v: trendData[idx] || 0, t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } })
         })
-        row.push(sektorAverages.value[idx] || 0)
+        row.push({ v: Number((sektorAverages.value[idx] || 0).toFixed(1)), t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '4338CA' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } })
         masterRows.push(row)
       })
-
       masterRows.push([])
-      masterRows.push(['=== 3. KATEGORİ BAZLI KAMPANYA DAĞILIMI ==='])
-      masterRows.push(['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad + ' (Adet)'), 'Sektör Ortalaması (Adet)'])
 
+      // 4. Bölüm 3: Kategori Dağılımı
+      masterRows.push([{ v: '=== 3. KATEGORİ BAZLI KAMPANYA DAĞILIMI ===', s: sectionStyle }])
+      masterRows.push(mapHeaderRow(['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad + ' (Adet)'), 'Sektör Ortalaması (Adet)']))
       categories.forEach((cat, idx) => {
-        const row = [cat]
+        const isEven = idx % 2 === 0
+        const rowBg = isEven ? 'FFFFFF' : 'F8FAFC'
+        const row = [
+          { v: cat, s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } }
+        ]
         activeCompareBanks.value.forEach(b => {
           const catCounts = getCategoryCounts(getBankCampaigns(b))
-          row.push(catCounts[idx] || 0)
+          row.push({ v: catCounts[idx] || 0, t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } })
         })
-        row.push(sektorAverages.value[idx] || 0)
+        row.push({ v: Number((sektorAverages.value[idx] || 0).toFixed(1)), t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '4338CA' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } })
         masterRows.push(row)
       })
-
       masterRows.push([])
-      masterRows.push(['=== 4. KATEGORİ BAZLI ORTALAMA KAMPANYA YAYIN SÜRELERİ ==='])
-      masterRows.push(['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad + ' (Ay)'), 'Sektör Ortalaması (Ay)'])
 
+      // 5. Bölüm 4: Ortalama Süreler
+      masterRows.push([{ v: '=== 4. KATEGORİ BAZLI ORTALAMA KAMPANYA YAYIN SÜRELERİ ===', s: sectionStyle }])
+      masterRows.push(mapHeaderRow(['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad + ' (Ay)'), 'Sektör Ortalaması (Ay)']))
       categories.forEach((cat, idx) => {
-        const row = [cat]
+        const isEven = idx % 2 === 0
+        const rowBg = isEven ? 'FFFFFF' : 'F8FAFC'
+        const row = [
+          { v: cat, s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } }
+        ]
         activeCompareBanks.value.forEach(b => {
           const catDurs = getCategoryDurations(getBankCampaigns(b))
-          row.push(catDurs[idx] || 0)
+          row.push({ v: Number((catDurs[idx] || 0).toFixed(1)), t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } })
         })
-        row.push(sektorDurations.value[idx] || 0)
+        row.push({ v: Number((sektorDurations.value[idx] || 0).toFixed(1)), t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '4338CA' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } })
         masterRows.push(row)
       })
-
       masterRows.push([])
-      masterRows.push(['=== 5. AKTİF KAMPANYALAR LİSTESİ VE DETAYLARI ==='])
-      masterRows.push(['Banka', 'Kampanya Adı', 'Tür', 'Kâr Payı (%)', 'Vade (Ay)', 'Taksit', 'Ödül (TL)', 'Bitiş Tarihi', 'Hedef Kitle', 'Kaynak URL'])
 
-      activeCamps.forEach(c => {
+      // 6. Bölüm 5: Aktif Kampanyalar Listesi
+      masterRows.push([{ v: '=== 5. AKTİF KAMPANYALAR LİSTESİ VE DETAYLARI ===', s: sectionStyle }])
+      masterRows.push(mapHeaderRow(['Banka', 'Kampanya Adı', 'Tür', 'Kâr Payı (%)', 'Vade (Ay)', 'Taksit (TL)', 'Ödül (TL)', 'Bitiş Tarihi', 'Hedef Kitle', 'Kaynak URL']))
+      activeCamps.forEach((c, idx) => {
+        const isEven = idx % 2 === 0
+        const rowBg = isEven ? 'FFFFFF' : 'F8FAFC'
         const gb = c.genel_bilgi || {}
         const fd = c.finansman_detay || {}
         const pd = c.promosyon_detay || {}
+
+        const karRate = fd.kar_payi_orani ? parseFloat(String(fd.kar_payi_orani).replace('%', '').replace(',', '.')) / 100 : null
+        const vadeVal = fd.vade_ay ? parseInt(String(fd.vade_ay).replace(/\D/g, '')) : null
+        const taksitVal = fd.taksit ? parseFloat(String(fd.taksit).replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.')) : null
+        const odulVal = pd.odul_tutari ? parseFloat(String(pd.odul_tutari).replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.')) : null
+
         masterRows.push([
-          gb.banka_id || c.banka || '-',
-          gb.kampanya_adi || c.baslik || '-',
-          gb.kampanya_turu || c.tur || '-',
-          fd.kar_payi_orani ?? '-',
-          fd.vade_ay ?? '-',
-          fd.taksit ?? '-',
-          pd.odul_tutari ?? '-',
-          formatTarih(gb.bitis_tarihi) || '-',
-          Array.isArray(gb.hedef_kitle) ? gb.hedef_kitle.join(', ') : (gb.hedef_kitle || '-'),
-          gb.kaynak_url || c.url || '-'
+          { v: gb.banka_id || c.banka || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+          { v: gb.kampanya_adi || c.baslik || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+          { v: gb.kampanya_turu || c.tur || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+          karRate !== null ? { v: karRate, t: 'n', z: '0.00%', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '059669' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } } : { v: '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+          vadeVal !== null ? { v: vadeVal, t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } } : { v: '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+          taksitVal !== null ? { v: taksitVal, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } } : { v: '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+          odulVal !== null ? { v: odulVal, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: 'D97706' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } } : { v: '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+          { v: formatTarih(gb.bitis_tarihi) || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 8.5 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+          { v: Array.isArray(gb.hedef_kitle) ? gb.hedef_kitle.join(', ') : (gb.hedef_kitle || '-'), s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 8.5 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+          { v: gb.kaynak_url || c.url || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 8, color: { rgb: '2563EB' } }, border: borderStyle, alignment: { horizontal: 'left' } } }
         ])
       })
 
       const wsMaster = XLSX.utils.aoa_to_sheet(masterRows)
-      wsMaster['!cols'] = [{ wch: 22 }, { wch: 45 }, { wch: 22 }, { wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 24 }, { wch: 40 }]
+      wsMaster['!cols'] = [{ wch: 22 }, { wch: 45 }, { wch: 20 }, { wch: 15 }, { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 24 }, { wch: 40 }]
       XLSX.utils.book_append_sheet(wb, wsMaster, 'Tum_Analiz_Raporu')
 
       // --- AYRI SEKME 1: Başlangıç Trendi ---
-      const wsTrend = XLSX.utils.aoa_to_sheet([
-        ['Ay', ...activeCompareBanks.value.map(b => b.kisa_ad), 'Sektör Ortalaması'],
-        ...last6Months.value.map((m, idx) => [
-          m,
-          ...activeCompareBanks.value.map(b => getBankTrend(getBankCampaigns(b))[idx] || 0),
-          sektorAverages.value[idx] || 0
-        ])
-      ])
+      const trendRows = [
+        [{ v: 'FINAGENT · 6 AYLIK KAMPANYA BAŞLANGIÇ TRENDİ', s: titleStyle }],
+        [{ v: `Kurum: ${bankName} | Tarih: ${today}`, s: metaStyle }],
+        [],
+        mapHeaderRow(['Ay', ...activeCompareBanks.value.map(b => b.kisa_ad), 'Sektör Ortalaması']),
+        ...last6Months.value.map((m, idx) => {
+          const rowBg = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC'
+          return [
+            { v: m, s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+            ...activeCompareBanks.value.map(b => ({
+              v: getBankTrend(getBankCampaigns(b))[idx] || 0,
+              t: 'n',
+              s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } }
+            })),
+            { v: Number((sektorAverages.value[idx] || 0).toFixed(1)), t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '4338CA' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } }
+          ]
+        })
+      ]
+      const wsTrend = XLSX.utils.aoa_to_sheet(trendRows)
       wsTrend['!cols'] = [{ wch: 15 }, ...activeCompareBanks.value.map(() => ({ wch: 22 })), { wch: 22 }]
       XLSX.utils.book_append_sheet(wb, wsTrend, '1_Baslangic_Trendi')
 
       // --- AYRI SEKME 2: Kampanya Dağılımı ---
-      const wsDist = XLSX.utils.aoa_to_sheet([
-        ['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad), 'Sektör Ortalaması'],
-        ...categories.map((cat, idx) => [
-          cat,
-          ...activeCompareBanks.value.map(b => getCategoryCounts(getBankCampaigns(b))[idx] || 0),
-          sektorAverages.value[idx] || 0
-        ])
-      ])
+      const distRows = [
+        [{ v: 'FINAGENT · KATEGORİ BAZLI KAMPANYA DAĞILIMI', s: titleStyle }],
+        [{ v: `Kurum: ${bankName} | Tarih: ${today}`, s: metaStyle }],
+        [],
+        mapHeaderRow(['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad), 'Sektör Ortalaması']),
+        ...categories.map((cat, idx) => {
+          const rowBg = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC'
+          return [
+            { v: cat, s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+            ...activeCompareBanks.value.map(b => ({
+              v: getCategoryCounts(getBankCampaigns(b))[idx] || 0,
+              t: 'n',
+              s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } }
+            })),
+            { v: Number((sektorAverages.value[idx] || 0).toFixed(1)), t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '4338CA' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } }
+          ]
+        })
+      ]
+      const wsDist = XLSX.utils.aoa_to_sheet(distRows)
       wsDist['!cols'] = [{ wch: 18 }, ...activeCompareBanks.value.map(() => ({ wch: 22 })), { wch: 22 }]
       XLSX.utils.book_append_sheet(wb, wsDist, '2_Kampanya_Dagilimi')
 
       // --- AYRI SEKME 3: Kampanya Süreleri ---
-      const wsDur = XLSX.utils.aoa_to_sheet([
-        ['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad + ' (Ay)'), 'Sektör Ortalaması (Ay)'],
-        ...categories.map((cat, idx) => [
-          cat,
-          ...activeCompareBanks.value.map(b => getCategoryDurations(getBankCampaigns(b))[idx] || 0),
-          sektorDurations.value[idx] || 0
-        ])
-      ])
+      const durRows = [
+        [{ v: 'FINAGENT · KATEGORİ BAZLI ORTALAMA KAMPANYA YAYIN SÜRELERİ', s: titleStyle }],
+        [{ v: `Kurum: ${bankName} | Tarih: ${today}`, s: metaStyle }],
+        [],
+        mapHeaderRow(['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad + ' (Ay)'), 'Sektör Ortalaması (Ay)']),
+        ...categories.map((cat, idx) => {
+          const rowBg = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC'
+          return [
+            { v: cat, s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+            ...activeCompareBanks.value.map(b => ({
+              v: Number((getCategoryDurations(getBankCampaigns(b))[idx] || 0).toFixed(1)),
+              t: 'n',
+              s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } }
+            })),
+            { v: Number((sektorDurations.value[idx] || 0).toFixed(1)), t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '4338CA' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } }
+          ]
+        })
+      ]
+      const wsDur = XLSX.utils.aoa_to_sheet(durRows)
       wsDur['!cols'] = [{ wch: 18 }, ...activeCompareBanks.value.map(() => ({ wch: 24 })), { wch: 24 }]
       XLSX.utils.book_append_sheet(wb, wsDur, '3_Ortalama_Sureler')
 
       // --- AYRI SEKME 4: Kampanyalar Listesi ---
-      const wsCamps = XLSX.utils.aoa_to_sheet([
-        ['Banka', 'Kampanya Adı', 'Tür', 'Kâr Payı (%)', 'Vade (Ay)', 'Taksit', 'Ödül (TL)', 'Bitiş Tarihi', 'Hedef Kitle', 'Kaynak URL'],
-        ...activeCamps.map(c => {
+      const campRows = [
+        [{ v: 'FINAGENT · AKTİF KAMPANYALAR DÖKÜMÜ', s: titleStyle }],
+        [{ v: `Kurum: ${bankName} | Tarih: ${today} | Toplam: ${activeCamps.length} Kampanya`, s: metaStyle }],
+        [],
+        mapHeaderRow(['Banka', 'Kampanya Adı', 'Tür', 'Kâr Payı (%)', 'Vade (Ay)', 'Taksit (TL)', 'Ödül (TL)', 'Bitiş Tarihi', 'Hedef Kitle', 'Kaynak URL']),
+        ...activeCamps.map((c, idx) => {
+          const rowBg = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC'
           const gb = c.genel_bilgi || {}
           const fd = c.finansman_detay || {}
           const pd = c.promosyon_detay || {}
+
+          const karRate = fd.kar_payi_orani ? parseFloat(String(fd.kar_payi_orani).replace('%', '').replace(',', '.')) / 100 : null
+          const vadeVal = fd.vade_ay ? parseInt(String(fd.vade_ay).replace(/\D/g, '')) : null
+          const taksitVal = fd.taksit ? parseFloat(String(fd.taksit).replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.')) : null
+          const odulVal = pd.odul_tutari ? parseFloat(String(pd.odul_tutari).replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.')) : null
+
           return [
-            gb.banka_id || c.banka || '-',
-            gb.kampanya_adi || c.baslik || '-',
-            gb.kampanya_turu || c.tur || '-',
-            fd.kar_payi_orani ?? '-',
-            fd.vade_ay ?? '-',
-            fd.taksit ?? '-',
-            pd.odul_tutari ?? '-',
-            formatTarih(gb.bitis_tarihi) || '-',
-            Array.isArray(gb.hedef_kitle) ? gb.hedef_kitle.join(', ') : (gb.hedef_kitle || '-'),
-            gb.kaynak_url || c.url || '-'
+            { v: gb.banka_id || c.banka || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+            { v: gb.kampanya_adi || c.baslik || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+            { v: gb.kampanya_turu || c.tur || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+            karRate !== null ? { v: karRate, t: 'n', z: '0.00%', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '059669' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } } : { v: '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+            vadeVal !== null ? { v: vadeVal, t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } } : { v: '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+            taksitVal !== null ? { v: taksitVal, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } } : { v: '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+            odulVal !== null ? { v: odulVal, t: 'n', z: '#,##0.00 "₺"', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: 'D97706' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'right' } } } : { v: '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+            { v: formatTarih(gb.bitis_tarihi) || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 8.5 }, border: borderStyle, alignment: { horizontal: 'center' } } },
+            { v: Array.isArray(gb.hedef_kitle) ? gb.hedef_kitle.join(', ') : (gb.hedef_kitle || '-'), s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 8.5 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+            { v: gb.kaynak_url || c.url || '-', s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 8, color: { rgb: '2563EB' } }, border: borderStyle, alignment: { horizontal: 'left' } } }
           ]
         })
-      ])
-      wsCamps['!cols'] = [{ wch: 16 }, { wch: 45 }, { wch: 20 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 15 }, { wch: 22 }, { wch: 40 }]
+      ]
+      const wsCamps = XLSX.utils.aoa_to_sheet(campRows)
+      wsCamps['!cols'] = [{ wch: 16 }, { wch: 45 }, { wch: 20 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 24 }, { wch: 40 }]
       XLSX.utils.book_append_sheet(wb, wsCamps, '4_Kampanyalar_Listesi')
 
       XLSX.writeFile(wb, `FinAgent_${cleanBankName}_Tum_Analiz_Raporu.xlsx`)
     } else if (chartRefName === 'lineChartRef') {
-      const rows = [['Ay', ...activeCompareBanks.value.map(b => b.kisa_ad), 'Sektör Ortalaması']]
-      last6Months.value.forEach((m, idx) => {
-        const row = [m]
-        activeCompareBanks.value.forEach(b => {
-          const trendData = getBankTrend(getBankCampaigns(b))
-          row.push(trendData[idx] || 0)
+      const trendRows = [
+        [{ v: 'FINAGENT · 6 AYLIK KAMPANYA BAŞLANGIÇ TRENDİ', s: titleStyle }],
+        [{ v: `Kurum: ${bankName} | Rapor Tarihi: ${today}`, s: metaStyle }],
+        [],
+        mapHeaderRow(['Ay', ...activeCompareBanks.value.map(b => b.kisa_ad), 'Sektör Ortalaması']),
+        ...last6Months.value.map((m, idx) => {
+          const rowBg = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC'
+          return [
+            { v: m, s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+            ...activeCompareBanks.value.map(b => ({
+              v: getBankTrend(getBankCampaigns(b))[idx] || 0,
+              t: 'n',
+              s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } }
+            })),
+            { v: Number((sektorAverages.value[idx] || 0).toFixed(1)), t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '4338CA' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } }
+          ]
         })
-        row.push(sektorAverages.value[idx] || 0)
-        rows.push(row)
-      })
-      const ws = XLSX.utils.aoa_to_sheet(rows)
+      ]
+      const ws = XLSX.utils.aoa_to_sheet(trendRows)
       ws['!cols'] = [{ wch: 15 }, ...activeCompareBanks.value.map(() => ({ wch: 22 })), { wch: 22 }]
       XLSX.utils.book_append_sheet(wb, ws, 'Baslangic_Trendi')
       XLSX.writeFile(wb, `FinAgent_${cleanBankName}_Baslangic_Trendi.xlsx`)
     } else if (chartRefName === 'radarChartRef') {
-      const rows = [['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad), 'Sektör Ortalaması']]
-      categories.forEach((cat, idx) => {
-        const row = [cat]
-        activeCompareBanks.value.forEach(b => {
-          const catCounts = getCategoryCounts(getBankCampaigns(b))
-          row.push(catCounts[idx] || 0)
+      const distRows = [
+        [{ v: 'FINAGENT · KATEGORİ BAZLI KAMPANYA DAĞILIMI', s: titleStyle }],
+        [{ v: `Kurum: ${bankName} | Rapor Tarihi: ${today}`, s: metaStyle }],
+        [],
+        mapHeaderRow(['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad), 'Sektör Ortalaması']),
+        ...categories.map((cat, idx) => {
+          const rowBg = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC'
+          return [
+            { v: cat, s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+            ...activeCompareBanks.value.map(b => ({
+              v: getCategoryCounts(getBankCampaigns(b))[idx] || 0,
+              t: 'n',
+              s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } }
+            })),
+            { v: Number((sektorAverages.value[idx] || 0).toFixed(1)), t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '4338CA' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } }
+          ]
         })
-        row.push(sektorAverages.value[idx] || 0)
-        rows.push(row)
-      })
-      const ws = XLSX.utils.aoa_to_sheet(rows)
+      ]
+      const ws = XLSX.utils.aoa_to_sheet(distRows)
       ws['!cols'] = [{ wch: 18 }, ...activeCompareBanks.value.map(() => ({ wch: 22 })), { wch: 22 }]
       XLSX.utils.book_append_sheet(wb, ws, 'Kampanya_Dagilimi')
       XLSX.writeFile(wb, `FinAgent_${cleanBankName}_Kampanya_Dagilimi.xlsx`)
     } else if (chartRefName === 'barChartRef') {
-      const rows = [['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad + ' (Ay)'), 'Sektör Ortalaması (Ay)']]
-      categories.forEach((cat, idx) => {
-        const row = [cat]
-        activeCompareBanks.value.forEach(b => {
-          const catDurs = getCategoryDurations(getBankCampaigns(b))
-          row.push(catDurs[idx] || 0)
+      const durRows = [
+        [{ v: 'FINAGENT · KATEGORİ BAZLI ORTALAMA KAMPANYA YAYIN SÜRELERİ', s: titleStyle }],
+        [{ v: `Kurum: ${bankName} | Rapor Tarihi: ${today}`, s: metaStyle }],
+        [],
+        mapHeaderRow(['Kategori', ...activeCompareBanks.value.map(b => b.kisa_ad + ' (Ay)'), 'Sektör Ortalaması (Ay)']),
+        ...categories.map((cat, idx) => {
+          const rowBg = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC'
+          return [
+            { v: cat, s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '1E40AF' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'left' } } },
+            ...activeCompareBanks.value.map(b => ({
+              v: Number((getCategoryDurations(getBankCampaigns(b))[idx] || 0).toFixed(1)),
+              t: 'n',
+              s: { fill: { fgColor: { rgb: rowBg } }, font: { sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } }
+            })),
+            { v: Number((sektorDurations.value[idx] || 0).toFixed(1)), t: 'n', s: { fill: { fgColor: { rgb: rowBg } }, font: { bold: true, color: { rgb: '4338CA' }, sz: 9 }, border: borderStyle, alignment: { horizontal: 'center' } } }
+          ]
         })
-        row.push(sektorDurations.value[idx] || 0)
-        rows.push(row)
-      })
-      const ws = XLSX.utils.aoa_to_sheet(rows)
+      ]
+      const ws = XLSX.utils.aoa_to_sheet(durRows)
       ws['!cols'] = [{ wch: 18 }, ...activeCompareBanks.value.map(() => ({ wch: 24 })), { wch: 24 }]
       XLSX.utils.book_append_sheet(wb, ws, 'Ortalama_Sureler')
       XLSX.writeFile(wb, `FinAgent_${cleanBankName}_Ortalama_Sureler.xlsx`)
@@ -665,7 +798,7 @@ const exportToPDF = async (chartRefName) => {
   }
 }
 
-// --------------------------- 3. GERÇEK NETLİKTE ULTRA-HD PNG DIŞA AKTARMA ---------------------------
+// --------------------------- 3. GERÇEK NETLİKTE BEYAZ ŞABLONLU ULTRA-HD PNG DIŞA AKTARMA ---------------------------
 const exportToPNG = async (chartRefName) => {
   const containerId = chartRefName === 'all-comparison' ? 'chart-box-all-comparison' : 'chart-box-' + chartRefName
   const el = document.getElementById(containerId)
@@ -673,14 +806,13 @@ const exportToPNG = async (chartRefName) => {
 
   try {
     await betigiYukle('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'html2canvas')
-    const karanlik = document.documentElement.classList.contains('dark')
-    const arkaPlan = karanlik ? '#0a0a0a' : '#ffffff'
+    const arkaPlan = '#ffffff' // Her zaman temiz beyaz şablon
 
     // Orijinal canlı canvas piksellerini klona 1:1 netlikte kopyalayarak sahte bulanıklaşmayı engelliyoruz
     const yakala = async (sade) => {
       return await window.html2canvas(el, {
         scale: 3, // 3x Yüksek Çözünürlük
-        backgroundColor: arkaPlan,
+        backgroundColor: '#ffffff',
         useCORS: true,
         logging: false,
         letterRendering: true,
@@ -688,9 +820,37 @@ const exportToPNG = async (chartRefName) => {
         ignoreElements: (eleman) => eleman?.hasAttribute?.('data-png-gizle'),
         onclone: (klonDoc, klonEleman) => {
           try {
+            // Beyaz şablonu zorla (Koyu modu kaldır)
+            klonDoc.documentElement.classList.remove('dark')
+            klonDoc.body.classList.remove('dark')
+            klonDoc.documentElement.style.backgroundColor = '#ffffff'
+            klonDoc.body.style.backgroundColor = '#ffffff'
+            klonDoc.body.style.color = '#0f172a'
+
             const kok = klonEleman || klonDoc.getElementById(containerId)
             klonAnimasyonlariniDurdur(klonDoc, kok)
-            klonRenkleriniDuzelt(el, kok)
+            
+            if (kok) {
+              kok.classList.remove('dark', 'bg-neutral-900', 'bg-neutral-950', 'text-white')
+              kok.style.backgroundColor = '#ffffff'
+              kok.style.color = '#0f172a'
+              kok.style.padding = '24px'
+              kok.style.borderRadius = '24px'
+              kok.style.maxWidth = 'none'
+
+              // Klon altındaki tüm koyu temalı sınıfları temizle
+              kok.querySelectorAll('*').forEach(child => {
+                child.classList.remove('dark')
+                if (child.style) {
+                  if (child.style.backgroundColor && (child.style.backgroundColor.includes('0a0a0a') || child.style.backgroundColor.includes('171717'))) {
+                    child.style.backgroundColor = '#ffffff'
+                  }
+                  if (child.style.color && (child.style.color.includes('ffffff') || child.style.color.includes('f5f5f5'))) {
+                    child.style.color = '#0f172a'
+                  }
+                }
+              })
+            }
             
             // Canlı canvas verilerini klon tuvaline doğrudan kopyala
             const origCanvases = el.querySelectorAll('canvas')
@@ -701,7 +861,11 @@ const exportToPNG = async (chartRefName) => {
                 clone.width = orig.width
                 clone.height = orig.height
                 const ctx = clone.getContext('2d')
-                if (ctx) ctx.drawImage(orig, 0, 0)
+                if (ctx) {
+                  ctx.fillStyle = '#ffffff'
+                  ctx.fillRect(0, 0, clone.width, clone.height)
+                  ctx.drawImage(orig, 0, 0)
+                }
               }
             })
 
@@ -709,12 +873,6 @@ const exportToPNG = async (chartRefName) => {
               const s = klonDoc.createElement('style')
               s.textContent = '* { background-image: none !important; box-shadow: none !important; text-shadow: none !important; }'
               ;(klonDoc.head || klonDoc.body)?.appendChild(s)
-            }
-            if (kok && kok.style) {
-              kok.style.backgroundColor = arkaPlan
-              kok.style.padding = '24px'
-              kok.style.borderRadius = '24px'
-              kok.style.maxWidth = 'none'
             }
           } catch (hata) { console.warn('PNG klon hazirlik:', hata) }
         }
@@ -728,7 +886,7 @@ const exportToPNG = async (chartRefName) => {
       canvas = await yakala(true)
     }
 
-    const duzTuval = tuvaliDuzlestir(canvas, arkaPlan)
+    const duzTuval = tuvaliDuzlestir(canvas, '#ffffff')
     const dataUrl = duzTuval.toDataURL('image/png', 1.0)
     if (!dataUrl || dataUrl === 'data:,') throw new Error('PNG Görseli oluşturulamadı')
 
@@ -774,10 +932,22 @@ const fetchVeriler = async () => {
   }
 }
 
+const handleKeyDown = (e) => {
+  if (e.key === 'Escape') {
+    if (selectedModalCampaign.value) {
+      selectedModalCampaign.value = null
+    }
+    if (showAiPopover.value) {
+      showAiPopover.value = false
+    }
+  }
+}
+
 onMounted(() => {
   fetchVeriler()
   if (process.client) {
     document.addEventListener('click', handleOutsideClick)
+    window.addEventListener('keydown', handleKeyDown)
 
     nextTick(() => {
       const scrollerEl = document.getElementById('main-scroller')
@@ -806,6 +976,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (process.client) {
     document.removeEventListener('click', handleOutsideClick)
+    window.removeEventListener('keydown', handleKeyDown)
     if (lenisRafId) {
       cancelAnimationFrame(lenisRafId)
       lenisRafId = null
@@ -1707,14 +1878,9 @@ const mgmCampaigns = computed(() => {
     
     <!-- ================= ORTALANMIŞ BAŞLIK ================= -->
     <div class="flex flex-col items-center text-center gap-3">
-      <div class="flex flex-wrap items-center justify-center gap-3">
-        <h1 class="reveal-title text-4xl md:text-5xl font-bold bg-clip-text text-transparent gradient-text pb-1">
-          {{ isBankaci ? $t('dashboard.title_banker', 'Kıyaslama') : $t('dashboard.title_customer', 'Pazar Analizi') }}
-        </h1>
-        <span v-if="isBankaci" class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/40 rounded-full shrink-0">
-          {{ $t('dashboard.banker_badge', 'Banka Çalışanı') }}
-        </span>
-      </div>
+      <h1 class="reveal-title text-4xl md:text-5xl font-bold bg-clip-text text-transparent gradient-text pb-1">
+        {{ isBankaci ? $t('dashboard.title_banker', 'Kıyaslama') : $t('dashboard.title_customer', 'Pazar Analizi') }}
+      </h1>
       <p class="text-sm md:text-base text-neutral-500 dark:text-neutral-400 max-w-2xl">
         {{ isBankaci ? $t('dashboard.subtitle_banker', 'Katılım bankacılığı sektöründeki kampanya hareketlerini ve pazar rekabetini takip edin.') : $t('dashboard.subtitle_customer', 'Tüm katılım bankalarındaki en güncel ve size en uygun oranları karşılaştırın.') }}
       </p>
@@ -1827,7 +1993,7 @@ const mgmCampaigns = computed(() => {
 
             <div>
               <h3 class="text-xl font-extrabold text-neutral-900 dark:text-white truncate tracking-tight" :title="b.resmi_ad">{{ b.kisa_ad || b.resmi_ad }}</h3>
-              <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1 font-medium">{{ $t('dashboard.asset_size', 'Aktif Büyüklük') }}: <span class="font-bold text-neutral-800 dark:text-neutral-200">{{ b.aktif_buyukluk_milyar_tl }} Milyar ₺</span></p>
+              <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1 font-medium">{{ $t('dashboard.asset_size', 'Aktif Büyüklük') }}: <span class="font-bold text-neutral-800 dark:text-neutral-200">{{ b.aktif_buyukluk_milyar_tl }} {{ $t('dashboard.billion_tl', 'Milyar ₺') }}</span></p>
             </div>
 
             <div class="mt-6 pt-5 border-t border-neutral-100 dark:border-neutral-800 flex justify-between items-end">

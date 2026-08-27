@@ -1,5 +1,6 @@
 {
   "brand": "FinAgent",
+  "locale": "tr-TR",
   "page_titles": {
     "home": "Ana Sayfa",
     "chat": "AI Asistan",
@@ -102,6 +103,8 @@
     "metric_token_title": "Girdi + çıktı token toplamı (tüm arka plan çağrıları dahil)",
     "metric_calls_title": "Bu yanıt için yapılan API çağrısı sayısı",
     "metric_calls": "çağrı",
+    "sec_short": "sn",
+    "tokens": "token",
     "metric_cached": "önbellek",
     "metric_cache_title": "Bu yanıt önbellekten geldi, yeni token harcanmadı",
     "mixed_units": "Birimler karışık (TL / %) — ortalama alınamaz",
@@ -274,6 +277,7 @@
     "evidence_title": "Çıkarım Kanıtları",
     "evidence_desc": "Bir kampanya seçin: sistemin her değeri metindeki HANGİ ifadeden ve hangi yöntemle çıkardığını görün.",
     "inspected_campaign": "İncelenen Kampanya",
+    "select_campaign_label": "İncelenecek Kampanyayı Seçin",
     "select_from_table": "Tablodan bir kampanya seçin...",
     "evidence_fields": {
       "field": "Alan",
@@ -349,6 +353,7 @@
     "dominant_category": "Baskın Kategori",
     "active_campaign": "Aktif Kampanya",
     "asset_size": "Aktif Büyüklük",
+    "billion_tl": "Milyar ₺",
     "last_scan": "Son Tarama",
     "official_site": "Resmi Site",
     "clear_selection": "Seçimi Temizle",
@@ -481,6 +486,7 @@
     "withholding_tax": "Stopaj Kesintisi (%7,5)",
     "net_profit": "Net Kâr Getirisi",
     "maturity_total": "Vade Sonu Toplam",
+    "principal_plus_profit": "Ana Para + Kâr Payı",
     "calc_and_details": "Hesapla & Detay",
     "ai_ask_tooltip": "FinAgent ile Kâr Payı Getirisini Analiz Et",
     "col_bank": "Banka",
@@ -506,7 +512,8 @@
     "ai_ask_full_btn": "FinAgent ile Bu Getiriyi Analiz Et",
     "badge_max_net_rate": "En Yüksek Net Oran",
     "badge_max_net_profit": "En Yüksek Getiri",
-    "badge_max_gross_rate": "En Yüksek Brüt Oran"
+    "badge_max_gross_rate": "En Yüksek Brüt Oran",
+    "profit_breakdown": "Getiri & Kesinti Dökümü"
   },
   "taxonomy": {
     "turler": {
@@ -525,7 +532,11 @@
       "odeme": "Ödeme",
       "sigorta": "Sigorta",
       "genel": "Genel",
-      "diger": "Diğer"
+      "diger": "Diğer",
+      "alisveris_puani": "Alışveriş Puanı",
+      "belirtilmemis": "Belirtilmemiş",
+      "indirim_kampanyasi": "İndirim",
+      "hediye_promosyon": "Hediye / Promosyon"
     },
     "hedef_kitleler": {
       "mevcut_musteri": "Mevcut",
@@ -537,7 +548,8 @@
       "ticari": "Ticari",
       "genc": "Genç",
       "emekli": "Emekli",
-      "ozel": "Özel"
+      "ozel": "Özel",
+      "segment": "Segmente Özel"
     },
     "kategoriler": {
       "alisveris": "Alışveriş",
@@ -553,7 +565,17 @@
       "seyahat": "Seyahat",
       "pos": "POS",
       "sigorta": "Sigorta",
-      "diger": "Diğer"
+      "diger": "Diğer",
+      "dijital_aninda_alisveris": "Dijital / Anında Alışveriş",
+      "bireysel_ihtiyac": "Bireysel / İhtiyaç",
+      "konut_gayrimenkul": "Konut / Gayrimenkul",
+      "tasit_finansmani": "Taşıt",
+      "ticari_kurumsal": "Ticari & Kurumsal"
+    },
+    "sektorler": {
+      "mobilya_ve_ev": "Mobilya ve Ev",
+      "sağlık": "Sağlık",
+      "restoran_ve_yeme-içme": "Restoran ve Yeme-İçme"
     }
   }
 }

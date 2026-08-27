@@ -346,19 +346,46 @@ import { useTaxonomy } from '~/composables/useTaxonomy'
 const { t } = useI18n()
 const { formatTur, formatHedefKitle, formatKategori } = useTaxonomy()
 
-const getFilterOptionLabel = (key, opt) => {
-  if (!opt) return '-'
-  if (key === 'banka') return getBankaAd(opt)
-  if (key === 'tur') return formatTur(opt)
-  if (key === 'kitle') return formatHedefKitle(opt)
-  return opt
-}
-
 useHead({
   title: computed(() => t('page_titles.campaigns', 'Tüm Kampanyalar'))
 })
 
-const isValidVal = (val) => val !== null && val !== undefined && val !== '' && val !== 'None'
+// --- REAKTİF DURUMLAR (STATE) ---
+const pending = ref(true)
+const pendingEvidences = ref(false)
+const isTextExpanded = ref(false)
+const selectedCampaignId = ref(null)
+const revealed = ref(false)
+const evidenceReady = ref(false)
+const openDropdown = ref(null)
+const campaignSelectOpen = ref(false)
+
+const campaigns = ref([])
+const banks = ref([])
+const activeEvidences = ref([])
+const totalCount = ref(0)
+
+const search = ref('')
+const sortKey = ref('')
+const sortDir = ref('asc')
+
+const filters = ref({
+  banka: [],
+  tur: [],
+  kitle: [],
+  sadeceOranli: false
+})
+
+const filterQuery = ref({ banka: '', tur: '', kitle: '' })
+const filterOptions = ref({
+  bankalar: [],
+  turler: [],
+  kitleler: []
+})
+const filterInputs = {}
+
+// --- YARDIMCI DOĞRULAMA VE FORMATLAMA ---
+const isValidVal = (val) => val !== null && val !== undefined && val !== '' && String(val).trim().toLowerCase() !== 'none' && String(val).trim().toLowerCase() !== 'null' && String(val).trim() !== '-'
 const formatVal = (val) => isValidVal(val) ? val : '-'
 const formatTarih = (val) => {
   if (!isValidVal(val)) return '-'
@@ -374,80 +401,119 @@ const formatTarih = (val) => {
   }
 }
 
-const pending = ref(true)
-const pendingEvidences = ref(false)
-const isTextExpanded = ref(false)
-const selectedCampaignId = ref(null)
-const revealed = ref(false)
-const evidenceReady = ref(false)
-const openDropdown = ref(null)
-
-const campaigns = ref([])
-const activeEvidences = ref([])
-const totalCount = ref(0) 
-
-const campaignSelectOpen = ref(false)
-const selectedCampaignLabel = computed(() => {
-  const c = campaigns.value.find(x => x.id === selectedCampaignId.value)
-  return c ? `${c.banka} — ${c.baslik}` : 'Tablodan bir kampanya seçin...'
-})
-
-const selectCampaign = (id) => {
-  selectedCampaignId.value = id
-  campaignSelectOpen.value = false
-  
-  if (id) {
-    setTimeout(() => {
-      window.scrollBy({ top: 300, behavior: 'smooth' })
-    }, 100)
-  }
+const getBankaLogo = (banka_id) => {
+  if (!banka_id) return null
+  const b = banks.value.find(x => x._id === banka_id || x.id === banka_id || x.kisa_ad?.toLowerCase().replace(/ /g, '') === banka_id)
+  if (b?.logo_url) return b.logo_url
+  const cleanId = String(banka_id).toLowerCase().replace(/_/g, '').replace(/ /g, '')
+  return `/${cleanId}_logo.svg`
 }
 
-let lenis = null
-let lenisRafId = null
+const getBankaAd = (banka_id) => {
+  if (!banka_id) return '-'
+  const b = banks.value.find(x => x._id === banka_id || x.id === banka_id || x.kisa_ad?.toLowerCase().replace(/ /g, '') === banka_id)
+  return b ? (b.kisa_ad || b.resmi_ad) : banka_id
+}
 
-const search = ref('')
-const sortKey = ref('')
-const sortDir = ref('asc')
+const getFilterOptionLabel = (key, opt) => {
+  if (!opt) return '-'
+  if (key === 'banka') return getBankaAd(opt)
+  if (key === 'tur') return formatTur(opt)
+  if (key === 'kitle') return formatHedefKitle(opt)
+  return opt
+}
+
+// --- FİLTRELENMİŞ VE HESAPLANMIŞ ALANLAR ---
+const filterDefs = computed(() => [
+  { key: 'banka', label: t('campaigns.columns.banka', 'Banka'), options: filterOptions.value.bankalar },
+  { key: 'tur', label: t('campaigns.columns.tur', 'Tür'), options: filterOptions.value.turler },
+  { key: 'kitle', label: t('campaigns.columns.hedefKitle', 'Hedef Kitle'), options: filterOptions.value.kitleler }
+])
+
+const filteredCampaigns = computed(() => {
+  const q = search.value.trim().toLocaleLowerCase('tr')
+  const f = filters.value || { banka: [], tur: [], kitle: [], sadeceOranli: false }
+  return campaigns.value.filter(camp => {
+    const matchBanka = !f.banka?.length || f.banka.includes(camp.banka)
+    const matchTur = !f.tur?.length || f.tur.includes(camp.tur)
+    const matchKitle = !f.kitle?.length || f.kitle.some(k => {
+      const campKitle = String(camp.hedefKitle || '').toLowerCase()
+      return campKitle.includes(String(k).toLowerCase())
+    })
+    
+    const matchOran = !f.sadeceOranli || (isValidVal(camp.karPayi) && parseFloat(camp.karPayi) > 0)
+    
+    const matchSearch = !q ||
+      (camp.baslik && camp.baslik.toLocaleLowerCase('tr').includes(q)) ||
+      (camp.banka && camp.banka.toLocaleLowerCase('tr').includes(q))
+    return matchBanka && matchTur && matchKitle && matchOran && matchSearch
+  })
+})
+
+const displayedCampaigns = computed(() => {
+  const list = [...filteredCampaigns.value]
+  if (!sortKey.value) return list
+  const numericKeys = ['karPayi', 'vade', 'taksit', 'odul']
+  const dir = sortDir.value === 'asc' ? 1 : -1
+  return list.sort((a, b) => {
+    let va = a[sortKey.value]
+    let vb = b[sortKey.value]
+    if (va === null || va === undefined || va === '' || va === 'None') return 1
+    if (vb === null || vb === undefined || vb === '' || vb === 'None') return -1
+    if (numericKeys.includes(sortKey.value)) {
+      return (parseFloat(va) - parseFloat(vb)) * dir
+    }
+    return String(va).localeCompare(String(vb), 'tr') * dir
+  })
+})
+
+const hasAnyValidRow = (getterFn) => {
+  if (!filteredCampaigns.value || filteredCampaigns.value.length === 0) return true
+  return filteredCampaigns.value.some(camp => {
+    const val = getterFn(camp)
+    if (val === null || val === undefined) return false
+    const s = String(val).trim().toLowerCase()
+    return s !== '' && s !== 'none' && s !== 'null' && s !== '-' && s !== 'bilinmiyor'
+  })
+}
 
 const columns = computed(() => {
-  const selectedTurs = filters.value.tur || []
-  let hideOdul = false
-  let hideFinansman = false
-  
-  if (selectedTurs.length > 0) {
-    const isAllFinansman = selectedTurs.every(t => {
-      const lt = String(t).toLowerCase()
-      return lt.includes('finansman') || lt.includes('tat') || lt.includes('konut') || lt.includes('ihtiya')
-    })
-    
-    const isAllOdul = selectedTurs.every(t => {
-      const lt = String(t).toLowerCase()
-      return lt.includes('kart') || lt.includes('mteri') || lt.includes('pos') || lt.includes('mgm') || lt.includes('alveri') || lt.includes('yatrm') || lt.includes('sigorta')
-    })
-    
-    if (isAllFinansman) hideOdul = true
-    if (isAllOdul) hideFinansman = true
-  }
-
   const cols = [
-    { key: 'banka', label: t('campaigns.columns.banka', 'Banka'), sortable: true, align: 'left', width: 'w-[15%]' },
-    { key: 'baslik', label: t('campaigns.columns.kampanya', 'Kampanya'), sortable: true, align: 'left', width: hideFinansman && hideOdul ? 'w-[45%]' : hideFinansman ? 'w-[36%]' : hideOdul ? 'w-[32%]' : 'w-[27%]' },
-    { key: 'tur', label: t('campaigns.columns.tur', 'Tür'), sortable: true, align: 'center', width: 'w-[8%]' }
+    { key: 'banka', label: t('campaigns.columns.banka', 'Banka'), sortable: true, align: 'left', width: 'w-[15%] min-w-[130px]' },
+    { key: 'baslik', label: t('campaigns.columns.kampanya', 'Kampanya'), sortable: true, align: 'left', width: 'min-w-[200px]' }
   ]
   
-  if (!hideFinansman) {
-    cols.push({ key: 'karPayi', label: t('campaigns.columns.karPayi', 'Kâr Payı (%)'), sortable: true, align: 'center', width: 'w-[9%]' })
-    cols.push({ key: 'vade', label: t('campaigns.columns.vade', 'Vade (ay)'), sortable: true, align: 'center', width: 'w-[7%]' })
-    cols.push({ key: 'taksit', label: t('campaigns.columns.taksit', 'Taksit'), sortable: true, align: 'center', width: 'w-[7%]' })
+  if (hasAnyValidRow(c => c.tur)) {
+    cols.push({ key: 'tur', label: t('campaigns.columns.tur', 'Tür'), sortable: true, align: 'center', width: 'w-[9%] min-w-[80px]' })
   }
   
-  if (!hideOdul) {
-    cols.push({ key: 'odul', label: t('campaigns.columns.odul', 'Ödül (TL)'), sortable: true, align: 'center', width: 'w-[8%]' })
+  if (hasAnyValidRow(c => (isValidVal(c.karPayi) && parseFloat(c.karPayi) > 0) ? c.karPayi : null)) {
+    cols.push({ key: 'karPayi', label: t('campaigns.columns.karPayi', 'Kâr Payı (%)'), sortable: true, align: 'center', width: 'w-[9%] min-w-[85px]' })
   }
   
-  cols.push({ key: 'bitisTarihi', label: t('campaigns.columns.bitisTarihi', 'Bitiş'), sortable: true, align: 'center', width: 'w-[9%]' })
-  cols.push({ key: 'hedefKitle', label: t('campaigns.columns.hedefKitle', 'Hedef Kitle'), sortable: true, align: 'left', width: 'w-[10%]' })
+  if (hasAnyValidRow(c => (isValidVal(c.vade) && parseInt(c.vade) > 0) ? c.vade : null)) {
+    cols.push({ key: 'vade', label: t('campaigns.columns.vade', 'Vade (ay)'), sortable: true, align: 'center', width: 'w-[7%] min-w-[70px]' })
+  }
+  
+  if (hasAnyValidRow(c => (isValidVal(c.taksit) && c.taksit !== '-') ? c.taksit : null)) {
+    cols.push({ key: 'taksit', label: t('campaigns.columns.taksit', 'Taksit'), sortable: true, align: 'center', width: 'w-[7%] min-w-[70px]' })
+  }
+  
+  if (hasAnyValidRow(c => (isValidVal(c.odul) && Number(c.odul) > 0) ? c.odul : null)) {
+    cols.push({ key: 'odul', label: t('campaigns.columns.odul', 'Ödül (TL)'), sortable: true, align: 'center', width: 'w-[8%] min-w-[80px]' })
+  }
+  
+  if (hasAnyValidRow(c => (isValidVal(c.bitisTarihi) && c.bitisTarihi !== '-') ? c.bitisTarihi : null)) {
+    cols.push({ key: 'bitisTarihi', label: t('campaigns.columns.bitisTarihi', 'Bitiş'), sortable: true, align: 'center', width: 'w-[9%] min-w-[85px]' })
+  }
+  
+  if (hasAnyValidRow(c => {
+    const k = c.hedefKitle
+    if (!k || k === '-') return null
+    return (Array.isArray(k) ? k.length > 0 : String(k).trim().length > 0) ? k : null
+  })) {
+    cols.push({ key: 'hedefKitle', label: t('campaigns.columns.hedefKitle', 'Hedef Kitle'), sortable: true, align: 'left', width: 'w-[11%] min-w-[100px]' })
+  }
   
   return cols
 })
@@ -456,28 +522,30 @@ const isColumnVisible = (key) => {
   return columns.value.some(c => c.key === key)
 }
 
+const activeFilterCount = computed(() =>
+  filters.value.banka.length +
+  filters.value.tur.length +
+  filters.value.kitle.length +
+  (filters.value.sadeceOranli ? 1 : 0) +
+  (search.value.trim() ? 1 : 0)
+)
 
-const filterOptions = ref({
-  bankalar: [],
-  turler: [],
-  kitleler: []
+const selectedCampaignLabel = computed(() => {
+  const c = campaigns.value.find(x => x.id === selectedCampaignId.value)
+  return c ? `${c.banka} — ${c.baslik}` : t('campaigns.select_from_table', 'Tablodan bir kampanya seçin...')
 })
 
-const filterDefs = computed(() => [
-  { key: 'banka', label: t('campaigns.columns.banka', 'Banka'), options: filterOptions.value.bankalar },
-  { key: 'tur', label: t('campaigns.columns.tur', 'Tür'), options: filterOptions.value.turler },
-  { key: 'kitle', label: t('campaigns.columns.hedefKitle', 'Hedef Kitle'), options: filterOptions.value.kitleler }
-])
-
-const filters = ref({
-  banka: [],
-  tur: [],
-  kitle: [],
-  sadeceOranli: false
+const activeCampaignText = computed(() => {
+  const camp = campaigns.value.find(c => c.id === selectedCampaignId.value)
+  return camp ? camp.metin : ''
 })
 
-const filterQuery = ref({ banka: '', tur: '', kitle: '' })
-const filterInputs = {}
+const activeCampaignUrl = computed(() => {
+  const camp = campaigns.value.find(c => c.id === selectedCampaignId.value)
+  return camp ? camp.url : '#'
+})
+
+// --- EYLEMLER VE İŞLEVLER ---
 const setFilterInputRef = (key, el) => { if (el) filterInputs[key] = el }
 
 const focusFilter = (key) => {
@@ -524,14 +592,6 @@ const clearFilters = () => {
   openDropdown.value = null
 }
 
-const activeFilterCount = computed(() =>
-  filters.value.banka.length +
-  filters.value.tur.length +
-  filters.value.kitle.length +
-  (filters.value.sadeceOranli ? 1 : 0) +
-  (search.value.trim() ? 1 : 0)
-)
-
 const setSort = (key) => {
   if (sortKey.value === key) {
     sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
@@ -541,8 +601,17 @@ const setSort = (key) => {
   }
 }
 
+const selectCampaign = (id) => {
+  selectedCampaignId.value = id
+  campaignSelectOpen.value = false
+  
+  if (id) {
+    setTimeout(() => {
+      window.scrollBy({ top: 300, behavior: 'smooth' })
+    }, 100)
+  }
+}
 
-const banks = ref([])
 const fetchBanks = async () => {
   try {
     const res = await fetch('http://localhost:8003/banks')
@@ -552,21 +621,6 @@ const fetchBanks = async () => {
   } catch (e) {
     console.error('Bankalar alinamadi:', e)
   }
-}
-
-const getBankaLogo = (banka_id) => {
-  if (!banka_id) return null
-  const b = banks.value.find(x => x._id === banka_id || x.id === banka_id || x.kisa_ad?.toLowerCase().replace(/ /g, '') === banka_id)
-  if (b?.logo_url) return b.logo_url
-  
-  const cleanId = String(banka_id).toLowerCase().replace(/_/g, '').replace(/ /g, '')
-  return `/${cleanId}_logo.svg`
-}
-
-const getBankaAd = (banka_id) => {
-  if (!banka_id) return '-'
-  const b = banks.value.find(x => x._id === banka_id || x.id === banka_id || x.kisa_ad?.toLowerCase().replace(/ /g, '') === banka_id)
-  return b ? (b.kisa_ad || b.resmi_ad) : banka_id
 }
 
 const fetchCampaigns = async () => {
@@ -619,8 +673,8 @@ const fetchCampaignDetail = async (id) => {
     const res = await fetch(`http://localhost:8003/campaigns/${id}`)
     
     if (!res.ok) {
-        console.error("Backend'den kampanya detayı alınırken hata döndü. HTTP Kodu:", res.status);
-        throw new Error('Detay API Hatası')
+      console.error("Backend'den kampanya detayı alınırken hata döndü. HTTP Kodu:", res.status)
+      throw new Error('Detay API Hatası')
     }
     
     const data = await res.json()
@@ -648,55 +702,24 @@ const fetchCampaignDetail = async (id) => {
   }
 }
 
-const filteredCampaigns = computed(() => {
-  const q = search.value.trim().toLocaleLowerCase('tr')
-  return campaigns.value.filter(camp => {
-    const matchBanka = filters.value.banka.length === 0 || filters.value.banka.includes(camp.banka)
-    const matchTur = filters.value.tur.length === 0 || filters.value.tur.includes(camp.tur)
-    const matchKitle = filters.value.kitle.length === 0 || filters.value.kitle.some(k => {
-      const campKitle = String(camp.hedefKitle || '').toLowerCase()
-      return campKitle.includes(String(k).toLowerCase())
-    })
-    
-    // 🚀 TOKAT: Sadece null olmayanları değil, aynı zamanda 0'dan BÜYÜK olanları alıyoruz!
-    const matchOran = !filters.value.sadeceOranli || (isValidVal(camp.karPayi) && parseFloat(camp.karPayi) > 0)
-    
-    const matchSearch = !q ||
-      (camp.baslik && camp.baslik.toLocaleLowerCase('tr').includes(q)) ||
-      (camp.banka && camp.banka.toLocaleLowerCase('tr').includes(q))
-    return matchBanka && matchTur && matchKitle && matchOran && matchSearch
-  })
-})
+const handleKeyDown = (e) => {
+  if (e.key === 'Escape') {
+    if (openDropdown.value) openDropdown.value = null
+    if (campaignSelectOpen.value) campaignSelectOpen.value = false
+    if (selectedCampaignId.value) selectedCampaignId.value = null
+  }
+}
 
-const displayedCampaigns = computed(() => {
-  const list = [...filteredCampaigns.value]
-  if (!sortKey.value) return list
-  const numericKeys = ['karPayi', 'vade', 'taksit', 'odul']
-  const dir = sortDir.value === 'asc' ? 1 : -1
-  return list.sort((a, b) => {
-    let va = a[sortKey.value]
-    let vb = b[sortKey.value]
-    if (va === null || va === undefined || va === '' || va === 'None') return 1
-    if (vb === null || vb === undefined || vb === '' || vb === 'None') return -1
-    if (numericKeys.includes(sortKey.value)) {
-      return (parseFloat(va) - parseFloat(vb)) * dir
-    }
-    return String(va).localeCompare(String(vb), 'tr') * dir
-  })
+// --- İZLEYİCİLER (WATCHERS) ---
+watch(columns, (newCols) => {
+  if (sortKey.value && !newCols.some(c => c.key === sortKey.value)) {
+    sortKey.value = ''
+  }
 })
 
 watch([filteredCampaigns, sortKey, sortDir], () => {
   revealed.value = false
   nextTick(() => { setTimeout(() => { revealed.value = true }, 30) })
-})
-
-const activeCampaignText = computed(() => {
-  const camp = campaigns.value.find(c => c.id === selectedCampaignId.value)
-  return camp ? camp.metin : ''
-})
-const activeCampaignUrl = computed(() => {
-  const camp = campaigns.value.find(c => c.id === selectedCampaignId.value)
-  return camp ? camp.url : '#'
 })
 
 watch(selectedCampaignId, async (newId) => {
@@ -715,7 +738,14 @@ watch(selectedCampaignId, async (newId) => {
   }
 })
 
+// --- YAŞAM DÖNGÜSÜ ---
+let lenis = null
+let lenisRafId = null
+
 onMounted(async () => {
+  if (process.client) {
+    window.addEventListener('keydown', handleKeyDown)
+  }
   const scrollerEl = document.getElementById('main-scroller')
   if (scrollerEl) {
     const content = scrollerEl.querySelector('main') || scrollerEl.firstElementChild
@@ -732,12 +762,16 @@ onMounted(async () => {
     lenisRafId = requestAnimationFrame(raf)
   }
 
-  await fetchBanks(); fetchCampaigns()
+  await fetchBanks()
+  await fetchCampaigns()
   pending.value = false
   nextTick(() => { setTimeout(() => { revealed.value = true }, 30) })
 })
 
 onUnmounted(() => {
+  if (process.client) {
+    window.removeEventListener('keydown', handleKeyDown)
+  }
   if (lenisRafId) cancelAnimationFrame(lenisRafId)
   if (lenis) { lenis.destroy(); lenis = null }
 })

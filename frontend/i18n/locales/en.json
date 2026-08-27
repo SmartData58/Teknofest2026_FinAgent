@@ -1,5 +1,6 @@
 {
   "brand": "FinAgent",
+  "locale": "en-US",
   "page_titles": {
     "home": "Home",
     "chat": "AI Assistant",
@@ -102,6 +103,8 @@
     "metric_token_title": "Total input + output tokens (including all background calls)",
     "metric_calls_title": "Number of API calls made for this response",
     "metric_calls": "calls",
+    "sec_short": "s",
+    "tokens": "tokens",
     "metric_cached": "cached",
     "metric_cache_title": "This response came from cache; no new tokens were spent",
     "mixed_units": "Mixed units (TL / %) — cannot be averaged",
@@ -274,6 +277,7 @@
     "evidence_title": "Extraction Evidence",
     "evidence_desc": "Select a campaign: see from WHICH phrase and method in the text the system extracted each value.",
     "inspected_campaign": "Inspected Campaign",
+    "select_campaign_label": "Select Campaign to Inspect",
     "select_from_table": "Select a campaign from table...",
     "evidence_fields": {
       "field": "Field",
@@ -349,6 +353,7 @@
     "dominant_category": "Dominant Category",
     "active_campaign": "Active Campaigns",
     "asset_size": "Asset Size",
+    "billion_tl": "Billion TRY",
     "last_scan": "Last Scan",
     "official_site": "Official Website",
     "clear_selection": "Clear Selection",
@@ -481,6 +486,7 @@
     "withholding_tax": "Withholding Tax (7.5%)",
     "net_profit": "Net Profit Yield",
     "maturity_total": "Maturity Total Balance",
+    "principal_plus_profit": "Principal + Profit",
     "calc_and_details": "Calculate & Details",
     "ai_ask_tooltip": "Analyze Profit Yield with FinAgent",
     "col_bank": "Bank",
@@ -506,7 +512,8 @@
     "ai_ask_full_btn": "Analyze This Yield with FinAgent",
     "badge_max_net_rate": "Highest Net Rate",
     "badge_max_net_profit": "Highest Net Yield",
-    "badge_max_gross_rate": "Highest Gross Rate"
+    "badge_max_gross_rate": "Highest Gross Rate",
+    "profit_breakdown": "Profit & Deduction Breakdown"
   },
   "taxonomy": {
     "turler": {
@@ -525,7 +532,11 @@
       "odeme": "Payment",
       "sigorta": "Insurance",
       "genel": "General",
-      "diger": "Other"
+      "diger": "Other",
+      "alisveris_puani": "Shopping Points",
+      "belirtilmemis": "Unspecified",
+      "indirim_kampanyasi": "Discount",
+      "hediye_promosyon": "Gift / Promotion"
     },
     "hedef_kitleler": {
       "mevcut_musteri": "Existing",
@@ -537,7 +548,8 @@
       "ticari": "Commercial",
       "genc": "Youth",
       "emekli": "Retiree",
-      "ozel": "Private"
+      "ozel": "Private",
+      "segment": "Segment-Specific"
     },
     "kategoriler": {
       "alisveris": "Shopping",
@@ -553,7 +565,17 @@
       "seyahat": "Travel",
       "pos": "POS",
       "sigorta": "Insurance",
-      "diger": "Other"
+      "diger": "Other",
+      "dijital_aninda_alisveris": "Digital / Instant Purchase",
+      "bireysel_ihtiyac": "Retail / Consumer",
+      "konut_gayrimenkul": "Housing / Real Estate",
+      "tasit_finansmani": "Vehicle",
+      "ticari_kurumsal": "Commercial & Corporate"
+    },
+    "sektorler": {
+      "mobilya_ve_ev": "Furniture & Home",
+      "sağlık": "Health",
+      "restoran_ve_yeme-içme": "Restaurants & Dining"
     }
   }
 }

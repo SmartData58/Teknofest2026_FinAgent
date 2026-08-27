@@ -17,6 +17,14 @@ GECERLI_TURLER = {
     "yatirim_urunu",
     "alisveris_puani",
     "kart_kampanyasi",
+    # 27.08.2026: Üye iş yeri indirim kampanyaları ("Arzum'da %15 İndirim",
+    # "Etkinlik Biletlerinde 250 TL İndirim") katalogun en kalabalık
+    # türlerinden biri (13 kayıt) ama karşılığı olan bir tür yoktu; hepsi
+    # `kampanya_turu = None` olarak kalıyordu. `alisveris_puani`ye
+    # yazılamazlar — indirim, puan değildir.
+    "indirim_kampanyasi",
+    # 27.08.2026: saf hediye/promosyon kampanyalari (4 kayit)
+    "hediye_promosyon",
 }
 
 _R = re.IGNORECASE
@@ -52,13 +60,25 @@ _KURALLAR: tuple[tuple[str, str, re.Pattern], ...] = (
         "mgm_kampanyasi",
         "hepsi",
         re.compile(
-            r"arkada[şs][ıi]n[ıi]\s+(?:davet\s+et|getir)"
-            r"|arkada[şs][ıi]n[ıi]z[ıi]\s+(?:davet\s+edin|getirin)"
-            r"|arkada[şs]\w*\s+getir\w*"
-            r"|arkada[şs]\w*\s+davet\s+et\w*"
-            r"|yak[ıi]n[ıi]\s+davet\s+et\w*"
-            r"|yak[ıi]n[ıi]n[ıi]z[ıi]\s+davet\s+edin"
+            # ⚠️ Önceki sürüm "davet et"ten hemen ÖNCE "arkadaşını/yakınını"
+            # görmeyi şart koşuyordu; Türkçe ekler ve araya giren kelimeler
+            # yüzünden 6 MGM kampanyasının 3'ünü kaçırıyordu:
+            #   "Yakınını Davet Et"            -> yak[ıi]n[ıi] + "nı" eki kaldı
+            #   "Yakınlarını Kuveyt Türk'e Davet Et" -> araya 2 kelime girdi
+            #   "Davet Et, Altın Kazan"        -> özne hiç yazılmamış
+            # Artık ek serbest (\w*), araya en fazla 3 kelime girebiliyor ve
+            # öznesiz "davet et" yalnızca ödül bağlamıyla birlikte sayılıyor.
+            r"(?:arkada[şs]|yak[ıi]n|tan[ıi]d[ıi])\w*\s+(?:\S+\s+){0,3}?"
+            r"(?:davet\s+et\w*|davet\s+edin|getir\w*)"
+            r"|davet\s+et\w*[\s,.:!-]{0,6}(?:\S+\s+){0,3}?"
+            r"(?:kazan\w*|hediye|ödül|odul|alt[ıi]n|bonus)"
             r"|davet\s+et(?:tiğin|tiğiniz)?\s+arkada[şs]"
+            # ⚠️ Yalın "davet kod" ARAMAK YANLIŞ POZİTİF ÜRETİYOR: kampanya
+            # şartlarında "Bu kampanya diğer davet kodlu kampanyalarla
+            # birleştirilemez" diye bir DIŞLAMA cümlesi geçiyor ve harcama
+            # kampanyası MGM sanılıyordu. Artık davet kodunun bir EYLEM ya da
+            # kazanımla birlikte anılması gerekiyor ("Davet Kodunla Gel").
+            r"|davet\s+kod\w*\s+(?:\S+\s+){0,2}?(?:gel\w*|gir\w*|kullan\w*|kazan\w*|ile)\b"
             r"|referans\s+(?:kod|link|bağlant)"
             r"|referans[ıi]n\w*\s+ile"
             r"|getir\s+kazan",
@@ -101,11 +121,52 @@ _KURALLAR: tuple[tuple[str, str, re.Pattern], ...] = (
         ),
     ),
     (
-        "alisveris_kampanyası",
+        # ⚠️ Bu kural daha önce "alisveris_kampanyası" etiketini üretiyordu; o
+        #    etiket bu dosyanın kendi GECERLI_TURLER kümesinde YOK. Kimse
+        #    kümeyi dayatmadığı için geçersiz etiket sessizce Mongo'ya yazıldı
+        #    (23 kayıt) ve arayüzde ham anahtar olarak göründü.
+        "alisveris_puani",
         "erken",
         re.compile(
             r"parafpara|worldpuan|puan|\bmil\b|mil'e|\biade\b|bonus"
-            r"|kazand[ıi]ran|(harcad[ıi]k[çc]a|yapt[ıi]k[çc]a)\s+kazan",
+            r"|kazand[ıi]ran|(harcad[ıi]k[çc]a|yapt[ıi]k[çc]a)\s+kazan"
+            # "1.000 TL harca 100 TL kazan" / "Tamamla Kazan" gibi emir kipli
+            # kurgular yukarıdaki "harcadıkça kazan" kalıbına uymuyordu.
+            r"|harca\w*\s+(?:\S+\s+){0,3}?kazan"
+            r"|\btamamla\s+kazan\b"
+            # "A101'de 100TL kazan", "Toplam 5.000 TL Harcamana ... kazan",
+            # "İlk 250 TL Alışverişine Özel ... iade" gibi iyelik ekli
+            # kurgular da kaçıyordu (5 kayıt `belirtilmemis` kalmıştı).
+            r"|TL\s*kazan\w*"
+            r"|harcaman\w*\s+(?:\S+\s+){0,3}?(?:kazan|iade|hediye)"
+            r"|al[ıi][şs]veri[şs]in\w*\s+(?:\S+\s+){0,3}?(?:kazan|iade|hediye)",
+            _R,
+        ),
+    ),
+    (
+        # EN SONDA: yalnızca yukarıdakilerin hiçbiri tutmadığında devreye
+        # girer. Kart kampanyalarının (278 kayıt) sınıfını değiştirmemek için
+        # bilerek `kart_kampanyasi`den SONRA duruyor — buradaki hedef, hiçbir
+        # türe girmediği için `None` kalan üye iş yeri indirimleri.
+        "indirim_kampanyasi",
+        "erken",
+        re.compile(
+            r"\b(?:indirim\w*|iskonto\w*|indirimli)\b"
+            r"|%\s*\d+(?:[.,]\d+)?\s*(?:'?ye\s+varan\s+)?indirim",
+            _R,
+        ),
+    ),
+    (
+        # EN SON KURAL. Ölçüm: başlığında "hediye/promosyon/ödül" geçen 23
+        # kampanyanın 19'u zaten daha özel bir türe (MGM, kart, yatırım…)
+        # doğru şekilde giriyor. Bu kural en sonda durduğu için onlara
+        # DOKUNMAZ; yalnızca hiçbir türe girmeyip `belirtilmemis` kalan
+        # saf hediye/promosyon kampanyalarını yakalar
+        # ("Fatura Talimatlarınıza Toplam 500 TL Hediye").
+        "hediye_promosyon",
+        "baslik",
+        re.compile(
+            r"\bhediye\w*|\bpromosyon\w*|\bödül\w*|\bodul\w*|\bücretsiz\b|\bbedava\b",
             _R,
         ),
     ),
@@ -128,6 +189,14 @@ def kuralla_siniflandir(baslik: str, metin: str) -> AlanBulgusu | None:
             hedef = f"{baslik or ''} . {metin or ''}"
         e = desen.search(hedef)
         if e:
+            # GECERLI_TURLER bu dosyada tanımlıydı ama HİÇBİR YERDE
+            # dayatılmıyordu; kural tablosundaki bir yazım kayması doğrudan
+            # veritabanına sızabiliyordu. Artık kaymayı sessizce geçirmek
+            # yerine burada yakalıyoruz.
+            if tur not in GECERLI_TURLER:
+                print(f"    ⚠️ Geçersiz kampanya türü etiketi atlandı: {tur!r} "
+                      f"(GECERLI_TURLER içinde yok)")
+                continue
             cevre = hedef[max(0, e.start() - 30): e.end() + 30].strip()
             return AlanBulgusu(tur, f"...{cevre}...", f"tur_kurali:{tur}")
     return None

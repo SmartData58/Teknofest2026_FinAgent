@@ -75,27 +75,119 @@ def _safe_int(val, default=None):
     f_val = _safe_float(val)
     return int(f_val) if f_val is not None else default
 
+# Kampanya tarihleri için makul yıl penceresi; dışındaki değer kampanya
+# gerçeği değil, tarama/ayrıştırma artefaktıdır (ör. "31.07.2076").
+_YIL_ALT, _YIL_UST = 12, 8
+
+
+def _yil_makul_mu(dt) -> bool:
+    if dt is None:
+        return False
+    bu_yil = date.today().year
+    return (bu_yil - _YIL_ALT) <= dt.year <= (bu_yil + _YIL_UST)
+
+
 def _tarih_metni_ayristir(tarih_str):
-    """
-    '01.08.2026 - 31.08.2026' benzeri metinleri parse eder.
-    MongoDB uyumlu ISODate/datetime objesi veya string döndürür.
+    """'01.08.2026 - 31.08.2026' benzeri metinleri (başlangıç, bitiş) döner.
+
+    ⚠️ Önceki sürüm YALNIZCA tam olarak "DD.MM.YYYY - DD.MM.YYYY" biçimini
+    tanıyordu ve başka her şeyde (None, None) dönüyordu. `semaya_donustur`
+    bu durumda ham belgenin ÖNCEDEN HESAPLANMIŞ tarihlerine düşüyor, onlar
+    da hatalı olabildiği için hatalar sessizce depoya geçiyordu:
+        "31 Ağustos 2026"                 -> tek tarih, tanınmıyordu
+        "05 Aralık - 15 Ocak 2025"        -> yıl aşan aralık, iki tarihe de
+                                             2025 verilip bitiş < başlangıç
+    Artık sözel aylar (`tarih_normalize`) da tanınıyor, tek tarih BİTİŞ
+    kabul ediliyor ve yıl aşan aralıkta başlangıç bir yıl geri alınıyor.
     """
     if not tarih_str or not isinstance(tarih_str, str):
         return None, None
-    
-    # Tire, en-dash, em-dash karakterlerine göre böl
-    parcalar = re.split(r'\s*[-–—]\s*', tarih_str.strip())
-    
+
+    from ..normalizasyon.date import tarih_normalize
+
+    def _coz(parca: str):
+        """Bir parçayı datetime'a çevirir; sayısal ve sözel biçimleri kapsar."""
+        parca = parca.strip()
+        for kalip in ("%d.%m.%Y", "%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(parca, kalip)
+            except ValueError:
+                pass
+        d = tarih_normalize(parca)
+        return datetime.combine(d, datetime.min.time()) if d else None
+
+    parcalar = re.split(r"\s*[-–—]\s*", tarih_str.strip())
+
     if len(parcalar) == 2:
-        try:
-            # DD.MM.YYYY formatını datetime objesine çevir
-            baslangic = datetime.strptime(parcalar[0].strip(), "%d.%m.%Y")
-            bitis = datetime.strptime(parcalar[1].strip(), "%d.%m.%Y")
+        ilk, ikinci = parcalar[0], parcalar[1]
+        bitis = _coz(ikinci)
+
+        # "05 Aralık - 15 Ocak 2025": yıl yalnızca İKİNCİ parçada yazılıdır;
+        # ilk parça o yıl olmadan hiç ayrıştırılamıyordu. Yılı ödünç alıp
+        # ayrıştırıyor, sonra sıralama bozuksa başlangıcı bir yıl geri
+        # alıyoruz — "5 Aralık 2024 – 15 Ocak 2025" doğru okumadır.
+        yil_ilkte = re.search(r"\d{4}", ilk)
+        if not yil_ilkte and bitis is not None:
+            baslangic = _coz("%s %d" % (ilk, bitis.year))
+        else:
+            baslangic = _coz(ilk)
+
+        if baslangic and bitis and baslangic > bitis and not yil_ilkte:
+            try:
+                baslangic = baslangic.replace(year=baslangic.year - 1)
+            except ValueError:      # 29 Şubat
+                baslangic = None
+
+        bas_ok, bit_ok = _yil_makul_mu(baslangic), _yil_makul_mu(bitis)
+        if bas_ok and bit_ok and baslangic <= bitis:
             return baslangic, bitis
-        except ValueError:
-            return None, None
-            
+
+        # Aralığın bir tarafı bozuksa (ör. "1.07.2026 - 31.07.2076") sağlam
+        # olan taraf korunur; uydurma yapılmaz.
+        return (baslangic if bas_ok else None, bitis if bit_ok else None)
+
+    if len(parcalar) == 1:
+        # Tek tarih kampanyanın SON günüdür ("31 Ağustos 2026'ya kadar").
+        tek = _coz(parcalar[0])
+        return (None, tek) if _yil_makul_mu(tek) else (None, None)
+
     return None, None
+
+
+def _tarihleri_dogrula(baslangic, bitis, sure_gun):
+    """Şemaya yazılmadan ÖNCEKİ son denetim.
+
+    Tarihler üç ayrı kaynaktan gelebiliyor (tarih_metni, ham belgenin hazır
+    alanları, NLP çıkarımı) ve `sure_gun` bunlardan BAĞIMSIZ olarak seçiliyor.
+    Hiçbir yerde tutarlılık kontrolü yoktu; sonuç: bitişten sonra başlayan 10
+    kayıt, tarihleriyle uyuşmayan 15 `sure_gun`, sıfır süreli 6 kayıt.
+    Kaynak ne olursa olsun burada tek bir kez doğrulanıyor.
+    """
+    b = baslangic if isinstance(baslangic, datetime) else None
+    s = bitis if isinstance(bitis, datetime) else None
+
+    if b is not None and not _yil_makul_mu(b):
+        b, baslangic = None, None
+    if s is not None and not _yil_makul_mu(s):
+        s, bitis = None, None
+
+    # Bitiş başlangıçtan önceyse başlangıç güvenilmezdir. Bitiş kampanyanın
+    # geçerliliğini belirleyen alan olduğu için o korunur, başlangıç düşer.
+    if b is not None and s is not None and s < b:
+        baslangic = None
+        b = None
+
+    # sure_gun DAİMA nihai tarihlerden türetilir. Bir tarih düşürüldüyse
+    # devralınan süre o düşürülen tarihten hesaplanmıştır ve artık geçersizdir
+    # (ör. bitiş 2076 atılınca sure_gun 18293 kalıyordu; uydurma başlangıç
+    # atılınca max(0,...) kırpmasından gelen 0 kalıyordu). Böyle durumda
+    # süreyi taşımak yerine boş bırakmak doğru.
+    if b is not None and s is not None:
+        sure_gun = (s - b).days
+    elif baslangic is None or bitis is None:
+        sure_gun = None
+
+    return baslangic, bitis, sure_gun
 
 
 def _get_val(bulgular: dict, keys: str | list[str], default=None):
@@ -127,12 +219,27 @@ def _get_val(bulgular: dict, keys: str | list[str], default=None):
 def semaya_donustur(doc: dict, bulgular: dict) -> dict:
     kar_payı = _get_val(bulgular, ["kar_payi_orani", "kar_payi"])
     vade = _get_val(bulgular, ["vade", "vade_ay"])
-    finansman_tutari = _get_val(bulgular, ["finansman_tutari", "tutar"])
+    # ⚠️ `max_finansman_tutari` EKLENDİ.
+    # Türkçe kampanya metinlerinde tutar en sık "X TL'ye KADAR / X TL'ye VARAN"
+    # diye yazılır. Kural tabanlı çıkarıcı "kadar/varan" gördüğünde değeri
+    # `max_finansman_tutari` alanına koyuyor, şema ise yalnızca
+    # `finansman_tutari` / `tutar` anahtarlarını okuyordu — yani "250 Bin TL'ye
+    # kadar konut finansmanı" kampanyasının tutarı sessizce KAYBOLUYORDU.
+    # İlan edilen tavan, kampanyanın tutarıdır; sıralama bilinçli: önce kesin
+    # tutar, yoksa ilan edilen tavan.
+    finansman_tutari = _get_val(
+        bulgular, ["finansman_tutari", "tutar", "max_finansman_tutari"]
+    )
     masraf = _get_val(bulgular, "masraf")
     odul_tutari_tl = _get_val(bulgular, ["odul_tutari", "odul_tutari_tl"])
 
     # Kampanya Türü için Çoklu Anahtar Kontrolü
-    kampanya_turu = _get_val(bulgular, "kampanya_turu")
+    # Hiçbir kural tutmazsa alan `None` kalıyordu (38 kayıt); oysa
+    # configs/taxonomy.yaml bu durum için `belirtilmemis` etiketini tanımlıyor
+    # ("Etiketi olmayan/boş kayıtlar için") ve arayüzde tr/en karşılığı hazır.
+    # Etiket tanımlıydı ama hiçbir yer yazmıyordu; null yerine onu yazmak hem
+    # gruplamayı hem arayüzü tutarlı kılıyor.
+    kampanya_turu = _get_val(bulgular, "kampanya_turu") or "belirtilmemis"
     sektor = (
         doc.get("sektor") or
         doc.get("sektor") or 
@@ -156,7 +263,16 @@ def semaya_donustur(doc: dict, bulgular: dict) -> dict:
         # Ham doc içindeki ISODate tarihlerine veya bulgulardan gelen tarihlere bakılır
         baslangic_tarihi = doc.get("baslangic_tarihi") or _get_val(bulgular, "baslangic_tarihi")
         bitis_tarihi = doc.get("bitis_tarihi") or _get_val(bulgular, "bitis_tarihi")
+        # tarih_metni yalnızca bitişi verebildiyse (tek tarih ya da bozuk
+        # aralık) onu ham belgenin hazır alanına TERCİH et: metinden okunan
+        # tarih, tarayıcının önceden hesapladığından daha güvenilir.
+        if tm_bitis:
+            bitis_tarihi = tm_bitis
     sure_gun = _get_val(bulgular, "sure_gun") or doc.get("sure_gun")
+
+    baslangic_tarihi, bitis_tarihi, sure_gun = _tarihleri_dogrula(
+        baslangic_tarihi, bitis_tarihi, sure_gun
+    )
     
     masraf_bilgi_val = _get_val(bulgular, "masraf_bilgi")
 

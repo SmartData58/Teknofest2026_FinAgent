@@ -63,6 +63,56 @@ def run_step_3_extraction():
         sys.exit(1)
 
 
+def run_step_3b_kalite_denetimi():
+    """ADIM 3.5 — çıkarım kalitesini ÖLÇ ve rapor et.
+
+    Neden ayrı bir adım: ADIM 3 "390 kampanya kaydedildi" diyerek başarıyla
+    biter, ama kaydedilen değerlerin DOĞRU olup olmadığı hakkında hiçbir şey
+    söylemez. Bu projede tam olarak bu körlük yüzünden aylarca fark edilmeyen
+    hatalar depoya yazıldı (kâr payı alanına katılma hesabı paylaşım oranı,
+    bitişten sonra başlayan kampanyalar, harcama eşiğinin finansman tutarı
+    sanılması...). İki tamamlayıcı ölçüm yapılıyor:
+
+      • backend/test/nlp_denetle.py — ÇIKARILAN değer doğru mu (precision):
+        aralık, kaynak metinde kanıt, tarih tutarlılığı, etiket tutarlılığı.
+      • backend/test/nlp_kacak.py   — ÇIKARILMASI GEREKEN kaçtı mı (recall):
+        metinde bilgi apaçık dururken alan boş mu.
+
+    ⚠️ Bu adım boru hattını ASLA DURDURMAZ. Amacı veriyi doğrulamak değil,
+    kalitedeki bozulmayı GÖRÜNÜR kılmaktır; bir sorun çıkarsa uyarı basıp
+    devam eder. Atlamak için:  --denetim-atla
+    """
+    log("ADIM 3.5: Çıkarım Kalite Denetimi (precision + recall)...")
+    kok = os.path.dirname(os.path.abspath(__file__))
+    for betik, baslik in (("nlp_denetle.py", "PRECISION — çıkarılan değer doğru mu"),
+                          ("nlp_kacak.py", "RECALL — çıkarılması gereken kaçtı mı")):
+        yol = os.path.join(kok, "backend", "test", betik)
+        if not os.path.exists(yol):
+            print(f"   ⏭️  {betik} bulunamadı, atlandı.")
+            continue
+        print(f"\n   ── {baslik}")
+        try:
+            import subprocess
+            sonuc = subprocess.run(
+                [sys.executable, yol], capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=600,
+            )
+            # Yalnızca ÖZET bölümünü bas: tam döküm çok uzun, boru hattı
+            # log'unu boğmasın. Ayrıntı için betikleri elle çalıştırın.
+            satirlar = (sonuc.stdout or "").splitlines()
+            ozet_basladi = False
+            for s in satirlar:
+                if s.startswith("ÖZET") or "NLP ÇIKTI DENETİMİ" in s or "KUSUR TÜRÜ" in s:
+                    ozet_basladi = True
+                if ozet_basladi:
+                    print("   " + s)
+            if sonuc.returncode != 0:
+                print(f"   ⚠️ {betik} hata kodu {sonuc.returncode} döndürdü "
+                      f"(boru hattı etkilenmedi): {(sonuc.stderr or '')[:200]}")
+        except Exception as e:
+            print(f"   ⚠️ {betik} çalıştırılamadı (boru hattı etkilenmedi): {e}")
+
+
 def _vektorleme_sonucunu_raporla(adet: int):
     """⚠️ adet==0 ARTIK SADECE 'MongoDB boştu' anlamına gelir.
 
@@ -243,6 +293,11 @@ def main():
         action="store_true",
         help="ADIM 4'ü (Qdrant vektörleme) atla — sadece kazıma/çıkarım çalışsın",
     )
+    parser.add_argument(
+        "--denetim-atla",
+        action="store_true",
+        help="ADIM 3.5'i (çıkarım kalite denetimi) atla",
+    )
     args = parser.parse_args()
 
     if not args.hepsi and not args.banka:
@@ -255,6 +310,11 @@ def main():
     run_step_1_seed()
     run_step_2_runner(banka=args.banka, hepsi=args.hepsi)
     run_step_3_extraction()
+
+    if args.denetim_atla:
+        log("ADIM 3.5 ATLANDI (--denetim-atla) — çıkarım kalitesi ölçülmedi.")
+    else:
+        run_step_3b_kalite_denetimi()
 
     if args.embed_atla:
         log("ADIM 4 ATLANDI (--embed-atla) — Qdrant güncellenmedi.")

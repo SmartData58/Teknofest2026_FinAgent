@@ -528,6 +528,36 @@ async def gorsel_niyeti_sor(question: str, timeout: float | None = TIMEOUT_GORSE
 _SUPERVISOR_ARDISIK_HATA = 0
 
 
+# Denetçiye gönderilecek cevabın üst sınırı. Analist cevapları uzun olduğu
+# için 4.000 yetmiyordu; bu bir maliyet kotası değil yalnızca güvenlik sınırı.
+_DENETIM_METIN_SINIRI = 16000
+
+
+def _denetim_metni_hazirla(cevap: str) -> str:
+    """Cevabı denetçiye YANILTMADAN aktarır.
+
+    Ham dilimleme (`cevap[:4000]`) metni cümlenin ortasında kesiyordu ve
+    denetçi bunu cevabın kendisinin yarım kalması sanıyordu. Burada kesme
+    gerekiyorsa son tam cümlede yapılıyor ve metnin KISALTILDIĞI açıkça
+    yazılıyor; böylece denetçi eksikliği cevaba değil, kısaltmaya yazar.
+    """
+    metin = cevap or ""
+    if len(metin) <= _DENETIM_METIN_SINIRI:
+        return metin
+
+    kirpik = metin[:_DENETIM_METIN_SINIRI]
+    # Son cümle/paragraf sınırını bul; hiçbiri yoksa olduğu gibi bırak.
+    kesim = max(kirpik.rfind(". "), kirpik.rfind(".\n"), kirpik.rfind("\n\n"))
+    if kesim > _DENETIM_METIN_SINIRI // 2:
+        kirpik = kirpik[: kesim + 1]
+    return (
+        kirpik
+        + "\n\n[NOT: Cevabın tamamı denetime sığmadığı için buradan sonrası "
+          "KISALTILDI. Bu kısaltma denetim aracına aittir; cevabın kendisi "
+          "eksik DEĞİLDİR. Lütfen 'cevap yarım kaldı' türü bir bulgu üretme.]"
+    )
+
+
 async def supervisor_denetle(
     question: str, answer: str, db_context: str = "", timeout: float | None = TIMEOUT_SUPERVISOR
 ) -> dict:
@@ -553,9 +583,17 @@ async def supervisor_denetle(
                 {
                     "question": question,
                     "db_context": db_context or "(bağlam yok — bu cevap Qdrant/genel arama veya sohbet geçmişine dayanıyor)",
-                    # Denetim metnini sınırsız büyütmemek için makul bir üst sınır;
-                    # cevaplar zaten prompt kuralı gereği 2-3 kısa paragrafla sınırlı.
-                    "answer": answer[:4000],
+                    # 🛠️ ESKİDEN: answer[:4000]
+                    # Yorumda "cevaplar zaten 2-3 kısa paragrafla sınırlı"
+                    # yazıyordu ama bu ARTIK DOĞRU DEĞİL: analist görünümünde
+                    # cevap banka başına konumlandırma + boşluk analizi +
+                    # aksiyon önerisi içeriyor ve rahatça 4.000 karakteri
+                    # aşıyor. Sonuç, denetçinin KENDİ kesintisini görüp
+                    # "Cevap yarım kaldığı için eksik bilgi içermektedir"
+                    # notunu basmasıydı — kullanıcıya tam görünen bir cevabın
+                    # altında yanlış bir uyarı. Sınır yükseltildi ve zorunlu
+                    # kesme artık cümle sınırında yapılıp açıkça etiketleniyor.
+                    "answer": _denetim_metni_hazirla(answer),
                 }
             ),
             timeout=timeout,
