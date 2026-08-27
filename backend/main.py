@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 # Rotalar
 from api.campaing import router as campaign_router
+from api.analiz import router as analiz_router
 from chatbot.generate_response import get_chatbot_response
 from chatbot.indexing import qdrant_durumu, auto_init_qdrant
 
@@ -163,6 +164,10 @@ app.add_middleware(
 )
 
 app.include_router(campaign_router)
+# 🔗 Arayüzdeki "FinAgent'a Sor" butonlarının doğrulama köprüsü.
+# Cevabı üretmez; isteği kendi verimizle doğrulayıp /api/chat'e
+# gönderilecek güvenli soruyu döner (bkz. api/analiz.py).
+app.include_router(analiz_router)
 
 
 class ScrapePayload(BaseModel):

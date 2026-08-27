@@ -59,8 +59,10 @@ Proje 5 ana bileşenden (pipeline) oluşur:
 - **İşlev:** "kâr payı oranı", "vade sayısı", "ödül miktarı" gibi bilgileri yapılandırır.
 - **Çıktı:** Normalize edilmiş veriler `smartdata.islenmis_kampanyalar` koleksiyonuna kaydedilir.
 
+### 3. Vektörleştirme (Embedding)
 ### 3. Vektörleştirme (Embedding) ve Reranker Kararı
 - **Teknoloji:** Evren API (`bge-m3-embed`) ve Qdrant Vector DB
+- **İşlev:** İşlenmiş kampanya metinleri anlamsal arama yapılabilmesi için Qdrant'a indekslenir.
 - **İşlev:** İşlenmiş kampanya metinleri anlamsal arama yapılabilmesi için `bge-m3-embed` (bi-encoder) modeli ile Qdrant'a indekslenir.
 
 > [!NOTE]

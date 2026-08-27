@@ -25,6 +25,7 @@ db = client[DB_ADI]
 kampanyalar_col = db[KOLEKSIYON_ADI]
 bankalar_col = db["bankalar"]
 finansman_col = db["finansman_urun"]
+katilim_hesap_col = db["katilim_hesap"]
 
 router = APIRouter(tags=["kampanyalar"])
 CACHE_ONEKI = "api:"
@@ -344,18 +345,36 @@ async def kampanya_detay(kampanya_id: str):
 
 BANK_CODE_MAP = {
     "albaraka": "albaraka",
+    "albaraka türk": "albaraka",
+    "albaraka turk": "albaraka",
     "kuveyt": "kuveytturk",
+    "kuveyt türk": "kuveytturk",
+    "kuveyttürk": "kuveytturk",
     "kuveytturk": "kuveytturk",
     "vakif": "vakif_katilim",
+    "vakıf katılım": "vakif_katilim",
+    "vakif katilim": "vakif_katilim",
     "vakif_katilim": "vakif_katilim",
     "ziraat": "ziraat_katilim",
+    "ziraat katılım": "ziraat_katilim",
+    "ziraat katilim": "ziraat_katilim",
     "ziraat_katilim": "ziraat_katilim",
     "dunya_katilim": "dunya_katilim",
+    "dünya katılım": "dunya_katilim",
+    "dunya katilim": "dunya_katilim",
     "turkiye_finans": "turkiye_finans",
+    "türkiye finans": "turkiye_finans",
+    "turkiye finans": "turkiye_finans",
     "emlak_katilim": "emlak_katilim",
+    "emlak katılım": "emlak_katilim",
+    "emlak katilim": "emlak_katilim",
     "hayat_finans": "hayat_finans",
+    "hayat finans": "hayat_finans",
     "tom_katilim": "tom_katilim",
-    "adil_katilim": "adil_katilim"
+    "tom katılım": "tom_katilim",
+    "tom bank": "tom_katilim",
+    "adil_katilim": "adil_katilim",
+    "adil katılım": "adil_katilim"
 }
 
 def _parse_num(val: Any) -> float:
@@ -364,11 +383,17 @@ def _parse_num(val: Any) -> float:
     if isinstance(val, (int, float)):
         return float(val)
     s = str(val).strip()
-    s = s.replace('TL', '').replace('tl', '').replace('%', '').replace('₺', '').strip()
+    s = s.replace('TL', '').replace('tl', '').replace('TRY', '').replace('try', '').replace('%', '').replace('₺', '').strip()
+    if not s:
+        return 0.0
     if ',' in s and '.' in s:
         s = s.replace('.', '').replace(',', '.')
     elif ',' in s:
         s = s.replace(',', '.')
+    elif '.' in s:
+        parts = s.split('.')
+        if len(parts) > 1 and all(len(p) == 3 for p in parts[1:]):
+            s = s.replace('.', '')
     try:
         return float(s)
     except Exception:
@@ -545,3 +570,194 @@ async def get_finansman_urunleri(
     result_encoded = jsonable_encoder(result)
     await _redise_yaz(cache_key, result_encoded, ttl=1800)
     return result_encoded
+
+
+@router.get("/katilim-hesap")
+@router.get("/katilim-hesaplari")
+async def get_katilim_hesaplari(
+    banka: Optional[str] = Query(None, description="Banka kodu (virgülle ayrılmış çoklu olabilir)"),
+    tutar: Optional[float] = Query(None, description="Yatırılan tutar"),
+    vade: Optional[str] = Query(None, description="Vade süresi"),
+    sort_by: Optional[str] = Query("net_oran", description="Sıralama: net_oran, brut_oran, net_kar, brut_kar, yatirilan_tutar, toplam"),
+    order: Optional[str] = Query("desc", description="Sıralama yönü: asc, desc")
+):
+    cache_key = _cache_key(f"katilim_hesap_{banka}_{tutar}_{vade}_{sort_by}_{order}")
+    cached = await _redisten_al(cache_key)
+    if cached is not None:
+        return cached
+
+    # Bankalar sözlüğü
+    bankalar_cursor = bankalar_col.find({})
+    banka_dict = {b.get("_id"): b for b in bankalar_cursor}
+
+    # MongoDB Filtresi
+    q = {}
+    if banka:
+        b_list = [b.strip() for b in banka.split(',') if b.strip()]
+        matched_codes = []
+        for b_item in b_list:
+            matched_codes.append(b_item)
+            for k, v in BANK_CODE_MAP.items():
+                if b_item in (k, v):
+                    matched_codes.extend([k, v])
+        q["banka"] = {"$in": list(set(matched_codes))}
+
+    raw_docs = list(katilim_hesap_col.find(q))
+
+    # Dinamik filtre seçenekleri
+    all_raw = list(katilim_hesap_col.find({}, {"banka": 1, "yatirilan_tutar": 1, "vade": 1}))
+    distinct_banks_raw = sorted(list(set(d.get("banka") for d in all_raw if d.get("banka"))))
+    
+    # Sayısal ve metin ayrıştırma
+    parsed_amounts_set = set()
+    distinct_terms_set = set()
+
+    for d in all_raw:
+        y_tut = _parse_num(d.get("yatirilan_tutar"))
+        if y_tut > 0:
+            parsed_amounts_set.add(y_tut)
+        if d.get("vade"):
+            distinct_terms_set.add(d.get("vade"))
+
+    distinct_amounts = sorted(list(parsed_amounts_set))
+    distinct_terms = sorted(list(distinct_terms_set))
+
+    # Banka filtrelerini zenginleştir
+    filters_banks = []
+    for b_raw in distinct_banks_raw:
+        b_id = BANK_CODE_MAP.get(b_raw.lower().strip(), BANK_CODE_MAP.get(b_raw, b_raw))
+        b_info = banka_dict.get(b_id, {})
+        filters_banks.append({
+            "code": b_raw,
+            "bank_id": b_id,
+            "name": b_info.get("kisa_ad", b_raw.replace('_', ' ').title()),
+            "logo_url": b_info.get("logo_url", "/logo.svg")
+        })
+
+    accounts = []
+    for doc in raw_docs:
+        doc_id = str(doc.get("_id"))
+        b_raw = doc.get("banka", "")
+        b_id = BANK_CODE_MAP.get(b_raw.lower().strip(), BANK_CODE_MAP.get(b_raw, b_raw))
+        b_info = banka_dict.get(b_id, {})
+
+        tutar_raw = doc.get("yatirilan_tutar")
+        tutar_val = _parse_num(tutar_raw)
+
+        # Filtreleme (tutar)
+        if tutar is not None and tutar > 0 and abs(tutar_val - tutar) > 1:
+            continue
+
+        vade_raw = doc.get("vade", "")
+        # Filtreleme (vade)
+        if vade and vade.strip() and vade.strip().lower() not in vade_raw.lower():
+            continue
+
+        brut_oran_raw = doc.get("brut_oran")
+        brut_oran_val = _parse_num(brut_oran_raw)
+
+        net_oran_raw = doc.get("net_oran")
+        net_oran_val = _parse_num(net_oran_raw)
+
+        brut_kar_raw = doc.get("brut_kar") or doc.get("brut_getiri")
+        brut_kar_val = _parse_num(brut_kar_raw)
+
+        net_kar_raw = doc.get("net_kar") or doc.get("net_getiri")
+        net_kar_val = _parse_num(net_kar_raw)
+
+        toplam_raw = doc.get("toplam")
+        toplam_val = _parse_num(toplam_raw)
+        if toplam_val <= 0 and tutar_val > 0:
+            toplam_val = tutar_val + net_kar_val
+
+        stopaj_val = round(max(0.0, brut_kar_val - net_kar_val), 2)
+        if stopaj_val <= 0 and brut_kar_val > 0:
+            stopaj_val = round(brut_kar_val * 0.075, 2)
+            if net_kar_val <= 0:
+                net_kar_val = round(brut_kar_val - stopaj_val, 2)
+
+        kayit_tarihi = doc.get("kayit_tarihi")
+        if isinstance(kayit_tarihi, datetime):
+            kayit_tarihi_str = kayit_tarihi.strftime("%d.%m.%Y")
+        else:
+            kayit_tarihi_str = str(kayit_tarihi) if kayit_tarihi else ""
+
+        accounts.append({
+            "id": doc_id,
+            "banka_kodu": b_raw,
+            "banka_id": b_id,
+            "banka_adi": b_info.get("kisa_ad", b_raw.replace('_', ' ').title()),
+            "resmi_ad": b_info.get("resmi_ad", ""),
+            "logo_url": b_info.get("logo_url", "/logo.svg"),
+            "tier": b_info.get("tier", "Tier 2"),
+            "yatirilan_tutar": tutar_val,
+            "yatirilan_tutar_str": f"{tutar_val:,.2f} TL" if tutar_val > 0 else (str(tutar_raw) + " TL" if tutar_raw else "-"),
+            "vade": vade_raw or "-",
+            "brut_oran": brut_oran_val,
+            "brut_oran_str": f"%{brut_oran_val:.2f}".replace('.', ',') if brut_oran_val > 0 else (str(brut_oran_raw) if brut_oran_raw else "-"),
+            "net_oran": net_oran_val,
+            "net_oran_str": f"%{net_oran_val:.2f}".replace('.', ',') if net_oran_val > 0 else (str(net_oran_raw) if net_oran_raw else "-"),
+            "brut_kar": brut_kar_val,
+            "brut_kar_str": f"{brut_kar_val:,.2f} TL" if brut_kar_val > 0 else (str(brut_kar_raw) if brut_kar_raw else "-"),
+            "net_kar": net_kar_val,
+            "net_kar_str": f"{net_kar_val:,.2f} TL" if net_kar_val > 0 else (str(net_kar_raw) if net_kar_raw else "-"),
+            "stopaj_kesintisi": stopaj_val,
+            "stopaj_kesintisi_str": f"{stopaj_val:,.2f} TL" if stopaj_val > 0 else "-",
+            "toplam": toplam_val,
+            "toplam_str": f"{toplam_val:,.2f} TL" if toplam_val > 0 else "-",
+            "guncellenme_tarihi": kayit_tarihi_str
+        })
+
+    # Sıralama
+    reverse_order = (order.lower() != "asc")
+    if sort_by == "net_oran":
+        key_fn = lambda x: x["net_oran"]
+    elif sort_by == "brut_oran":
+        key_fn = lambda x: x["brut_oran"]
+    elif sort_by == "net_kar":
+        key_fn = lambda x: x["net_kar"]
+    elif sort_by == "brut_kar":
+        key_fn = lambda x: x["brut_kar"]
+    elif sort_by == "yatirilan_tutar":
+        key_fn = lambda x: x["yatirilan_tutar"]
+    elif sort_by == "toplam":
+        key_fn = lambda x: x["toplam"]
+    else:
+        key_fn = lambda x: x["net_oran"]
+
+    accounts = sorted(accounts, key=key_fn, reverse=reverse_order)
+
+    # İstatistikler
+    valid_net_rates = [a["net_oran"] for a in accounts if a["net_oran"] > 0]
+    max_net_rate = max(valid_net_rates) if valid_net_rates else 0.0
+    avg_net_rate = (sum(valid_net_rates) / len(valid_net_rates)) if valid_net_rates else 0.0
+
+    valid_gross_rates = [a["brut_oran"] for a in accounts if a["brut_oran"] > 0]
+    max_gross_rate = max(valid_gross_rates) if valid_gross_rates else 0.0
+
+    valid_net_profits = [a["net_kar"] for a in accounts if a["net_kar"] > 0]
+    max_net_profit = max(valid_net_profits) if valid_net_profits else 0.0
+
+    best_rate_account = next((a for a in accounts if a["net_oran"] == max_net_rate), None) if max_net_rate > 0 else None
+
+    result = {
+        "total_count": len(accounts),
+        "accounts": accounts,
+        "filters": {
+            "banks": filters_banks,
+            "amounts": distinct_amounts,
+            "terms": distinct_terms
+        },
+        "stats": {
+            "max_net_rate": max_net_rate,
+            "avg_net_rate": round(avg_net_rate, 2),
+            "max_net_profit": max_net_profit,
+            "max_gross_rate": max_gross_rate,
+            "best_bank": best_rate_account.get("banka_adi") if best_rate_account else "-"
+        }
+    }
+
+    result_encoded = jsonable_encoder(result)
+    await _redise_yaz(cache_key, result_encoded, ttl=1800)
+    return result_encoded
+

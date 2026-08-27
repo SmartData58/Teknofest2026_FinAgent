@@ -37,7 +37,7 @@ const triggerFileInput = () => {
 const handleFileSelect = (event) => {
   const files = Array.from(event.target.files)
   if (selectedFiles.value.length + files.length > maxFiles) {
-    alert(`En fazla ${maxFiles} dosya yükleyebilirsiniz.`)
+    alert(t('chat.max_files', { max: maxFiles }))
     event.target.value = '' 
     return
   }
@@ -49,7 +49,7 @@ const handleDrop = (event) => {
   isDragging.value = false
   const files = Array.from(event.dataTransfer.files)
   if (selectedFiles.value.length + files.length > maxFiles) {
-    alert(`En fazla ${maxFiles} dosya yükleyebilirsiniz.`)
+    alert(t('chat.max_files', { max: maxFiles }))
     return
   }
   selectedFiles.value.push(...files)
@@ -70,7 +70,7 @@ const handlePaste = (event) => {
       const file = item.getAsFile()
       if (!file) continue
       if (selectedFiles.value.length >= maxFiles) {
-        alert(`En fazla ${maxFiles} dosya yükleyebilirsiniz.`)
+        alert(t('chat.max_files', { max: maxFiles }))
         return
       }
       // chat.vue'deki handlePaste ile aynı: "Buraya Bırakın" katmanını kısaca
@@ -88,10 +88,17 @@ const removeFile = (index) => {
 }
 
 const showBadApple = ref(false)
+const showNggyu = ref(false)
 
 const goToChat = () => {
-  if (inputText.value.trim().toLowerCase() === 'bad apple') {
+  const query = inputText.value.trim().toLowerCase()
+  if (query === 'bad apple') {
     showBadApple.value = true
+    inputText.value = ''
+    return
+  }
+  if (query === 'nggyu' || query === 'never gonna give you up') {
+    showNggyu.value = true
     inputText.value = ''
     return
   }
@@ -133,7 +140,7 @@ const goToChat = () => {
       leave-to-class="opacity-0 scale-95"
     >
       <div v-if="isDragging" class="absolute inset-[-15px] z-50 flex items-center justify-center border-2 border-dashed border-blue-500 bg-blue-500/10 rounded-[40px] pointer-events-none backdrop-blur-[2px]">
-        <span class="text-sm font-bold text-blue-600 dark:text-blue-400">Buraya Bırakın</span>
+        <span class="text-sm font-bold text-blue-600 dark:text-blue-400">{{ t('prompt.drop_here', 'Buraya Bırakın') }}</span>
       </div>
     </Transition>
 
@@ -159,7 +166,7 @@ const goToChat = () => {
           <div v-for="(file, index) in selectedFiles" :key="index" class="flex items-center gap-1.5 bg-white dark:bg-neutral-800 px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-700 shadow-sm whitespace-nowrap">
             <svg class="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
             <span class="text-[12px] font-medium text-neutral-600 dark:text-neutral-300 truncate max-w-[120px]">{{ file.name }}</span>
-            <button @click.prevent="removeFile(index)" type="button" class="ml-0.5 p-0.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors">
+            <button @click.prevent="removeFile(index)" type="button" :title="t('prompt.remove_file', 'Dosyayı Kaldır')" class="ml-0.5 p-0.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
           </div>
@@ -169,7 +176,7 @@ const goToChat = () => {
       <input type="file" multiple ref="fileInput" class="hidden" @change="handleFileSelect" accept=".pdf, image/*, .xls, .xlsx, .doc, .docx, .ppt, .pptx" />
       
       <div class="relative group flex items-center z-20 transition-all duration-500 ml-1" :class="isActive ? 'opacity-100 scale-100 mr-2' : 'opacity-0 scale-50 w-0 overflow-hidden pointer-events-none'">
-         <button type="button" @click.stop="triggerFileInput" :disabled="isNavigating" class="p-2 text-neutral-400 hover:text-blue-500 transition-all rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+         <button type="button" @click.stop="triggerFileInput" :disabled="isNavigating" :title="t('prompt.upload_file', 'Dosya Yükle')" class="p-2 text-neutral-400 hover:text-blue-500 transition-all rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
          </button>
       </div>
@@ -179,7 +186,7 @@ const goToChat = () => {
         :class="isActive ? 'opacity-0 scale-90' : 'opacity-100 scale-100'"
       >
         <span class="text-blue-600 dark:text-blue-400 font-medium text-lg tracking-wide">
-          {{ t('focusQuestion') }}
+          {{ t('prompt.focus_question', 'Ne öğrenmek istersiniz?') }}
         </span>
       </div>
 
@@ -187,7 +194,7 @@ const goToChat = () => {
         class="absolute left-14 pointer-events-none transition-all duration-500 delay-75"
         :class="(isActive && !inputText && selectedFiles.length === 0) ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4'"
       >
-        <span class="text-neutral-500 text-base">{{ t('askGemini') }}</span>
+        <span class="text-neutral-500 text-base">{{ t('prompt.ask_placeholder', 'FinAgent\'a bir soru sorun...') }}</span>
       </div>
 
       <input
@@ -220,15 +227,16 @@ const goToChat = () => {
           </svg>
         </button>
         <div class="absolute bottom-full mb-3 right-0 px-2 py-1 text-xs font-medium bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900 rounded opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap shadow-lg">
-          {{ t('send', 'Gönder') }}
+          {{ t('prompt.send', 'Gönder') }}
         </div>
       </div>
 
     </form>
 
-    <!-- 🍎 Bad Apple Easter Egg Overlay -->
+    <!-- 🍎 Bad Apple & 🕺 NGGYU Easter Egg Overlays -->
     <Teleport to="body">
       <BadAppleAscii :show="showBadApple" @close="showBadApple = false" />
+      <NggyuAscii :show="showNggyu" @close="showNggyu = false" />
     </Teleport>
 
   </div>

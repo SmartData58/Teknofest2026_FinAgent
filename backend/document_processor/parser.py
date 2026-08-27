@@ -3,7 +3,11 @@ from loguru import logger
 from .excel import extract_text_from_excel
 from .image import extract_text_from_image
 from .pdf import extract_text_from_pdf
-from .word import extract_text_from_word 
+from .word import extract_text_from_word
+from .metin import (
+    DESTEKLENEN_UZANTILAR as METIN_UZANTILARI,
+    extract_text_from_plaintext,
+)
 
 async def parse_document(file_path: str, progress_callback=None) -> str:
     if not os.path.exists(file_path):
@@ -31,10 +35,26 @@ async def parse_document(file_path: str, progress_callback=None) -> str:
         elif file_ext in ['.doc', '.docx']:
             if progress_callback: await progress_callback(f"📝 {filename} ({file_ext}) ➔ Word belgesi okunuyor...")
             return await extract_text_from_word(file_path) 
-            
+
+        # 🚨 500'lük koşuda bulundu: `belge` kategorisinin TAMAMI
+        # "[.txt formatı şu an desteklenmiyor]" cevabını aldı — düz metin,
+        # markdown ve CSV hiç okunmuyordu. En yaygın ve en kolay formatlar
+        # bunlar; belge analizi özelliği onlarsız yarım kalıyordu.
+        elif file_ext in METIN_UZANTILARI:
+            if progress_callback: await progress_callback(f"📄 {filename} ({file_ext}) ➔ Metin belgesi okunuyor...")
+            return await extract_text_from_plaintext(file_path)
+
         else:
+            # 🛠️ Mesaj artık NE DESTEKLENDİĞİNİ de söylüyor. Eski hâli
+            # ("... şu an desteklenmiyor") kullanıcıya hiçbir çıkış yolu
+            # bırakmıyordu; modeller de bunu "dosyayı okuyamıyorum" diye
+            # aktarınca kullanıcı neyi deneyeceğini bilemiyordu.
             logger.warning(f"⚠️ Desteklenmeyen format: {file_ext}")
-            return f"[Sistem Mesajı: {file_ext} formatı şu an desteklenmiyor.]"
+            destekli = ", ".join(
+                ['.pdf', '.docx', '.xlsx', '.xls', '.png', '.jpg', '.jpeg']
+                + list(METIN_UZANTILARI))
+            return (f"[Sistem Mesajı: {file_ext} formatı okunamıyor. "
+                    f"Desteklenen formatlar: {destekli}]")
             
     except Exception as e:
         logger.error(f"Ayrıştırma hatası ({file_path}): {str(e)}")

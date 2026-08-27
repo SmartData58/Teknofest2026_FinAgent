@@ -3,8 +3,8 @@
 # =============================================================================
 
 from dataclasses import dataclass
-from rag.embedder import vektorle
-from rag.vector_store import belgeleri_yukle
+from backend._legacy.rag.embedder import vektorle
+from backend._legacy.rag.vector_store import belgeleri_yukle
 
 SORU_ONEKI = ("Instruct: Verilen soruya cevap olabilecek banka kampanyalarını bul\n"
               "Query: ")

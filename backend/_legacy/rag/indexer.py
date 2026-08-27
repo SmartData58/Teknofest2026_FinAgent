@@ -18,8 +18,8 @@
 
 from db.database import get_session
 from db.models import Kampanya
-from rag.embedder import vektorle, embedder_hazir
-from rag.vector_store import kaydet
+from backend._legacy.rag.embedder import vektorle, embedder_hazir
+from backend._legacy.rag.vector_store import kaydet
 
 def _alan_ozeti(k: Kampanya) -> str:
     parcalar = []

@@ -5,10 +5,10 @@
     <!-- BAŞLIK -->
     <div class="flex flex-col items-center text-center gap-3 max-w-2xl mx-auto">
       <h1 class="reveal-title text-4xl md:text-5xl font-bold bg-clip-text text-transparent gradient-text pb-1">
-        {{ $t('comparison.title', 'Karşılaştırma') }}
+        {{ $t('comparison.title', 'Kampanya Karşılaştırma') }}
       </h1>
       <p class="text-sm md:text-base text-neutral-500 dark:text-neutral-400">
-        Şartnamedeki kriterlere göre kampanya kıyası. Bir alan 'Belirtilmemiş' ise o kampanya ilgili kritere dahil edilmez.
+        {{ $t('comparison.subtitle', "Şartnamedeki kriterlere göre kampanya kıyası. Bir alan 'Belirtilmemiş' ise o kampanya ilgili kritere dahil edilmez.") }}
       </p>
       <div class="h-1 w-24 rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 mt-1 title-underline"></div>
     </div>
@@ -25,13 +25,13 @@
 
         <!-- Dışa Aktarma Butonları (Sonuç Geldikten Sonra) -->
         <div v-if="matrixData.length > 0" class="flex items-center gap-1.5" data-png-gizle>
-          <button @click="exportMatrix('excel')" title="Excel Olarak İndir" class="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+          <button @click="exportMatrix('excel')" :title="$t('chat.download_excel_title', 'Excel Olarak İndir')" class="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
             <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
           </button>
-          <button @click="exportMatrix('pdf')" title="PDF Olarak İndir" class="p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+          <button @click="exportMatrix('pdf')" :title="$t('chat.create_pdf_title', 'PDF Olarak İndir')" class="p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
             <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
           </button>
-          <button @click="exportMatrix('png')" title="PNG Olarak Kaydet" class="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
+          <button @click="exportMatrix('png')" :title="$t('chat.save_png_title', 'PNG Olarak Kaydet')" class="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all shadow-sm hover:shadow active:scale-95 group">
             <svg class="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
           </button>
         </div>
@@ -96,17 +96,17 @@
               <!-- Sticky Thead -->
               <thead class="sticky top-0 z-20 bg-neutral-100/95 dark:bg-neutral-900/95 backdrop-blur-md shadow-sm after:absolute after:inset-x-0 after:bottom-0 after:border-b after:border-neutral-200/50 dark:after:border-neutral-700/50">
                 <tr class="text-xs uppercase text-neutral-500 dark:text-neutral-400">
-                  <th class="p-4 font-semibold">Banka</th>
-                  <th class="p-4 font-semibold">Kampanya</th>
-                  <th v-if="hasAnyValidRow(c => c.genel_bilgi?.kampanya_turu)" class="p-4 font-semibold">Tür</th>
-                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.kar_payi_orani)" class="p-4 font-semibold">Kâr Payı (%)</th>
-                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.vade_ay)" class="p-4 font-semibold">Vade (Ay)</th>
-                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.taksit)" class="p-4 font-semibold">Taksit</th>
-                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.tahsis_ucreti)" class="p-4 font-semibold">Tahsis Ücreti</th>
-                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.finansman_tutari)" class="p-4 font-semibold">Finansman Tutarı</th>
-                  <th v-if="hasAnyValidRow(c => c.promosyon_detay?.odul_tutari)" class="p-4 font-semibold">Ödül (TL)</th>
-                  <th v-if="hasAnyValidRow(c => c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul)" class="p-4 font-semibold">MGM / Davet</th>
-                  <th v-if="hasAnyValidRow(c => c.genel_bilgi?.hedef_kitle)" class="p-4 font-semibold">Hedef Kitle</th>
+                  <th class="p-4 font-semibold">{{ $t('comparison.columns.banka', 'Banka') }}</th>
+                  <th class="p-4 font-semibold">{{ $t('comparison.columns.kampanya', 'Kampanya') }}</th>
+                  <th v-if="hasAnyValidRow(c => c.genel_bilgi?.kampanya_turu)" class="p-4 font-semibold">{{ $t('comparison.columns.tur', 'Tür') }}</th>
+                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.kar_payi_orani)" class="p-4 font-semibold">{{ $t('comparison.columns.karPayi', 'Kâr Payı (%)') }}</th>
+                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.vade_ay)" class="p-4 font-semibold">{{ $t('comparison.columns.vade', 'Vade (Ay)') }}</th>
+                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.taksit)" class="p-4 font-semibold">{{ $t('comparison.columns.taksit', 'Taksit') }}</th>
+                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.tahsis_ucreti)" class="p-4 font-semibold">{{ $t('comparison.columns.tahsisUcreti', 'Tahsis Ücreti') }}</th>
+                  <th v-if="hasAnyValidRow(c => c.finansman_detay?.finansman_tutari)" class="p-4 font-semibold">{{ $t('comparison.columns.finansmanTutari', 'Finansman Tutarı') }}</th>
+                  <th v-if="hasAnyValidRow(c => c.promosyon_detay?.odul_tutari)" class="p-4 font-semibold">{{ $t('comparison.columns.odul', 'Ödül (TL)') }}</th>
+                  <th v-if="hasAnyValidRow(c => c.mgm_detay?.kisi_basi_kazanc || c.mgm_detay?.davet_eden_odul)" class="p-4 font-semibold">{{ $t('comparison.columns.mgm', 'MGM / Davet') }}</th>
+                  <th v-if="hasAnyValidRow(c => c.genel_bilgi?.hedef_kitle)" class="p-4 font-semibold">{{ $t('comparison.columns.hedefKitle', 'Hedef Kitle') }}</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-neutral-200/50 dark:divide-neutral-700/50 text-sm">
@@ -202,7 +202,7 @@
       <!-- Gerçek Tablo ve Öne Çıkan -->
       <div v-else>
         <div v-if="getSortedData(criterion).length === 0" class="p-6 bg-neutral-50/50 dark:bg-neutral-900/30 border border-dashed border-neutral-300 dark:border-neutral-700 rounded-xl text-center text-sm text-neutral-500">
-          Bu kriter için veritabanında uygun kampanya bulunamadı.
+          {{ $t('comparison.no_campaign_for_criterion', 'Bu kriter için veritabanında uygun kampanya bulunamadı.') }}
         </div>
 
         <div v-else class="space-y-4">
@@ -263,7 +263,7 @@
 
           <!-- Öne Çıkan (Şampiyon) Kutusu -->
           <div @click="openCampaignModal(getTopItem(criterion).id)" class="inline-flex items-center gap-2 px-4 py-3 bg-blue-50/50 dark:bg-cyan-900/20 border border-blue-200/50 dark:border-cyan-800/50 rounded-lg text-sm text-neutral-700 dark:text-neutral-300 hover:border-blue-400 cursor-pointer transition-all hover:shadow-sm group">
-            <span class="font-bold text-blue-600 dark:text-cyan-400">En Avantajlı:</span>
+            <span class="font-bold text-blue-600 dark:text-cyan-400">{{ $t('comparison.most_advantageous', 'En Avantajlı:') }}</span>
             <span>
               <strong class="text-neutral-900 dark:text-white">{{ getBankaAd(getTopItem(criterion).banka) }}</strong> —
               <span class="group-hover:underline">{{ getTopItem(criterion).baslik }}</span>
@@ -278,7 +278,7 @@
 
     <!-- YASAL UYARI FOOTER -->
     <div class="reveal-on-scroll mt-8 p-5 border-l-4 border-neutral-300 dark:border-neutral-600 bg-neutral-100/50 dark:bg-neutral-800/30 text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 italic rounded-r-lg">
-      Bu bilgiler yatırım tavsiyesi değildir. Karşılaştırmalar yalnızca metinlerden otomatik çıkarılan alanlara dayanır; kampanya koşullarının tamamı için bankaların resmî sayfaları esastır.
+      {{ $t('comparison.disclaimer', 'Bu bilgiler yatırım tavsiyesi değildir. Karşılaştırmalar yalnızca metinlerden otomatik çıkarılan alanlara dayanır; kampanya koşullarının tamamı için bankaların resmî sayfaları esastır.') }}
     </div>
 
     <!-- ================= KAMPANYA DETAY PANELİ (DRAWER / MODAL - NO BLUR) ================= -->
@@ -296,9 +296,9 @@
           <div class="flex justify-between items-center p-4 border-b border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800">
             <h3 class="text-[14px] font-bold flex items-center gap-2 text-neutral-800 dark:text-white">
               <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
-              Kampanya Detayları
+              {{ $t('chat.campaign_detail', 'Kampanya Detayları') }}
             </h3>
-            <button @click="selectedModalCampaign = null" class="p-1 text-neutral-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors active:scale-90 transform duration-200" title="Kapat">
+            <button @click="selectedModalCampaign = null" class="p-1 text-neutral-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors active:scale-90 transform duration-200" :title="$t('comparison.close', 'Kapat')">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
           </div>
@@ -311,7 +311,7 @@
                :href="selectedModalCampaign.genel_bilgi?.kaynak_url || selectedModalCampaign.url" target="_blank" rel="noopener noreferrer"
                class="flex items-center gap-2 px-3 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-xl text-sm font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors w-fit">
               <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-              Kaynak sayfaya git
+              {{ $t('chat.visit_source', 'Kaynak sayfaya git') }}
             </a>
 
             <!-- Banka & Kampanya Adı -->
@@ -328,68 +328,68 @@
             <div class="grid grid-cols-2 gap-2.5">
               <!-- Tür -->
               <div v-if="hasValue(selectedModalCampaign.genel_bilgi?.kampanya_turu || selectedModalCampaign.tur)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Tür</div>
+                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.tur', 'Tür') }}</div>
                 <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200 truncate">{{ selectedModalCampaign.genel_bilgi?.kampanya_turu || selectedModalCampaign.tur }}</div>
               </div>
 
               <!-- Kategori -->
               <div v-if="hasValue(selectedModalCampaign.genel_bilgi?.kategori)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Kategori</div>
+                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.kategori', 'Kategori') }}</div>
                 <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200 truncate">{{ selectedModalCampaign.genel_bilgi?.kategori }}</div>
               </div>
 
               <!-- Kâr Payı -->
               <div v-if="hasValue(selectedModalCampaign.finansman_detay?.kar_payi_orani || selectedModalCampaign.karPayi)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Kâr Payı</div>
+                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.karPayi', 'Kâr Payı') }}</div>
                 <div class="text-xs font-bold text-blue-600 dark:text-blue-400">%{{ selectedModalCampaign.finansman_detay?.kar_payi_orani || selectedModalCampaign.karPayi }}</div>
               </div>
 
               <!-- Vade -->
               <div v-if="hasValue(selectedModalCampaign.finansman_detay?.vade_ay || selectedModalCampaign.vade)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Vade</div>
+                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.vade', 'Vade') }}</div>
                 <div class="text-xs font-bold text-indigo-600 dark:text-indigo-400">{{ selectedModalCampaign.finansman_detay?.vade_ay || selectedModalCampaign.vade }} Ay</div>
               </div>
 
               <!-- Taksit -->
               <div v-if="hasValue(selectedModalCampaign.finansman_detay?.taksit || selectedModalCampaign.taksit)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Taksit</div>
+                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.taksit', 'Taksit') }}</div>
                 <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedModalCampaign.finansman_detay?.taksit || selectedModalCampaign.taksit }}</div>
               </div>
 
               <!-- Tahsis Ücreti -->
               <div v-if="hasValue(selectedModalCampaign.finansman_detay?.tahsis_ucreti || selectedModalCampaign.tahsisUcreti)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Tahsis Ücreti</div>
+                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.tahsisUcreti', 'Tahsis Ücreti') }}</div>
                 <div class="text-xs font-bold text-orange-600 dark:text-orange-400">{{ Number(selectedModalCampaign.finansman_detay?.tahsis_ucreti || selectedModalCampaign.tahsisUcreti).toLocaleString('tr-TR') }} ₺</div>
               </div>
 
               <!-- Finansman Tutarı -->
               <div v-if="hasValue(selectedModalCampaign.finansman_detay?.finansman_tutari)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Finansman Tutarı</div>
+                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.finansmanTutari', 'Finansman Tutarı') }}</div>
                 <div class="text-xs font-bold text-cyan-600 dark:text-cyan-400">{{ Number(selectedModalCampaign.finansman_detay?.finansman_tutari).toLocaleString('tr-TR') }} ₺</div>
               </div>
 
               <!-- Ödül -->
               <div v-if="hasValue(selectedModalCampaign.promosyon_detay?.odul_tutari || selectedModalCampaign.odul)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Ödül</div>
+                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.odul', 'Ödül') }}</div>
                 <div class="text-xs font-bold text-emerald-600 dark:text-emerald-400">{{ Number(selectedModalCampaign.promosyon_detay?.odul_tutari || selectedModalCampaign.odul).toLocaleString('tr-TR') }} ₺</div>
               </div>
 
               <!-- MGM Kazanç -->
               <div v-if="hasValue(selectedModalCampaign.mgm_detay?.kisi_basi_kazanc || selectedModalCampaign.mgmKazanc)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">MGM Kazanç</div>
+                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.mgm', 'MGM Kazanç') }}</div>
                 <div class="text-xs font-bold text-purple-600 dark:text-purple-400">{{ Number(selectedModalCampaign.mgm_detay?.kisi_basi_kazanc || selectedModalCampaign.mgmKazanc).toLocaleString('tr-TR') }} ₺</div>
               </div>
 
               <!-- Bitiş Tarihi -->
               <div v-if="hasValue(selectedModalCampaign.genel_bilgi?.bitis_tarihi || selectedModalCampaign.bitisTarihi)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">Bitiş Tarihi</div>
+                <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('campaigns.columns.bitisTarihi', 'Bitiş Tarihi') }}</div>
                 <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200">{{ formatTarih(selectedModalCampaign.genel_bilgi?.bitis_tarihi || selectedModalCampaign.bitisTarihi) }}</div>
               </div>
             </div>
 
             <!-- Hedef Kitle -->
             <div v-if="hasValue(selectedModalCampaign.genel_bilgi?.hedef_kitle || selectedModalCampaign.hedefKitle)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Hedef Kitle</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">{{ $t('comparison.columns.hedefKitle', 'Hedef Kitle') }}</div>
               <div class="text-xs font-medium text-neutral-700 dark:text-neutral-300">
                 {{ Array.isArray(selectedModalCampaign.genel_bilgi?.hedef_kitle || selectedModalCampaign.hedefKitle) ? (selectedModalCampaign.genel_bilgi?.hedef_kitle || selectedModalCampaign.hedefKitle).join(', ') : (selectedModalCampaign.genel_bilgi?.hedef_kitle || selectedModalCampaign.hedefKitle) }}
               </div>
@@ -397,13 +397,13 @@
 
             <!-- Masraf Bilgisi -->
             <div v-if="hasValue(selectedModalCampaign.finansman_detay?.masraf_bilgi)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Masraf Bilgisi</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">{{ $t('comparison.columns.masrafBilgisi', 'Masraf Bilgisi') }}</div>
               <div class="text-xs font-medium text-neutral-700 dark:text-neutral-300">{{ selectedModalCampaign.finansman_detay.masraf_bilgi }}</div>
             </div>
 
             <!-- Kampanya Metni -->
             <div v-if="hasValue(selectedModalCampaign.genel_bilgi?.metin || selectedModalCampaign.metin)" class="pt-3 border-t border-neutral-200 dark:border-neutral-800">
-              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2">Kampanya Metni</div>
+              <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2">{{ $t('comparison.columns.kampanyaMetni', 'Kampanya Metni') }}</div>
               <pre class="font-mono text-xs whitespace-pre-wrap leading-relaxed text-neutral-600 dark:text-neutral-300 break-words bg-neutral-50 dark:bg-neutral-900/80 p-3.5 rounded-xl border border-neutral-200/80 dark:border-neutral-800 max-h-72 overflow-y-auto custom-scrollbar">{{ selectedModalCampaign.genel_bilgi?.metin || selectedModalCampaign.metin }}</pre>
             </div>
           </div>
@@ -416,7 +416,14 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Lenis from 'lenis'
+
+const { t } = useI18n()
+
+useHead({
+  title: computed(() => t('page_titles.comparison', 'Karşılaştırma'))
+})
 
 const pending = ref(true)
 const campaigns = ref([])
@@ -489,7 +496,7 @@ const searchResults = computed(() => {
 
 const addToCompare = (camp) => {
   if (selectedForCompare.value.length >= 4) {
-    alert("En fazla 4 kampanya karşılaştırabilirsiniz.")
+    alert(t('comparison.max_compare_warning', 'En fazla 4 kampanya karşılaştırabilirsiniz.'))
     return
   }
   selectedForCompare.value.push(camp)
@@ -730,83 +737,83 @@ let lenisRafId = null
 let observer = null
 
 // --- DİNAMİK KRİTER YAPILANDIRMASI ---
-const criteriaConfig = [
+const criteriaConfig = computed(() => [
   {
     id: 'lowest_profit',
-    title: 'En Düşük Kâr Payı Oranı',
+    title: t('dashboard.lowest_profit', 'En Düşük Kâr Payı Oranı'),
     sortKey: 'karPayi',
     sortAsc: true,
     columns: [
-      { key: 'banka', label: 'Banka' },
-      { key: 'baslik', label: 'Kampanya' },
-      { key: 'karPayi', label: 'Kâr Payı (%)' },
-      { key: 'vade', label: 'Vade (ay)' },
-      { key: 'hedefKitle', label: 'Hedef Kitle' }
+      { key: 'banka', label: t('comparison.columns.banka', 'Banka') },
+      { key: 'baslik', label: t('comparison.columns.kampanya', 'Kampanya') },
+      { key: 'karPayi', label: t('comparison.columns.karPayi', 'Kâr Payı (%)') },
+      { key: 'vade', label: t('campaigns.columns.vade', 'Vade (ay)') },
+      { key: 'hedefKitle', label: t('comparison.columns.hedefKitle', 'Hedef Kitle') }
     ]
   },
   {
     id: 'highest_reward',
-    title: 'En Yüksek Ödül Miktarı',
+    title: t('dashboard.highest_reward', 'En Yüksek Ödül Miktarı'),
     sortKey: 'odul',
     sortAsc: false,
     columns: [
-      { key: 'banka', label: 'Banka' },
-      { key: 'baslik', label: 'Kampanya' },
-      { key: 'odul', label: 'Ödül (TL)' },
-      { key: 'bitisTarihi', label: 'Bitiş Tarihi' },
-      { key: 'hedefKitle', label: 'Hedef Kitle' }
+      { key: 'banka', label: t('comparison.columns.banka', 'Banka') },
+      { key: 'baslik', label: t('comparison.columns.kampanya', 'Kampanya') },
+      { key: 'odul', label: t('comparison.columns.odul', 'Ödül (TL)') },
+      { key: 'bitisTarihi', label: t('campaigns.columns.bitisTarihi', 'Bitiş Tarihi') },
+      { key: 'hedefKitle', label: t('comparison.columns.hedefKitle', 'Hedef Kitle') }
     ]
   },
   {
     id: 'highest_mgm',
-    title: 'En Yüksek MGM (Davet Et Kazan) Ödülü',
+    title: t('dashboard.highest_mgm', 'En Yüksek MGM (Davet Et Kazan) Ödülü'),
     sortKey: 'mgmKazanc',
     sortAsc: false,
     columns: [
-      { key: 'banka', label: 'Banka' },
-      { key: 'baslik', label: 'Kampanya' },
-      { key: 'mgmKazanc', label: 'Kişi Başı / Davet Ödülü' },
-      { key: 'mgmLimit', label: 'Toplam Kazanç Limiti' },
-      { key: 'bitisTarihi', label: 'Bitiş Tarihi' },
-      { key: 'hedefKitle', label: 'Hedef Kitle' }
+      { key: 'banka', label: t('comparison.columns.banka', 'Banka') },
+      { key: 'baslik', label: t('comparison.columns.kampanya', 'Kampanya') },
+      { key: 'mgmKazanc', label: t('comparison.columns.mgm', 'MGM / Davet') },
+      { key: 'mgmLimit', label: t('dashboard.highest_loan', 'Toplam Kazanç Limiti') },
+      { key: 'bitisTarihi', label: t('campaigns.columns.bitisTarihi', 'Bitiş Tarihi') },
+      { key: 'hedefKitle', label: t('comparison.columns.hedefKitle', 'Hedef Kitle') }
     ]
   },
   {
     id: 'longest_term',
-    title: 'En Uzun Vade',
+    title: t('dashboard.longest_term', 'En Uzun Vade'),
     sortKey: 'vade',
     sortAsc: false,
     columns: [
-      { key: 'banka', label: 'Banka' },
-      { key: 'baslik', label: 'Kampanya' },
-      { key: 'vade', label: 'Vade (ay)' },
-      { key: 'karPayi', label: 'Kâr Payı (%)' },
-      { key: 'hedefKitle', label: 'Hedef Kitle' }
+      { key: 'banka', label: t('comparison.columns.banka', 'Banka') },
+      { key: 'baslik', label: t('comparison.columns.kampanya', 'Kampanya') },
+      { key: 'vade', label: t('campaigns.columns.vade', 'Vade (ay)') },
+      { key: 'karPayi', label: t('comparison.columns.karPayi', 'Kâr Payı (%)') },
+      { key: 'hedefKitle', label: t('comparison.columns.hedefKitle', 'Hedef Kitle') }
     ]
   },
   {
     id: 'lowest_fee',
-    title: 'En Düşük Tahsis Ücreti',
+    title: t('dashboard.lowest_fee', 'En Düşük Tahsis Ücreti'),
     sortKey: 'tahsisUcreti',
     sortAsc: true,
     columns: [
-      { key: 'banka', label: 'Banka' },
-      { key: 'baslik', label: 'Kampanya' },
-      { key: 'tahsisUcreti', label: 'Tahsis Ücreti (TL)' },
-      { key: 'karPayi', label: 'Kâr Payı (%)' },
-      { key: 'vade', label: 'Vade (ay)' }
+      { key: 'banka', label: t('comparison.columns.banka', 'Banka') },
+      { key: 'baslik', label: t('comparison.columns.kampanya', 'Kampanya') },
+      { key: 'tahsisUcreti', label: t('comparison.columns.tahsisUcreti', 'Tahsis Ücreti (TL)') },
+      { key: 'karPayi', label: t('comparison.columns.karPayi', 'Kâr Payı (%)') },
+      { key: 'vade', label: t('campaigns.columns.vade', 'Vade (ay)') }
     ]
   }
-]
+])
 
 const getMetricLabel = (key) => {
   const labels = {
-    'karPayi': 'Kâr Payı (%)',
-    'odul': 'Ödül (TL)',
-    'vade': 'Vade (ay)',
-    'tahsisUcreti': 'Tahsis Ücreti (TL)',
-    'mgmKazanc': 'MGM Davet Ödülü',
-    'mgmLimit': 'Toplam Kazanç Limiti'
+    'karPayi': t('comparison.columns.karPayi', 'Kâr Payı (%)'),
+    'odul': t('comparison.columns.odul', 'Ödül (TL)'),
+    'vade': t('campaigns.columns.vade', 'Vade (ay)'),
+    'tahsisUcreti': t('comparison.columns.tahsisUcreti', 'Tahsis Ücreti (TL)'),
+    'mgmKazanc': t('comparison.columns.mgm', 'MGM Davet Ödülü'),
+    'mgmLimit': t('dashboard.highest_loan', 'Toplam Kazanç Limiti')
   }
   return labels[key] || key
 }
