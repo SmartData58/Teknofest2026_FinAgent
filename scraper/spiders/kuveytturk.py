@@ -1,6 +1,13 @@
+import os
 import re
 import sys
 from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
 from bs4 import BeautifulSoup
 
@@ -22,7 +29,7 @@ from scraper.playwright_scraper import PlaywrightTabanScraper
 # SABİTLER
 # ============================================================
 
-TABAN_URL = "https://www.kuveytturk.com.tr"
+TABAN_URL = os.getenv("URL_SPIDER_KUVEYTTURK", "https://www.kuveytturk.com.tr")
 
 
 # ============================================================

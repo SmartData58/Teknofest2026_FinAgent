@@ -348,10 +348,13 @@
             v-for="p in filteredProducts" 
             :key="p.id"
             @click="openProductDetails(p)"
-            class="p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-white dark:bg-neutral-800/90 border border-neutral-200/80 dark:border-neutral-700/80 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6 group cursor-pointer active:scale-[0.998]"
+            class="p-4 sm:p-5 rounded-2xl sm:rounded-3xl transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6 group cursor-pointer active:scale-[0.998] relative overflow-hidden"
+            :class="isHighlighted(p) 
+              ? 'bg-gradient-to-r from-emerald-500/[0.07] via-white to-white dark:from-emerald-500/[0.08] dark:via-neutral-800/95 dark:to-neutral-800/95 border-2 border-emerald-500/60 dark:border-emerald-500/50 shadow-md shadow-emerald-500/10 hover:border-emerald-500' 
+              : 'bg-white dark:bg-neutral-800/90 border border-neutral-200/80 dark:border-neutral-700/80 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700'"
           >
             <!-- Sol Alan: Banka Bilgisi, Logo & Kategori -->
-            <div class="flex items-center gap-3 sm:gap-4 lg:w-60 shrink-0">
+            <div class="flex items-center gap-3 sm:gap-4 lg:w-64 shrink-0">
               <div class="w-12 h-12 rounded-2xl bg-neutral-50 dark:bg-neutral-700/60 border border-neutral-200 dark:border-neutral-600 flex items-center justify-center p-2 shrink-0 group-hover:scale-105 transition-transform">
                 <img :src="p.logo_url" :alt="p.banka_adi" class="w-full h-full object-contain" />
               </div>
@@ -367,6 +370,21 @@
                   <span>•</span>
                   <span>{{ p.guncellenme_tarihi }}</span>
                 </div>
+                <!-- Vurgulu En Düşük Rozetleri -->
+                <div v-if="isHighlighted(p)" class="flex items-center gap-1.5 flex-wrap mt-1.5">
+                  <span v-if="isMinRate(p)" class="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/90 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/70 flex items-center gap-1 shadow-xs">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    {{ $t('financing.badge_min_rate', 'En Düşük Oran') }}
+                  </span>
+                  <span v-if="isMinInstallment(p)" class="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-blue-100 text-blue-800 dark:bg-blue-950/90 dark:text-blue-300 border border-blue-300 dark:border-blue-700/70 flex items-center gap-1 shadow-xs">
+                    <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                    {{ $t('financing.badge_min_installment', 'En Düşük Taksit') }}
+                  </span>
+                  <span v-if="isMinTotal(p)" class="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-indigo-100 text-indigo-800 dark:bg-indigo-950/90 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700/70 flex items-center gap-1 shadow-xs">
+                    <span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                    {{ $t('financing.badge_min_total', 'En Düşük Toplam') }}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -376,7 +394,7 @@
               <!-- Kâr Oranı -->
               <div class="flex flex-col justify-center">
                 <span class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">{{ $t('financing.rate', 'Kâr Oranı') }}</span>
-                <span class="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                <span class="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5" :class="isMinRate(p) ? 'underline decoration-emerald-400 decoration-2 underline-offset-2' : ''">
                   {{ p.kar_orani_str }}
                 </span>
               </div>
@@ -395,7 +413,7 @@
               <!-- Aylık Taksit -->
               <div class="flex flex-col justify-center">
                 <span class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">{{ $t('financing.installment', 'Aylık Taksit') }}</span>
-                <span class="text-sm sm:text-base font-black text-neutral-900 dark:text-white mt-0.5">
+                <span class="text-sm sm:text-base font-black text-neutral-900 dark:text-white mt-0.5" :class="isMinInstallment(p) ? 'text-blue-600 dark:text-blue-400' : ''">
                   {{ p.aylik_taksit_str }}
                 </span>
               </div>
@@ -433,7 +451,10 @@
             v-for="p in filteredProducts" 
             :key="p.id"
             @click="openProductDetails(p)"
-            class="p-5 rounded-3xl bg-white dark:bg-neutral-800/90 border border-neutral-200/80 dark:border-neutral-700/80 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all flex flex-col justify-between group cursor-pointer active:scale-[0.995]"
+            class="p-5 rounded-3xl transition-all flex flex-col justify-between group cursor-pointer active:scale-[0.995] relative overflow-hidden"
+            :class="isHighlighted(p) 
+              ? 'bg-gradient-to-br from-emerald-500/[0.07] via-white to-white dark:from-emerald-500/[0.08] dark:via-neutral-800/95 dark:to-neutral-800/95 border-2 border-emerald-500/60 dark:border-emerald-500/50 shadow-md shadow-emerald-500/10 hover:border-emerald-500' 
+              : 'bg-white dark:bg-neutral-800/90 border border-neutral-200/80 dark:border-neutral-700/80 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700'"
           >
             <!-- Kart Başlığı -->
             <div>
@@ -444,11 +465,26 @@
                   </div>
                   <div>
                     <h3 class="text-sm font-extrabold text-neutral-900 dark:text-white leading-snug">{{ p.banka_adi }}</h3>
-                    <div class="flex items-center gap-1.5 mt-0.5">
+                    <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
                       <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-cyan-300 border border-blue-200/60 dark:border-blue-800/40 uppercase">
                         {{ getCategoryLabel(p.urun) }}
                       </span>
                       <span class="text-[10px] font-semibold text-neutral-400">{{ p.tier }}</span>
+                    </div>
+                    <!-- Vurgulu En Düşük Rozetleri -->
+                    <div v-if="isHighlighted(p)" class="flex items-center gap-1 flex-wrap mt-1.5">
+                      <span v-if="isMinRate(p)" class="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/90 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/70 flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        {{ $t('financing.badge_min_rate', 'En Düşük Oran') }}
+                      </span>
+                      <span v-if="isMinInstallment(p)" class="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-blue-100 text-blue-800 dark:bg-blue-950/90 dark:text-blue-300 border border-blue-300 dark:border-blue-700/70 flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                        {{ $t('financing.badge_min_installment', 'En Düşük Taksit') }}
+                      </span>
+                      <span v-if="isMinTotal(p)" class="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-indigo-100 text-indigo-800 dark:bg-indigo-950/90 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700/70 flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                        {{ $t('financing.badge_min_total', 'En Düşük Toplam') }}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -551,12 +587,18 @@
               v-for="p in filteredProducts" 
               :key="p.id"
               @click="openProductDetails(p)"
-              class="hover:bg-neutral-50/80 dark:hover:bg-neutral-800/40 transition-colors cursor-pointer"
+              class="transition-colors cursor-pointer"
+              :class="isHighlighted(p) ? 'bg-emerald-50/40 dark:bg-emerald-950/20 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/30' : 'hover:bg-neutral-50/80 dark:hover:bg-neutral-800/40'"
             >
               <td class="py-3 px-4">
                 <div class="flex items-center gap-2">
                   <img :src="p.logo_url" :alt="p.banka_adi" class="w-5 h-5 object-contain" />
-                  <span class="font-bold text-neutral-900 dark:text-white">{{ p.banka_adi }}</span>
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="font-bold text-neutral-900 dark:text-white">{{ p.banka_adi }}</span>
+                    <span v-if="isMinRate(p)" class="px-1.5 py-0.5 text-[9px] font-bold rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                      {{ $t('financing.badge_min_rate', 'En Düşük Oran') }}
+                    </span>
+                  </div>
                 </div>
               </td>
               <td class="py-3 px-4">
@@ -796,6 +838,12 @@ const stats = computed(() => {
     best_bank
   }
 })
+
+// En Düşük 3 Metriği Yansıtan Kampanyaları Vurgulama Fonksiyonları
+const isMinRate = (p) => stats.value.min_rate > 0 && p.kar_orani === stats.value.min_rate
+const isMinInstallment = (p) => stats.value.min_installment > 0 && p.aylik_taksit_tutari === stats.value.min_installment
+const isMinTotal = (p) => stats.value.min_total > 0 && p.geri_odenecek_toplam_tutar === stats.value.min_total
+const isHighlighted = (p) => isMinRate(p) || isMinInstallment(p) || isMinTotal(p)
 
 // Filtre Seçimleri
 const selectedCategory = ref('')

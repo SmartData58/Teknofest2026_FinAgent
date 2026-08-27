@@ -8,18 +8,56 @@ import re
 
 import requests
 
-from backend.nlp.extraction.rule_based import AlanBulgusu
+# 🛠️ GÖRECELİ IMPORT (eskiden `from backend.nlp.extraction.rule_based import`).
+# Mutlak yol yalnızca REPO KÖKÜNDEN çalıştırıldığında çözülüyordu; konteynerde
+# WORKDIR `/app` ve bu klasörün kendisi backend olduğu için `backend` diye bir
+# paket YOK — modül `ModuleNotFoundError: No module named 'backend'` ile
+# patlıyordu. Kardeş modüller (hybrid.py, extractor.py) zaten göreceli import
+# kullanıyor; tek istisna buydu.
+from .rule_based import AlanBulgusu
 
-# Tablodan alınan güncel API, URL ve Model yapılandırmaları
-LLM_API_KEY = os.environ.get(
-    "FINAGENT_LLM_API_KEY", "sk-evren-team28-d46aaaa9a44a3e3ddf81a1252e26fa20"
-)
-LLM_BASE_URL = os.environ.get(
-    "FINAGENT_LLM_BASE_URL", "https://evren-llmapi.ssyz.org.tr/v1"
-).rstrip("/")
+
+# =============================================================================
+# 🚨 .env YÜKLEME — BOŞ DOSYA GERÇEĞİNİ GÖLGELİYORDU.
+#
+# Eskiden düz `load_dotenv()` çağrılıyordu. python-dotenv, çağıran dosyanın
+# klasöründen YUKARI doğru yürüyüp bulduğu İLK `.env`'i yükler ve durur.
+# Bu depoda iki tane var:
+#     backend/.env   ->      0 bayt   (konteyner bind-mount'unun tutamağı)
+#     .env           -> 12.012 bayt   (gerçek yapılandırma)
+# Arama backend/.env'i önce buluyor, onu yüklüyor (hiçbir şey) ve duruyordu.
+# Sonuç: EVREN_API_KEY boş -> API 401 -> llm_hazir() False -> LLM çıkarımı
+# ÜRETİMDE HİÇ ÇALIŞMIYOR, ama hata da vermiyordu: hybrid.py "Model erişilemez"
+# deyip kural tabanlı moda düşüyor ve boru hattı "başarılı" görünüyordu.
+#
+# Sessizce devre dışı kalan bir özellik, çöken bir özellikten daha pahalıdır.
+# Artık BOŞ .env dosyaları atlanıyor; ilk DOLU olan yükleniyor.
+# =============================================================================
+def _env_yukle() -> str:
+    """Yukarı doğru yürüyüp ilk DOLU .env dosyasını yükler; yolunu döner."""
+    try:
+        from dotenv import load_dotenv
+    except Exception:
+        return ""
+    dizin = os.path.dirname(os.path.abspath(__file__))
+    while True:
+        aday = os.path.join(dizin, ".env")
+        if os.path.isfile(aday) and os.path.getsize(aday) > 0:
+            load_dotenv(aday, override=False)
+            return aday
+        ust = os.path.dirname(dizin)
+        if ust == dizin:            # kök dizine ulaşıldı
+            return ""
+        dizin = ust
+
+
+ENV_DOSYASI = _env_yukle()
+
+LLM_API_KEY = os.environ.get("EVREN_API_KEY") or os.environ.get("FINAGENT_LLM_API_KEY", "")
+LLM_BASE_URL = (os.environ.get("EVREN_BASE_URL") or os.environ.get("FINAGENT_LLM_BASE_URL", "https://evren-llmapi.ssyz.org.tr/v1")).rstrip("/")
 
 # Varsayılan model
-MODEL = os.environ.get("FINAGENT_LLM_MODEL", "qwen2.5-3b-instruct")
+MODEL = os.environ.get("EVREN_MODEL_HIZLI") or os.environ.get("FINAGENT_LLM_MODEL", "llm-fast")
 
 LLM_GUVEN = 0.7          # LLM bulgularının güven skoru
 ZAMAN_ASIMI = 60         # API isteği için üst sınır (saniye)
@@ -58,7 +96,63 @@ _GECERLI_URUN_KATEGORILERI = {
     "diger",
 }
 
+# =============================================================================
+# 🚨 DEĞER UZAYI BİRLİĞİ — AYNI ALAN, İKİ FARKLI BİÇİM.
+#
+# Kural tabanlı çıkarıcı (rule_based.KATEGORI_KURALLARI) `urun_kategori` alanına
+# İNSAN OKUNUR ETİKET yazıyor:  "Konut / Gayrimenkul Finansmanları"
+# Bu modülün prompt'u ise KOD döndürüyor:                "konut_gayrimenkul"
+#
+# İkisi aynı alana yazıyor. Mongo'daki 95 üründe bugün yalnızca etiket biçimi
+# var — çünkü LLM katmanı (boş API anahtarı yüzünden) hiç çalışmamıştı. Anahtar
+# düzeltilir düzeltilmez aynı alan iki ayrı biçimde dolmaya başlayacaktı ve
+# gösterge paneli/sohbet tarafında kategori sayımları sessizce ikiye bölünecekti.
+#
+# Sınıflandırıcıya KOD sordurmaya devam ediyoruz (dar ve kararlı bir küme),
+# ama kaydetmeden ÖNCE kural tabanlının kanonik etiketine çeviriyoruz.
+# ⚠️ Etiketler rule_based.py'deki KATEGORI_KURALLARI ile AYNEN eşleşmeli;
+#    orada değişirse burası da güncellenmeli.
+# =============================================================================
+_KOD_TO_ETIKET = {
+    "dijital_aninda_alisveris": "Dijital / Anında Alışveriş Finansmanları",
+    "bireysel_ihtiyac": "Bireysel / İhtiyaç Finansmanları",
+    "konut_gayrimenkul": "Konut / Gayrimenkul Finansmanları",
+    "tasit_finansmani": "Taşıt Finansmanları",
+    "ticari_kurumsal": "Ticari & Kurumsal Finansmanlar",
+    "diger": "Diğer",
+}
+
 SORULABILIR_ALANLAR = list(ALAN_SEMASI) + ["hedef_kitle", "urun_kategori"]
+
+
+def _kategori_normalize(ham) -> str | None:
+    """LLM'in döndürdüğü kodu geçerli kategoriye eşler; yakın yazımları kurtarır.
+
+    🚨 GERÇEK ÖRNEK: model "İş Yeri Finansmanı" için `dijital_anima_alisveris`
+    üretti — `aninda` yerine `anima`. Katı küme kontrolü bunu reddetti ve alan
+    boş kaldı; oysa modelin ne demek istediği tartışmasızdı. Sınıflandırmayı
+    tek harf yüzünden çöpe atmak, veriyi olduğundan eksik gösterir.
+
+    Katılığı korumak için eşik YÜKSEK (0.85) ve aday kümesi altı elemanlı —
+    yani "gerçekten yakın olmayan" bir çıktı yine reddedilir. Aynı teknik
+    chatbot/intent.py::bulanik_gorsel_istegi'nde de kullanılıyor.
+    """
+    if not ham:
+        return None
+    kod = re.sub(r"[^a-z0-9_]", "", str(ham).strip().lower().replace(" ", "_").replace("-", "_"))
+    if kod in _GECERLI_URUN_KATEGORILERI:
+        return kod
+    from difflib import SequenceMatcher
+    en_iyi, en_iyi_oran = None, 0.0
+    for aday in _GECERLI_URUN_KATEGORILERI:
+        oran = SequenceMatcher(None, kod, aday).ratio()
+        if oran > en_iyi_oran:
+            en_iyi, en_iyi_oran = aday, oran
+    if en_iyi_oran >= 0.85:
+        print(f" └─ ℹ️ LLM kodu '{ham}' -> '{en_iyi}' olarak düzeltildi "
+              f"(benzerlik {en_iyi_oran:.2f})")
+        return en_iyi
+    return None
 
 
 def llm_hazir() -> bool:
@@ -166,14 +260,29 @@ def llm_ile_cikar(metin: str, istenen_alanlar: list[str]) -> dict[str, AlanBulgu
 
     if "urun_kategori" in istenen_alanlar:
         ham_json = _llm_api_json(_urun_kategori_promptu(metin)) or {}
-        deger = ham_json.get("urun_kategori")
-        
+        ham_deger = ham_json.get("urun_kategori")
+        # Yakın yazım hatalarını kurtarır, uzak olanı yine reddeder.
+        deger = _kategori_normalize(ham_deger)
+
         if deger in _GECERLI_URUN_KATEGORILERI:
+            # Kanonik etikete çevir (bkz. _KOD_TO_ETIKET notu): kural tabanlı
+            # çıkarıcıyla AYNI değer uzayında kalmak zorundayız.
+            etiket = _KOD_TO_ETIKET.get(deger, deger)
+            # 🛠️ `yontem` ve `guven` AÇIKÇA VERİLİYOR.
+            # AlanBulgusu'nun varsayılanları `yontem="regex", guven=1.0`.
+            # Üç konumlu argümanla çağrıldığında LLM'in TAHMİNİ, kayda
+            # "regex ile bulundu, güven 1.0" diye giriyordu — yani bir dil
+            # modelinin çıkarımı deterministik bir eşleşmeyle aynı ağırlığa
+            # sahip oluyordu. Dosyada tanımlı LLM_GUVEN (0.7) ise hiçbir yerde
+            # kullanılmıyordu. Aşağı akıştaki denetim/ayıklama bu ayrımı
+            # görebilmeli.
             bulgular["urun_kategori"] = AlanBulgusu(
-                deger, f"LLM siniflandirmasi: {deger}", f"llm:{MODEL}"
+                etiket, f"LLM siniflandirmasi: {deger}", f"llm:{MODEL}",
+                yontem="llm", guven=LLM_GUVEN,
             )
-            print(f" └─ 🎯 [LLM TESPİTİ] -> Kategori: '{deger}'")
+            print(f" └─ 🎯 [LLM TESPİTİ] -> Kategori: '{etiket}' (kod: {deger})")
         else:
-            print(f" └─ ⚠️ LLM kategoriyi belirleyemedi veya geçersiz kategori döndü: {deger}")
+            print(" └─ ⚠️ LLM kategoriyi belirleyemedi veya geçersiz kategori "
+                  f"döndü: {ham_deger!r}")
 
     return bulgular

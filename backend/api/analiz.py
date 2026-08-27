@@ -53,8 +53,26 @@ from chatbot.intent import (
     banka_kodu_normalize,
 )
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:admin123@mongodb:27017/?authSource=admin")
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+MONGO_USER = os.getenv("MONGO_USER", "admin")
+MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "")
+MONGO_HOST = os.getenv("MONGO_HOST", "mongodb")
+MONGO_PORT = os.getenv("MONGO_PORT", "27017")
 DB_ADI = os.getenv("CAMPAIGN_DB", "smartdata")
+
+def _get_mongo_uri() -> str:
+    if os.getenv("MONGO_URI"):
+        return os.getenv("MONGO_URI")
+    if MONGO_PASSWORD:
+        return f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
+    return f"mongodb://{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
+
+MONGO_URI = _get_mongo_uri()
 
 router = APIRouter(tags=["analiz"])
 

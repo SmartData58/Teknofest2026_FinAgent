@@ -1,8 +1,16 @@
+import os
 import re
 import sys
 import json
 
 from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 from bs4 import BeautifulSoup
 
 PROJE_KOK = Path(__file__).resolve().parent.parent.parent
@@ -18,7 +26,7 @@ from scraper.playwright_scraper import PlaywrightTabanScraper
 # SABİTLER
 # ============================================================
 
-TABAN_URL = "https://www.vakifkatilim.com.tr"
+TABAN_URL = os.getenv("URL_SPIDER_VAKIFKATILIM", "https://www.vakifkatilim.com.tr")
 
 
 # ============================================================

@@ -4,18 +4,29 @@ import re
 import os
 from finansman_config import get_kombinasyonlar
 
-url = "https://www.albaraka.com.tr/tr/hesaplama-araclari/finansman-hesaplama/konut-finansmani-hesaplama"
+# --- MONGODB BAĞLANTI VE URL AYARLARI ---
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
-# --- MONGODB BAĞLANTI AYARLARI ---
+url = os.getenv("URL_FINANSMAN_ALBARAKA", "https://www.albaraka.com.tr/tr/hesaplama-araclari/finansman-hesaplama/konut-finansmani-hesaplama")
+
 MONGO_USER = os.getenv("MONGO_USER", "admin")
-MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "admin123")
+MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "")
 MONGO_HOST = os.getenv("MONGO_HOST", "localhost")
 MONGO_PORT = os.getenv("MONGO_PORT", "27017")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "smartdata")
 
+def _get_mongo_uri() -> str:
+    if os.getenv("MONGO_URI"):
+        return os.getenv("MONGO_URI")
+    if MONGO_PASSWORD:
+        return f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
+    return f"mongodb://{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
 
-DEFAULT_URI = f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
-MONGO_URI = os.getenv("MONGO_URI", DEFAULT_URI)
+MONGO_URI = _get_mongo_uri()
 COLLECTION_NAME = "finansman_urun"
 
 BANKA_KEY = "albaraka"

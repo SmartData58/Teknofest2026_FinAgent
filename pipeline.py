@@ -5,6 +5,12 @@ import os
 import sys
 from datetime import datetime, timezone
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 
 def log(msg: str):
     print(f"\n==========================================")

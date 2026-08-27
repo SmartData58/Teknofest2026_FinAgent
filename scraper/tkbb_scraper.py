@@ -1,7 +1,14 @@
+import os
 import re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 import yaml
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
 PROJE_KOK = Path(__file__).resolve().parent.parent
 CONFIG_PATH = PROJE_KOK / "backend" / "configs" / "banks.yaml"
@@ -26,7 +33,7 @@ BANKA_ISIM_MAP = {
 }
 
 def tkbb_verilerini_playwright_ile_cek():
-    url = "https://tkbb.org.tr/veripetegi-detay/44"
+    url = os.getenv("URL_SCRAPER_TKBB", "https://tkbb.org.tr/veripetegi-detay/44")
     aktif_veri_map = {}
 
     print("🌐 Playwright ile TKBB Aktif Büyüklük verileri çekiliyor...")

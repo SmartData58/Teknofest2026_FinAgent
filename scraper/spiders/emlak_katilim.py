@@ -1,6 +1,13 @@
+import os
 import re
 import sys
 from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
 PROJE_KOK = Path(__file__).resolve().parent.parent.parent
 
@@ -16,7 +23,7 @@ from scraper.base_scraper import TabanScraper
 # SABİTLER
 # ============================================================
 
-TABAN_URL = "https://www.emlakkatilim.com.tr"
+TABAN_URL = os.getenv("URL_SPIDER_EMLAKKATILIM", "https://www.emlakkatilim.com.tr")
 
 
 LISTELER = {

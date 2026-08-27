@@ -1,6 +1,13 @@
+import os
 from playwright.sync_api import sync_playwright
 
-URL = "https://www.vakifkatilim.com.tr/tr/yardimci-sayfalar/hesaplama-araclari/kar-payi-hesaplama"
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+URL = os.getenv("URL_KARPAYI_VAKIF", "https://www.vakifkatilim.com.tr/tr/yardimci-sayfalar/hesaplama-araclari/kar-payi-hesaplama")
 
 VADE_LABEL = "Aylık"  # 32 gün / 1 Ay karşılığı
 TUTARLAR = ["100000", "250000"]

@@ -1003,6 +1003,34 @@ def metrik_bul(soru: str):
     return None
 
 
+_ANLAMLI_HARF = re.compile(r"[a-zçğıöşüA-ZÇĞİÖŞÜ]")
+
+
+def anlamsiz_soru(soru: str) -> bool:
+    """Girdi bir soru sayılamayacak kadar boş mu? ("a", "?", "...", "🏦", "1234")
+
+    🚨 CANLI EKRANDA GÖRÜLDÜ: kullanıcı tek harf ("a") yazdı; sistem önce
+    "böyle bir kampanya bulunmamaktadır" dedi, ARDINDAN 3 satırlık tablo ve
+    tam bir piyasa analizi bastı. Kimsenin sormadığı bir rapor üretmek,
+    cevap vermemekten daha kötü görünüyor: kullanıcı sistemin kendisini
+    dinlemediğini düşünüyor.
+    #
+    Sebep: deterministik katman doğru karar veriyor (görsel yok), ama melez
+    LLM katmanına düşülüyor ve o katman cevap veremeyince "temkinli
+    varsayılan" 3 satırlık tabloyu çiziyordu. Anlamsız girdide o kapıya hiç
+    gidilmemeli.
+
+    ⚠️ Banka kısaltmaları ("KT") bu fonksiyona TAKILMAZ: çağıran taraf önce
+    bankanın tespit edilip edilmediğine bakıyor.
+    """
+    metin = (soru or "").strip()
+    if not metin:
+        return True
+    harfler = _ANLAMLI_HARF.findall(metin)
+    # 3 harften az: "a", "?", "...", "🏦", "1234567890", "??!"
+    return len(harfler) < 3
+
+
 def llm_gorsel_sorulmali(niyet: "Niyet") -> bool:
     """MELEZ KAPI: deterministik karar yetersiz kaldı mı, LLM'e sorulsun mu?
 
@@ -1023,6 +1051,10 @@ def llm_gorsel_sorulmali(niyet: "Niyet") -> bool:
     if niyet.aciklayici or niyet.kod_sorusu:
         return False
     if niyet.tur in ("statik", "tavsiye", "hesaplama"):
+        return False
+    # 🚨 ANLAMSIZ GİRDİDE MELEZ KATMANA HİÇ GİTME (bkz. anlamsiz_soru).
+    # Banka kısaltması tespit edildiyse girdi anlamlıdır ("KT").
+    if not niyet.banka_kodlari and anlamsiz_soru(niyet.ham_soru):
         return False
     return True
 

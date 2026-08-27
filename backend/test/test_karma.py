@@ -324,9 +324,15 @@ def degerlendir(sen, sonuc):
         kontrol(f"analist jargonu: {jargon[:3]}", not jargon, 2)
         kontrol("doğrudan hitap yok (siz/kazanç/başvuru)",
                 bool(_MUSTERI_DILI.search(metin)), 1)
+        # 🛠️ REDDEDİŞ, RAKAM İSTEMEZ. İlk koşuda "param olsa nereye
+        # yatırmalıyım" sorusuna verilen KUSURSUZ ret ("yatırım tavsiyesi
+        # veremem, ancak kampanya bilgisi verebilirim") "somut tutar yok"
+        # diye cezalandırıldı. Bir testin doğru davranışı hata sayması, en
+        # kötü hata türüdür — gerçek bulgular sahte alarmda kaybolur.
+        _reddediyor = bool(_TAVSIYE_REDDI.search(metin))
         kontrol("somut tutar/oran/tarih yok",
                 bool(_SOMUT.search(metin)) or bool(_TARIH_SOMUT.search(metin))
-                or sen["kat"] in ("anlama", "sinir"), 1)
+                or _reddediyor or sen["kat"] in ("anlama", "sinir"), 1)
         kontrol(f"cevap çok uzun ({len(metin)} krktr > 2200)",
                 len(metin) <= 2200, 1)
         if "maks_satir" in sen:

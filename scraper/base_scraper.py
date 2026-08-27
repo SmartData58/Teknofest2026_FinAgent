@@ -1,9 +1,10 @@
+import os
 import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
- # scraper/db_helper.py
+# scraper/db_helper.py
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
@@ -37,10 +38,30 @@ class TabanScraper:
     bekleme_saniye: float = 1.5   # istekler arası nezaket beklemesi
     deneme_sayisi: int = 3        # hata hâlinde toplam deneme
     zaman_asimi: int = 30         # tek isteğin saniye limiti
-    mongo_uri: str = "mongodb://localhost:27017"
-    db_name: str = "kampanyalar"
+    mongo_uri: str = ""
+    db_name: str = ""
 
     def __init__(self) -> None:
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except Exception:
+            pass
+
+        if os.getenv("MONGO_URI"):
+            self.mongo_uri = os.getenv("MONGO_URI")
+        else:
+            user = os.getenv("MONGO_USER", "admin")
+            pwd = os.getenv("MONGO_PASSWORD", "")
+            host = os.getenv("MONGO_HOST", "localhost")
+            port = os.getenv("MONGO_PORT", "27017")
+            if pwd:
+                self.mongo_uri = f"mongodb://{user}:{pwd}@{host}:{port}/?authSource=admin"
+            else:
+                self.mongo_uri = f"mongodb://{host}:{port}/?authSource=admin"
+
+        self.db_name = os.getenv("MONGO_DB_NAME", os.getenv("CAMPAIGN_DB", "smartdata"))
+
         # Session: aynı siteye art arda isteklerde TCP bağlantısını yeniden
         # kullanır (daha hızlı, siteye daha az yük) ve ortak header taşır.
         self.session = requests.Session()

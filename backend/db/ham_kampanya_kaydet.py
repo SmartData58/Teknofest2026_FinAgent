@@ -6,14 +6,26 @@ from pymongo.database import Database
 
 
 # --- MONGODB BAĞLANTI AYARLARI ---
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 MONGO_USER = os.getenv("MONGO_USER", "admin")
-MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "admin123")
+MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "")
 MONGO_HOST = os.getenv("MONGO_HOST", "smartdata-mongodb")  # Docker içi servis adı
 MONGO_PORT = os.getenv("MONGO_PORT", "27017")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "smartdata")
 
-DEFAULT_URI = f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
-MONGO_URI = os.getenv("MONGO_URI", DEFAULT_URI)
+def _get_mongo_uri() -> str:
+    if os.getenv("MONGO_URI"):
+        return os.getenv("MONGO_URI")
+    if MONGO_PASSWORD:
+        return f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
+    return f"mongodb://{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
+
+MONGO_URI = _get_mongo_uri()
 
 
 def get_mongo_db() -> Tuple[MongoClient, Database]:

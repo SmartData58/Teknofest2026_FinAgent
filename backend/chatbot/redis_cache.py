@@ -1,37 +1,61 @@
-# 🛠️ TEMİZLİK: `os` ve `json` importları kaldırıldı — bu dosyada artık ikisi de
-# kullanılmıyor. `os` zaten önceden de kullanılmıyordu (mevcut kod hiçbir yerde
-# os.* çağırmıyordu); `json` ise sadece aşağıda silinen get_cached_db_params/
-# set_cached_db_params fonksiyonlarında kullanılıyordu.
+import os
 import hashlib
 import redis.asyncio as aioredis
 from loguru import logger
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
 _redis_client = None
 
 async def get_redis():
     global _redis_client
     if _redis_client is None:
-        olasi_adresler = [
+        redis_url = os.getenv("REDIS_URL")
+        redis_password = os.getenv("REDIS_PASSWORD") or None
+        
+        # 1. Öncelik: REDIS_URL veya REDIS_HOST env tanımlıysa onu dene
+        if redis_url:
+            try:
+                client = aioredis.from_url(redis_url, decode_responses=True, socket_connect_timeout=1.0)
+                await client.ping()
+                _redis_client = client
+                logger.info(f"✅ Cache modülü Redis'e REDIS_URL üzerinden bağlandı!")
+                return _redis_client
+            except Exception as e:
+                logger.warning(f"⚠️ REDIS_URL bağlantısı başarısız ({e}), alternatifler deneniyor...")
+
+        env_host = os.getenv("REDIS_HOST")
+        env_port = int(os.getenv("REDIS_PORT", "6379"))
+
+        olasi_adresler = []
+        if env_host:
+            olasi_adresler.append(env_host)
+        olasi_adresler.extend([
             "host.docker.internal",
             "smartdata-redis",
             "redis",
             "172.17.0.1",
             "172.18.0.1",
             "127.0.0.1"
-        ]
+        ])
 
         for adres in olasi_adresler:
             try:
                 temp_client = aioredis.Redis(
                     host=adres,
-                    port=6379,
+                    port=env_port,
+                    password=redis_password,
                     db=0,
                     decode_responses=True,
                     socket_connect_timeout=0.5
                 )
                 await temp_client.ping()
                 _redis_client = temp_client
-                logger.info(f"✅ Cache modülü Redis'e '{adres}' üzerinden bağlandı!")
+                logger.info(f"✅ Cache modülü Redis'e '{adres}:{env_port}' üzerinden bağlandı!")
                 break
             except Exception:
                 continue

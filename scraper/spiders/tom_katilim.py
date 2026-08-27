@@ -1,7 +1,14 @@
+import os
 import re
 from datetime import datetime
 from pathlib import Path
 import sys
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
 from bs4 import BeautifulSoup
 
@@ -23,7 +30,7 @@ from scraper.playwright_scraper import PlaywrightTabanScraper
 # SABİTLER
 # ============================================================
 
-TABAN_URL = "https://hadiyanindakibanka.com"
+TABAN_URL = os.getenv("URL_SPIDER_TOMKATILIM", "https://hadiyanindakibanka.com")
 
 LISTE_URL = (
     f"{TABAN_URL}/hadi-kazan/kampanyalar"

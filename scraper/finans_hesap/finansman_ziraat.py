@@ -41,23 +41,30 @@ from playwright.sync_api import sync_playwright
 from pymongo import MongoClient
 from finansman_config import get_kombinasyonlar
 
-HOMEPAGE_URL = "https://www.ziraatkatilim.com.tr/"
-AJAX_URL = "https://www.ziraatkatilim.com.tr/ajax/finansmanhesapla?_wrapper_format=drupal_ajax"
+# --- MONGODB BAĞLANTI VE URL AYARLARI ---
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
-# NOT: Albaraka scriptindeki "${MONGO_USER:-admin}" gibi shell-stili syntax
-# Python'da OTOMATIK expand OLMAZ (o kalıp sadece docker-compose/.env
-# dosyalarında çalışır) - bu yüzden burada gerçek Python env-var okuma
-# kullanıyoruz.
-# --- MONGODB BAĞLANTI AYARLARI ---
+HOMEPAGE_URL = os.getenv("URL_FINANSMAN_ZIRAAT_HOMEPAGE", "https://www.ziraatkatilim.com.tr/")
+AJAX_URL = os.getenv("URL_FINANSMAN_ZIRAAT_AJAX", "https://www.ziraatkatilim.com.tr/ajax/finansmanhesapla?_wrapper_format=drupal_ajax")
+
 MONGO_USER = os.getenv("MONGO_USER", "admin")
-MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "admin123")
+MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "")
 MONGO_HOST = os.getenv("MONGO_HOST", "localhost")
 MONGO_PORT = os.getenv("MONGO_PORT", "27017")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "smartdata")
 
+def _get_mongo_uri() -> str:
+    if os.getenv("MONGO_URI"):
+        return os.getenv("MONGO_URI")
+    if MONGO_PASSWORD:
+        return f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
+    return f"mongodb://{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
 
-DEFAULT_URI = f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
-MONGO_URI = os.getenv("MONGO_URI", DEFAULT_URI)
+MONGO_URI = _get_mongo_uri()
 COLLECTION_NAME = "finansman_urun"
 
 BANKA_KEY = "ziraat"
