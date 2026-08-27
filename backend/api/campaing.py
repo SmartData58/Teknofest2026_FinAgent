@@ -779,3 +779,23 @@ async def get_katilim_hesaplari(
     await _redise_yaz(cache_key, result_encoded, ttl=1800)
     return result_encoded
 
+
+_TAXONOMY_CACHE = None
+
+@router.get("/taxonomy")
+async def get_taxonomy():
+    """Kampanya türleri, hedef kitleler ve kategorilerin TR/EN eşlemelerini döner."""
+    global _TAXONOMY_CACHE
+    if _TAXONOMY_CACHE is not None:
+        return _TAXONOMY_CACHE
+
+    tax_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "configs", "taxonomy.yaml")
+    if os.path.exists(tax_path):
+        try:
+            with open(tax_path, "r", encoding="utf-8") as f:
+                _TAXONOMY_CACHE = yaml.safe_load(f) or {}
+                return _TAXONOMY_CACHE
+        except Exception as e:
+            return {"error": f"taxonomy.yaml okunamadı: {str(e)}", "turler": {}, "hedef_kitleler": {}, "kategoriler": {}}
+    return {"turler": {}, "hedef_kitleler": {}, "kategoriler": {}}
+

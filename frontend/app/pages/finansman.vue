@@ -5,7 +5,7 @@
     <!-- ================= ORTALANMIŞ BAŞLIK ================= -->
     <div class="flex flex-col items-center text-center gap-3 max-w-2xl mx-auto">
       <h1 class="reveal-title text-4xl md:text-5xl font-bold bg-clip-text text-transparent gradient-text pb-1">
-        {{ $t('financing.title', 'Finansman Oranları') }}
+        {{ $t('financing.title', 'Finansman Karşılaştırmaları') }}
       </h1>
       <p class="text-sm md:text-base text-neutral-500 dark:text-neutral-400">
         {{ $t('financing.subtitle', 'Katılım bankalarının güncel kâr payı oranları, taksit tutarları ve toplam geri ödeme maliyetlerini karşılaştırın.') }}
@@ -176,10 +176,10 @@
       <!-- B. Banka & Tier Filtreleri (Yan Yana - Çoklu Seçim) -->
       <div class="flex flex-col md:flex-row items-start md:items-center gap-4 flex-wrap">
         
-        <!-- Banka Filtresi -->
+        <!-- Banka -->
         <div class="space-y-1.5">
           <div class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-            {{ $t('financing.filter_bank', 'Banka Filtresi') }}
+            {{ $t('financing.filter_bank', 'Banka') }}
           </div>
           <div class="inline-flex flex-wrap items-center p-1 rounded-xl border border-neutral-300/50 dark:border-neutral-700/50 bg-neutral-100/60 dark:bg-neutral-800/60 backdrop-blur-sm shadow-sm gap-1">
             <button 
@@ -189,16 +189,18 @@
               :class="selectedBanks.includes(b.code) ? 'bg-white dark:bg-neutral-700 text-blue-600 dark:text-cyan-400 shadow-sm font-bold' : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium'"
               class="px-3 py-1.5 text-xs rounded-lg transition-all flex items-center gap-2 group"
             >
-              <img :src="b.logo_url" :alt="b.name" class="w-4 h-4 object-contain rounded group-hover:scale-110 transition-transform" />
+              <div class="w-5 h-5 rounded-md bg-white p-0.5 flex items-center justify-center shrink-0 shadow-2xs border border-neutral-200/60 dark:border-white/20 overflow-hidden">
+                <img :src="b.logo_url" :alt="b.name" class="w-full h-full max-w-full max-h-full object-contain group-hover:scale-110 transition-transform" />
+              </div>
               <span>{{ b.name }}</span>
             </button>
           </div>
         </div>
 
-        <!-- Tier Filtresi -->
+        <!-- Tier -->
         <div v-if="availableTiers.length" class="space-y-1.5">
           <div class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-            {{ $t('financing.filter_tier', 'Tier Filtresi') }}
+            {{ $t('financing.filter_tier', 'Tier') }}
           </div>
           <div class="inline-flex flex-wrap items-center p-1 rounded-xl border border-neutral-300/50 dark:border-neutral-700/50 bg-neutral-100/60 dark:bg-neutral-800/60 backdrop-blur-sm shadow-sm gap-1">
             <button 
@@ -218,36 +220,36 @@
       <!-- C. Tutar, Vade & Sıralama Kontrolleri -->
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 pt-3 border-t border-neutral-100 dark:border-neutral-800 items-start">
         
-        <!-- Tutar Seçici (5 Kolon) -->
-        <div class="lg:col-span-5 space-y-1.5">
+        <!-- Tutar Seçici (6 Kolon) -->
+        <div class="lg:col-span-6 space-y-1.5">
           <label class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">
             {{ $t('financing.filter_amount', 'Finansman Tutarı') }}
           </label>
-          <div class="flex flex-wrap items-center p-1 rounded-xl border border-neutral-300/50 dark:border-neutral-700/50 bg-neutral-100/60 dark:bg-neutral-800/60 backdrop-blur-sm shadow-sm gap-1">
+          <div class="flex flex-nowrap items-center p-1 rounded-xl border border-neutral-300/50 dark:border-neutral-700/50 bg-neutral-100/60 dark:bg-neutral-800/60 backdrop-blur-sm shadow-sm gap-1 overflow-x-auto no-scrollbar">
             <button 
               v-for="amt in availableAmounts" 
               :key="amt"
               @click="selectedAmount = selectedAmount === amt ? null : amt"
               :class="selectedAmount === amt ? 'bg-white dark:bg-neutral-700 text-blue-600 dark:text-cyan-400 shadow-sm font-bold' : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium'"
-              class="flex-1 min-w-[65px] px-2 py-1.5 text-center text-xs rounded-lg transition-all"
+              class="flex-1 min-w-0 whitespace-nowrap px-2 py-1.5 text-center text-xs rounded-lg transition-all"
             >
               {{ formatCompactNumber(amt) }} ₺
             </button>
           </div>
         </div>
 
-        <!-- Vade Seçici (4 Kolon) -->
-        <div class="lg:col-span-4 space-y-1.5">
+        <!-- Vade Seçici (3 Kolon) -->
+        <div class="lg:col-span-3 space-y-1.5">
           <label class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">
-            {{ $t('financing.filter_term', 'Vade Süresi') }}
+            {{ $t('financing.filter_term', 'Vade') }}
           </label>
-          <div class="flex flex-wrap items-center p-1 rounded-xl border border-neutral-300/50 dark:border-neutral-700/50 bg-neutral-100/60 dark:bg-neutral-800/60 backdrop-blur-sm shadow-sm gap-1">
+          <div class="flex flex-nowrap items-center p-1 rounded-xl border border-neutral-300/50 dark:border-neutral-700/50 bg-neutral-100/60 dark:bg-neutral-800/60 backdrop-blur-sm shadow-sm gap-1 overflow-x-auto no-scrollbar">
             <button 
               v-for="term in availableTerms" 
               :key="term"
               @click="selectedTerm = selectedTerm === term ? null : term"
               :class="selectedTerm === term ? 'bg-white dark:bg-neutral-700 text-blue-600 dark:text-cyan-400 shadow-sm font-bold' : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium'"
-              class="flex-1 min-w-[50px] px-2 py-1.5 text-center text-xs rounded-lg transition-all"
+              class="flex-1 min-w-0 whitespace-nowrap px-2 py-1.5 text-center text-xs rounded-lg transition-all"
             >
               {{ term }} {{ $t('financing.term_months', 'Ay') }}
             </button>
@@ -355,7 +357,7 @@
           >
             <!-- Sol Alan: Banka Bilgisi, Logo & Kategori -->
             <div class="flex items-center gap-3 sm:gap-4 lg:w-64 shrink-0">
-              <div class="w-12 h-12 rounded-2xl bg-neutral-50 dark:bg-neutral-700/60 border border-neutral-200 dark:border-neutral-600 flex items-center justify-center p-2 shrink-0 group-hover:scale-105 transition-transform">
+              <div class="w-12 h-12 rounded-2xl bg-white border border-neutral-200/80 dark:border-white/20 flex items-center justify-center p-2 shrink-0 shadow-xs group-hover:scale-105 transition-transform">
                 <img :src="p.logo_url" :alt="p.banka_adi" class="w-full h-full object-contain" />
               </div>
               <div class="min-w-0">
@@ -460,7 +462,7 @@
             <div>
               <div class="flex items-start justify-between gap-3 pb-3 border-b border-neutral-100 dark:border-neutral-700/60">
                 <div class="flex items-center gap-2.5">
-                  <div class="w-10 h-10 rounded-2xl bg-neutral-50 dark:bg-neutral-700/60 border border-neutral-200 dark:border-neutral-600 flex items-center justify-center p-1.5 shrink-0">
+                  <div class="w-10 h-10 rounded-2xl bg-white border border-neutral-200/80 dark:border-white/20 flex items-center justify-center p-1.5 shrink-0 shadow-xs">
                     <img :src="p.logo_url" :alt="p.banka_adi" class="w-full h-full object-contain" />
                   </div>
                   <div>
@@ -591,8 +593,10 @@
               :class="isHighlighted(p) ? 'bg-emerald-50/40 dark:bg-emerald-950/20 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/30' : 'hover:bg-neutral-50/80 dark:hover:bg-neutral-800/40'"
             >
               <td class="py-3 px-4">
-                <div class="flex items-center gap-2">
-                  <img :src="p.logo_url" :alt="p.banka_adi" class="w-5 h-5 object-contain" />
+                <div class="flex items-center gap-2.5">
+                  <div class="w-6 h-6 rounded-md bg-white p-0.5 flex items-center justify-center shrink-0 shadow-2xs border border-neutral-200/60 dark:border-white/20">
+                    <img :src="p.logo_url" :alt="p.banka_adi" class="w-full h-full object-contain" />
+                  </div>
                   <div class="flex items-center gap-1.5 flex-wrap">
                     <span class="font-bold text-neutral-900 dark:text-white">{{ p.banka_adi }}</span>
                     <span v-if="isMinRate(p)" class="px-1.5 py-0.5 text-[9px] font-bold rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
@@ -668,7 +672,7 @@
             
             <!-- Banka Bilgisi ve Kategori Başlığı -->
             <div class="flex items-center gap-3 p-3.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-100 dark:border-neutral-800">
-              <div class="w-12 h-12 rounded-2xl bg-white dark:bg-neutral-700/80 border border-neutral-200 dark:border-neutral-600 flex items-center justify-center p-2 shrink-0 shadow-sm">
+              <div class="w-12 h-12 rounded-2xl bg-white border border-neutral-200/80 dark:border-white/20 flex items-center justify-center p-2 shrink-0 shadow-sm">
                 <img :src="selectedProduct.logo_url" :alt="selectedProduct.banka_adi" class="w-full h-full object-contain" />
               </div>
               <div class="min-w-0 flex-1">
@@ -791,7 +795,7 @@ const router = useRouter()
 const { t, locale } = useI18n()
 
 useHead({
-  title: computed(() => t('page_titles.financing', 'Finansman Oranları'))
+  title: computed(() => t('page_titles.financing', 'Finansman Karşılaştırmaları'))
 })
 
 // Global Görünüm Modu (Müşteri vs Banka Çalışanı)
@@ -1415,5 +1419,13 @@ const exportData = async (type) => {
 }
 :global(.dark) .custom-scrollbar::-webkit-scrollbar-thumb {
   background: #475569;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 </style>

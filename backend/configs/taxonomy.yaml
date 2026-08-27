@@ -1,0 +1,213 @@
+# =============================================================================
+# SmartData FinAgent — TAKSONOMİ / İSİMLENDİRME YAPILANDIRMASI
+#
+# Veritabanında alt tireli ve küçük harfle tutulan etiketlerin TR/EN karşılıkları.
+# `/taxonomy` ucu bu dosyayı olduğu gibi döner (api/campaing.py::get_taxonomy).
+#
+# 🚨 BU DOSYA KODUN AYNASIDIR — TEK BAŞINA DOĞRU OLAMAZ.
+# Her bölümün DOĞRULUK KAYNAĞI aşağıda yazıyor. Kodda bir etiket değişirse
+# burası da değişmeli; aksi hâlde arayüz ham anahtarı ("alisveris_kampanyası")
+# kullanıcıya olduğu gibi gösterir.
+#
+# 📌 27.08.2026 DENETİMİNDE BULUNAN UYUMSUZLUKLAR (düzeltildi):
+#   1) `alisveris_puani`  — kodun geçerli tür listesinde VAR, burada YOKTU.
+#   2) `alisveris_kampanyası` — veritabanında 23 kayıtta var ama kodun geçerli
+#      tür kümesinde YOK. Ayrıca burada hem ASCII "i" hem Türkçe "ı" ile İKİ
+#      KEZ tanımlıydı. İkisi de korunuyor (veri temizlenene kadar), ama artık
+#      hangisinin kanonik olduğu yazıyor.
+#   3) `segment` — hedef kitlelerin dördü arasında ve veritabanında 60 kayıtta
+#      var; burada HİÇ tanımlı DEĞİLDİ.
+#   4) Ürün kategorileri ve sektörler bu dosyada hiç yer almıyordu; buna
+#      karşılık kodda karşılığı olmayan uydurma bir `kategoriler` listesi
+#      vardı. Gerçek iki boyut eklendi, `kategoriler` geriye dönük uyumluluk
+#      için korunup gerçek ürün kategorilerine hizalandı.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1) KAMPANYA TÜRÜ  (genel_bilgi.kampanya_turu)
+# DOĞRULUK KAYNAĞI: nlp/classification/campaign_classifier.py::GECERLI_TURLER (9)
+# -----------------------------------------------------------------------------
+turler:
+  kart_kampanyasi:
+    tr: "Kart"
+    en: "Card"
+  alisveris_puani:            # ✅ kanonik (GECERLI_TURLER)
+    tr: "Alışveriş Puanı"
+    en: "Shopping Points"
+  yatirim_urunu:
+    tr: "Yatırım"
+    en: "Investment"
+  finansman_diger:
+    tr: "Finansman"
+    en: "Financing"
+  ihtiyac_finansmani:
+    tr: "İhtiyaç"
+    en: "Consumer"
+  konut_finansmani:
+    tr: "Konut"
+    en: "Housing"
+  tasit_finansmani:
+    tr: "Taşıt"
+    en: "Vehicle"
+  yeni_musteri:
+    tr: "Yeni Müşteri"
+    en: "New Customer"
+  mgm_kampanyasi:
+    tr: "MGM / Davet"
+    en: "MGM / Referral"
+
+  # --- Veride görülen ama GECERLI_TURLER'de OLMAYAN değerler --------------
+  # Silinmiyorlar: silinirse bu 23 kayıt arayüzde ham anahtarla görünür.
+  # Doğrusu, boru hattının bunları `alisveris_puani`ye normalize etmesidir.
+  alisveris_kampanyası:       # ⚠️ veritabanında 23 kayıt (Türkçe "ı" ile)
+    tr: "Alışveriş"
+    en: "Shopping"
+  alisveris_kampanyasi:       # ⚠️ ASCII "i" varyantı — aynı anlam
+    tr: "Alışveriş"
+    en: "Shopping"
+
+  # --- Etiketi olmayan/boş kayıtlar için ---------------------------------
+  belirtilmemis:
+    tr: "Belirtilmemiş"
+    en: "Unspecified"
+  genel:
+    tr: "Genel"
+    en: "General"
+  diger:
+    tr: "Diğer"
+    en: "Other"
+
+# -----------------------------------------------------------------------------
+# 2) HEDEF KİTLE  (genel_bilgi.hedef_kitle — LİSTE değerli)
+# DOĞRULUK KAYNAĞI: nlp/extraction/rule_based.py::_HEDEF_KALIPLARI (4 etiket)
+# Veri dağılımı (27.08.2026): mevcut_musteri 325 | segment 60 |
+#                             yeni_musteri 25 | maas_musterisi 1
+# ⚠️ Arayüz `segment` etiketini BİLEREK gizliyor
+#    (frontend/app/composables/useTaxonomy.ts::formatHedefKitleItem);
+#    yine de burada tanımlı olmalı — API tüketicileri ham anahtarı görüyor.
+# -----------------------------------------------------------------------------
+hedef_kitleler:
+  mevcut_musteri:
+    tr: "Mevcut Müşteri"
+    en: "Existing Customer"
+  yeni_musteri:
+    tr: "Yeni Müşteri"
+    en: "New Customer"
+  maas_musterisi:
+    tr: "Maaş Müşterisi"
+    en: "Payroll Customer"
+  segment:                    # ✅ eklendi — veride 60 kayıt
+    tr: "Segmente Özel"
+    en: "Segment-Specific"
+  ozel:                       # rule_based::_GUVEN_SKORLARI içinde geçiyor
+    tr: "Özel Koşullu"
+    en: "Special Conditions"
+
+# -----------------------------------------------------------------------------
+# 3) ÜRÜN KATEGORİSİ  (islenmis_urunler.urun_kategori)
+# DOĞRULUK KAYNAĞI: nlp/extraction/rule_based.py::KATEGORI_KURALLARI (5)
+#                   + VARSAYILAN_URUN_KATEGORISI ("Diğer")
+# ⚠️ Anahtarlar burada KODDAKİ GÖRÜNEN ADIN kendisidir (alt tireli değil):
+#    kural tabanlı çıkarıcı da, LLM çıkarıcı da (llm_extractor::_KOD_TO_ETIKET)
+#    aynı metni yazıyor. İkisinin ayrışması daha önce yaşandı ve kategori
+#    sayımlarını sessizce ikiye bölüyordu.
+# -----------------------------------------------------------------------------
+urun_kategorileri:
+  "Dijital / Anında Alışveriş Finansmanları":
+    kod: dijital_aninda_alisveris
+    tr: "Dijital / Anında Alışveriş"
+    en: "Digital / Instant Purchase"
+  "Bireysel / İhtiyaç Finansmanları":
+    kod: bireysel_ihtiyac
+    tr: "Bireysel / İhtiyaç"
+    en: "Retail / Consumer"
+  "Konut / Gayrimenkul Finansmanları":
+    kod: konut_gayrimenkul
+    tr: "Konut / Gayrimenkul"
+    en: "Housing / Real Estate"
+  "Taşıt Finansmanları":
+    kod: tasit_finansmani
+    tr: "Taşıt"
+    en: "Vehicle"
+  "Ticari & Kurumsal Finansmanlar":
+    kod: ticari_kurumsal
+    tr: "Ticari & Kurumsal"
+    en: "Commercial & Corporate"
+  "Diğer":
+    kod: diger
+    tr: "Diğer"
+    en: "Other"
+
+# -----------------------------------------------------------------------------
+# 4) SEKTÖR  (genel_bilgi.sektor)
+# DOĞRULUK KAYNAĞI: nlp/extraction/rule_based.py::sektor_kurallari (7)
+#                   + varsayılan "Genel / Sektör Bağımsız"
+# ⚠️ VERİ UYARISI (27.08.2026): `islenmis_kampanyalar` içinde bu alan 390
+#    kaydın tamamında düz "Genel" — yani 7 sektör kuralı çalıştırılmadan
+#    kaydedilmiş. Boru hattı yeniden koşturulunca gerçek sektörler dolacak.
+#    Bu yüzden "Genel" varyantı da tanımlı bırakıldı.
+# -----------------------------------------------------------------------------
+sektorler:
+  "Genel / Sektör Bağımsız":
+    tr: "Genel / Sektör Bağımsız"
+    en: "General / Sector-Agnostic"
+  "Genel":                    # ⚠️ veride bulunan kısa varyant (390 kayıt)
+    tr: "Genel"
+    en: "General"
+  "Market ve Gıda":
+    tr: "Market ve Gıda"
+    en: "Grocery & Food"
+  "E-Ticaret ve Pazaryerleri":
+    tr: "E-Ticaret ve Pazaryerleri"
+    en: "E-Commerce & Marketplaces"
+  "Akaryakıt ve Otomotiv":
+    tr: "Akaryakıt ve Otomotiv"
+    en: "Fuel & Automotive"
+  "Teknoloji ve Elektronik":
+    tr: "Teknoloji ve Elektronik"
+    en: "Technology & Electronics"
+  "Giyim ve Aksesuar":
+    tr: "Giyim ve Aksesuar"
+    en: "Apparel & Accessories"
+  "Seyahat ve Turizm":
+    tr: "Seyahat ve Turizm"
+    en: "Travel & Tourism"
+  "Eğitim ve Kırtasiye":
+    tr: "Eğitim ve Kırtasiye"
+    en: "Education & Stationery"
+
+# -----------------------------------------------------------------------------
+# 5) KATEGORİLER — GERİYE DÖNÜK UYUMLULUK
+# `/taxonomy` tüketicileri ve frontend/app/composables/useTaxonomy.ts
+# `kategoriler` anahtarını bekliyor. Eski hâli kodda karşılığı olmayan
+# uydurma bir listeydi (pos, odeme, seyahat...); artık ÜRÜN KATEGORİLERİNİN
+# alt tireli kodlarıyla hizalı.
+# 👉 Yeni kod `urun_kategorileri` bölümünü kullanmalı.
+# -----------------------------------------------------------------------------
+kategoriler:
+  dijital_aninda_alisveris:
+    tr: "Dijital / Anında Alışveriş"
+    en: "Digital / Instant Purchase"
+  bireysel_ihtiyac:
+    tr: "Bireysel / İhtiyaç"
+    en: "Retail / Consumer"
+  konut_gayrimenkul:
+    tr: "Konut / Gayrimenkul"
+    en: "Housing / Real Estate"
+  tasit_finansmani:
+    tr: "Taşıt"
+    en: "Vehicle"
+  ticari_kurumsal:
+    tr: "Ticari & Kurumsal"
+    en: "Commercial & Corporate"
+  diger:
+    tr: "Diğer"
+    en: "Other"
+
+# =============================================================================
+# ÖZET (kod ile birebir):
+#   kampanya türü      : 9 geçerli (+3 varyant/yedek etiket)
+#   hedef kitle        : 4 geçerli (+ ozel)
+#   ürün kategorisi    : 5 (+ Diğer)
+#   sektör             : 7 (+ Genel / Sektör Bağımsız)
+# =============================================================================

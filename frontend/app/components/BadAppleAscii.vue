@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 
 const props = defineProps({
   show: Boolean
@@ -50,8 +50,8 @@ const drawAscii = () => {
 const onPlay = () => {
   isLoading.value = false
   // Sesi videoyla senkronize başlat
-  if (audioRef.value && audioRef.value.paused) {
-    audioRef.value.currentTime = videoRef.value.currentTime
+  if (audioRef.value) {
+    audioRef.value.currentTime = videoRef.value ? videoRef.value.currentTime : 0
     audioRef.value.play().catch(e => console.error("Ses çalınamadı:", e))
   }
   drawAscii()
@@ -67,8 +67,42 @@ const onError = (e) => {
   errorMsg.value = "Medya yüklenemedi. Lütfen 'bad_apple_video.mp4' dosyasının var olduğundan emin olun."
 }
 
+const handleKeyDown = (e) => {
+  if (e.key === 'Escape' && props.show) {
+    emit('close')
+  }
+}
+
+watch(() => props.show, (newVal) => {
+  if (newVal) {
+    isLoading.value = true
+    errorMsg.value = ''
+    asciiText.value = ''
+    if (process.client) {
+      window.addEventListener('keydown', handleKeyDown)
+    }
+    setTimeout(() => {
+      if (videoRef.value) {
+        videoRef.value.currentTime = 0
+        videoRef.value.play().catch(err => console.warn("Video oynatılamadı:", err))
+      }
+    }, 100)
+  } else {
+    if (animationFrameId) cancelAnimationFrame(animationFrameId)
+    if (videoRef.value) videoRef.value.pause()
+    if (audioRef.value) audioRef.value.pause()
+    if (process.client) {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }
+})
+
 onUnmounted(() => {
   if (animationFrameId) cancelAnimationFrame(animationFrameId)
+  if (audioRef.value) audioRef.value.pause()
+  if (process.client) {
+    window.removeEventListener('keydown', handleKeyDown)
+  }
 })
 
 </script>
@@ -90,7 +124,6 @@ onUnmounted(() => {
         src="/bad_apple_video.mp4" 
         class="hidden" 
         crossorigin="anonymous"
-        autoplay
         playsinline
         @play="onPlay"
         @ended="onEnded"
@@ -106,26 +139,27 @@ onUnmounted(() => {
       <canvas ref="canvasRef" width="160" height="60" class="hidden"></canvas>
       
       <div v-if="isLoading && !errorMsg" class="text-white/50 font-mono animate-pulse mb-4 text-xl">
-        ASCII Çevirici Yükleniyor...
+        🍎 Bad Apple!! Yükleniyor...
       </div>
 
       <!-- ASCII Çıktısı Tüm Ekranı Kaplayacak Şekilde Uyarlandı -->
       <pre 
         v-if="!isLoading"
         class="text-white font-mono leading-none tracking-widest whitespace-pre select-none text-center flex items-center justify-center w-full h-full m-0 p-0"
-        style="font-size: min(1.2vw, 1.4vh); line-height: 0.8; letter-spacing: 0.1em;"
+        style="font-size: min(1.2vw, 1.4vh); line-height: 0.8; letter-spacing: 0.1em; text-shadow: 0 0 8px rgba(255, 255, 255, 0.2);"
       >{{ errorMsg || asciiText }}</pre>
 
       <button 
         @click="emit('close')" 
-        class="absolute top-6 right-6 text-white/30 hover:text-white transition-colors bg-black/50 hover:bg-red-500/80 rounded-full p-2 z-[10000]"
+        class="absolute top-6 right-6 text-white/40 hover:text-white transition-colors bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full p-2.5 z-[10000] border border-white/20"
+        title="Kapat (ESC)"
       >
-        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
       </button>
 
       <!-- Easter Egg Label -->
-      <div v-if="!errorMsg && isLoading" class="absolute bottom-6 text-white/50 font-mono text-sm tracking-widest uppercase animate-pulse">
-        NATIVE ASCII RENDERER
+      <div class="absolute bottom-6 left-6 text-white/40 font-mono text-xs tracking-wider">
+        🎵 Alstroemeria Records - Bad Apple!! feat. nomico
       </div>
 
     </div>

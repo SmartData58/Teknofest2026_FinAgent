@@ -25,8 +25,8 @@ from chatbot.intent import (
     # birbiriyle çelişen regexler vardı (biri "liste"yi tanıyor, diğeri
     # tanımıyordu); "liste istedim liste gelmedi" sorununun bir bacağı buydu.
     dil_normalize, gorsel_karari, gorsel_karari_tam, gorsel_limiti,
-    KIYAS_BANKA_BASI_SATIR, istenen_limit,
-    llm_gorsel_sorulmali,
+    KIYAS_BANKA_BASI_SATIR, VARSAYILAN_LISTE_LIMITI, istenen_limit,
+    llm_gorsel_sorulmali, analist_veri_sorusu,
 )
 from chatbot.agents import (
     suggestion_chain,
@@ -857,6 +857,121 @@ _BANKA_KELIMELERI = {
 }
 
 
+# =============================================================================
+# 🔎 KONU FİLTRESİ — "akaryakıt kampanyaları" sorusuna akaryakıt satırları.
+#
+# 535 promptluk persona koşusunda MÜŞTERİ tarafında bulundu; otomatik puan
+# bunu göremedi çünkü tablo geliyordu ve satır sayısı beklentiyi tutuyordu:
+#
+#   soru  : "akaryakıtta indirim veren kampanyalar neler"
+#   tablo : Proemtia Sağlam Bayi Kart / Emekli Promosyon / Biz Kart
+#           (üçünün de akaryakıtla ilgisi YOK)
+#   cevap : "akaryakıtta indirim sağlayan bir kampanya BULUNMAMAKTADIR"
+#   veri  : akaryakıt geçen 10 kampanya VAR — biri "Akaryakıt Kampanyası"
+#
+# Havuz yalnızca BANKA ve METRİK ile süzülüyordu; kullanıcının KONUSU hiç
+# dikkate alınmıyordu. Sonuç iki kat kötü: alakasız satırlar gösteriliyor ve
+# model bu satırlara bakıp "veri yok" diyor — yani doğru cevabı elinde
+# tutarken yanlış cevap veriyor.
+#
+# Aynı mekanizma segment sorularını da düzeltiyor ("emeklilere özel", "esnaf").
+#
+# ⚠️ EMNİYET: konu kelimesi yoksa ya da hiçbir kayıt eşleşmiyorsa havuz
+# DEĞİŞTİRİLMEZ; yalnızca bir not düşülür. Böylece bu katman mevcut davranışı
+# hiçbir zaman bozmaz — sadece bulabildiğinde daraltır.
+# =============================================================================
+# Soru kalıbına ait, konu belirtmeyen kelimeler. `_AD_ARAMA_ETKISIZ` zaten
+# "kampanya/listele/göster" gibi olanları taşıyor; buraya soru dili ekleniyor.
+_KONU_ETKISIZ = _AD_ARAMA_ETKISIZ | {
+    "veren", "sunan", "yapan", "olan", "neler", "nedir", "hangi", "hangisi",
+    "varmi", "var", "yok", "bana", "bize", "ozel", "yonelik", "icin", "ile",
+    "kimler", "nasil", "kadar", "daha", "cok", "fazla", "iyi", "uygun",
+    "avantaj", "avantajli", "firsat", "firsatlar", "firsatlari", "imkani",
+    "imkan", "secenek", "secenekler", "gosterir", "misin", "musun", "lutfen",
+    "guncel", "mevcut", "aktif", "sunuyor", "sunulan", "yararlan", "kazanirim",
+    "kazanc", "alirim", "olur", "mu", "mi", "ise", "eger", "sey", "seyler",
+    "bir", "biraz", "acaba", "peki", "yani",
+}
+
+
+def _konu_kelimeleri(soru: str) -> list:
+    """Sorudan KONU belirten kelimeleri çıkarır (banka adları ve kalıp sözcükler hariç)."""
+    kelimeler = []
+    for k in _ad_normalize(soru).split():
+        if len(k) < 4 or k in _KONU_ETKISIZ or k in _BANKA_KELIMELERI:
+            continue
+        if k.isdigit():
+            continue
+        if k not in kelimeler:
+            kelimeler.append(k)
+    return kelimeler[:6]
+
+
+def _konuya_gore_suz(havuz: list, kelimeler: list) -> list:
+    """Kayıtları konu kelimeleriyle eşleştirir. Kök eşleşmesi yeterli.
+
+    Türkçe ek yüzünden tam eşitlik aranmıyor: "akaryakit" kelimesi
+    "akaryakitta"/"akaryakitinizda" içinde de geçer. Bu yüzden ALT DİZE
+    kontrolü yapılıyor; kelimeler zaten 4+ harf olduğu için gürültü düşük.
+    """
+    if not havuz or not kelimeler:
+        return []
+    # 🛠️ TÜRKÇE EK YÖNÜ. İlk sürüm `kelime in metin` diye bakıyordu, ama
+    # Türkçede SORU kelimesi VERİ kelimesinden UZUN olur:
+    #     soru "emeklilerE"  ->  veri "emekli"
+    # "emeklilere" ifadesi "emekli promosyon" içinde GEÇMEZ; eşleşme kaçtı ve
+    # "emeklilere özel kampanya bulunmamaktadır" cevabı üretildi — oysa
+    # "Emekli Promosyon 2026" veride duruyordu.
+    # Türkçe SONDAN EKLEMELİ olduğu için kök baştadır: uzun kelimelerde ilk
+    # 6 harf de aranıyor ("emeklilere" -> "emekli", "akaryakitta" -> "akaryak").
+    # Her KELİME için tek bir arama kökü (kendisi ya da ilk 6 harfi).
+    koklar = [k[:6] if len(k) > 6 else k for k in kelimeler]
+
+    # 🛠️ AYIRT EDİCİ OLMAYAN KELİMEYİ AT.
+    # "akaryakıtta indirim veren kampanyalar" sorusunda "indirim" kökü
+    # havuzun üçte birinden fazlasında geçiyor; ona puan vermek, akaryakıtla
+    # hiç ilgisi olmayan ama tesadüfen "indirim" de içeren bir kaydı ASIL
+    # akaryakıt kampanyasının önüne geçiriyordu (ölçüldü: doğru kayıt eleniyor,
+    # yanlış kayıt tek başına kalıyordu).
+    # Bir kök havuzun %40'ından fazlasında geçiyorsa konu değil, dolgu
+    # sözcüğüdür. Hepsi öyleyse eleme yapılmaz — o zaman zaten ayrım yok.
+    # Ad ve gövde AYRI tutuluyor: kampanya ADINDAKİ eşleşme, metnin içindeki
+    # geçişten çok daha güçlü bir sinyaldir (aşağıdaki puanlamaya bkz.).
+    adlar = [_ad_normalize(f"{c.get('kampanya_adi','')} {c.get('kat','')}")
+             for c in havuz]
+    govdeler = [
+        _ad_normalize(
+            f"{c.get('kampanya_adi','')} {c.get('kat','')} {c.get('kitle','')} "
+            f"{str(c.get('metin',''))[:800]}"
+        )
+        for c in havuz
+    ]
+    esik = max(1, int(len(havuz) * 0.4))
+    ayirt_edici = [k for k in koklar
+                   if sum(1 for g in govdeler if k in g) <= esik]
+    if ayirt_edici:
+        koklar = ayirt_edici
+
+    eslesen = []
+    for c, ad, gövde in zip(havuz, adlar, govdeler):
+        # 🛠️ PUANLAMA: ADDA geçen kök 2, yalnızca metinde geçen 1 puan.
+        #
+        # Düz "herhangi biri eşleşsin" kuralı "akaryakıtta indirim veren"
+        # sorusunda 83 kayıt döndürüyordu. Salt kök SAYISINA göre puanlamak
+        # ise daha kötüsünü yaptı: metninde tesadüfen hem "akaryakıt" hem
+        # "indirim" geçen ALAKASIZ bir kayıt (Çok Kazananlar Kulübü) 2 puan
+        # alıp, adı doğrudan "Akaryakıt Kampanyası" olan kaydı eledi.
+        # Kullanıcının konusu kampanyanın ADINDA geçiyorsa o kayıt aranan
+        # şeydir; gövdede geçmesi yalnızca ipucudur.
+        puan = sum(2 if k in ad else (1 if k in gövde else 0) for k in koklar)
+        if puan:
+            eslesen.append((puan, c))
+    if not eslesen:
+        return []
+    en_iyi = max(p for p, _ in eslesen)
+    return [c for p, c in eslesen if p == en_iyi]
+
+
 def _kampanya_adiyla_ara(soru: str, havuz: list, en_az_oran: float = 0.6) -> list:
     """Sorudaki ayırt edici kelimelerle kampanya ADLARINI eşleştirir.
 
@@ -1550,6 +1665,36 @@ def grafigi_hazirla_mongo_dinamik(
                 f"{_en_yakin} gün)."
             )).strip()
 
+    # 🔎 KONU FİLTRESİ (bkz. _konuya_gore_suz notu): kullanıcının sorduğu
+    # konuya ait kayıtlar varsa havuz ONLARA daraltılır.
+    konu_notu = ""
+    _konu_kelime = _konu_kelimeleri(user_query)
+    if temel_havuz and _konu_kelime:
+        _konulu = _konuya_gore_suz(temel_havuz, _konu_kelime)
+        if _konulu:
+            if len(_konulu) < len(temel_havuz):
+                logger.info(
+                    f"🔎 Konu filtresi {_konu_kelime}: havuz "
+                    f"{len(temel_havuz)} -> {len(_konulu)} kayda daraltıldı."
+                )
+            temel_havuz = _konulu
+        else:
+            # Eşleşme yoksa havuza DOKUNMUYORUZ ama modele bunu SÖYLÜYORUZ.
+            # Aksi hâlde alakasız satırlar "soruya cevap" gibi sunuluyor ve
+            # model haklı olarak "veri yok" deyip kendi tablosuyla çelişiyor.
+            konu_notu = (
+                f"No campaign matches the topic asked about "
+                f"({', '.join(_konu_kelime[:3])}); the rows below are a GENERAL "
+                f"list and are NOT directly related to the question. Say this "
+                f"plainly and do not present them as matching."
+                if dil == "en" else
+                f"Kullanıcının sorduğu konuyla ({', '.join(_konu_kelime[:3])}) "
+                f"eşleşen kampanya YOK; aşağıdaki satırlar GENEL listedir ve "
+                f"soruyla doğrudan ilgili DEĞİLDİR. Bunu açıkça söyle, bu "
+                f"satırları soruya cevapmış gibi sunma."
+            )
+            logger.info(f"🔎 Konu filtresi {_konu_kelime}: eşleşme yok, genel liste.")
+
     # Kıyas mümkün olmadığı için metrik filtresinin bırakıldığını anlatan not
     # (aşağıdaki EMNİYET AĞI 2 dolduruyor; kapsam notuna ekleniyor).
     metrik_bos_notu = ""
@@ -1733,6 +1878,8 @@ def grafigi_hazirla_mongo_dinamik(
     # modele giden db_context'in başında görünsün.
     if gecerlilik_notu:
         kapsam_notu = (kapsam_notu + " " + gecerlilik_notu).strip()
+    if konu_notu:
+        kapsam_notu = (kapsam_notu + " " + konu_notu).strip()
 
     # 🛠️ HATA DÜZELTMESİ: "düşükten yükseğe sıralasana" dediğinizde sıralama
     # TERSTEN (yüksekten düşüğe) çıkıyordu. Sebep: \bdüşük\b deseni, "düşük"ün
@@ -1969,7 +2116,14 @@ def grafigi_hazirla_mongo_dinamik(
     _kullanici_sayi_istedi = bool(istenen_limit(user_query))
     if _cok_bankali_kiyas and not _kullanici_sayi_istedi and gecerli:
         # Her banka için en az KIYAS_BANKA_BASI_SATIR satır sığacak kadar yer aç.
-        _asgari = KIYAS_BANKA_BASI_SATIR * len(_kiyas_kodlari)
+        # ⚠️ MÜŞTERİ GÖRÜNÜMÜNDE ÜST SINIR VAR: "hangi bankada daha çok
+        # kazanırım" sorusuna 7 banka × 5 satır = 35 satırlık tablo geliyordu.
+        # Analist için bu doğru bir kıyas tabanı, müşteri için okunmaz bir
+        # duvar. Banka başına satır müşteri tarafında 2'ye iniyor.
+        _basina = KIYAS_BANKA_BASI_SATIR if view_mode != "musteri" else 2
+        _asgari = _basina * len(_kiyas_kodlari)
+        if view_mode == "musteri":
+            _asgari = min(_asgari, VARSAYILAN_LISTE_LIMITI)
         limit = min(max(limit, _asgari), len(gecerli))
 
     if _cok_bankali_kiyas and limit and len(gecerli) > limit:
@@ -2297,8 +2451,15 @@ def grafigi_hazirla_mongo_dinamik(
                           if not _GECMIS_ISTEGI.search(user_query) else islenmis)
         if not _sektor_havuzu:
             _sektor_havuzu = islenmis
+        # 🚨 PİYASA FOTOĞRAFI YALNIZCA ANALİSTE.
+        # 535'lik koşuda müşteri cevaplarında "portföy", "medyan" gibi
+        # kelimeler çıktı: iki bankalı bir MÜŞTERİ kıyasında banka profili
+        # üretiliyor, onunla birlikte piyasa fotoğrafı da bağlama giriyordu.
+        # Müşteri "hangisi bana daha çok kazandırır" diye soruyor; ona sektör
+        # medyanı anlatmak, sorduğu şeyin cevabını gölgeliyor.
         _odak_ad = banka_adi_getir(banka_kodu) if banka_kodu else None
-        _piyasa = _piyasa_analizi_kur(_sektor_havuzu, _odak_ad, dil)
+        _piyasa = (_piyasa_analizi_kur(_sektor_havuzu, _odak_ad, dil)
+                   if view_mode != "musteri" else "")
         if _piyasa:
             db_context = _piyasa + "\n\n" + db_context
 
@@ -2846,6 +3007,31 @@ async def get_chatbot_response(
                 # Ajan başarısız olursa/timeout'a düşerse regex kararı aynen geçerli
                 # kalır — yani en kötü ihtimalle bugünkü davranış.
                 gorsel_llm_karari_verdi = False
+
+                # 🏦 ANALİST EMNİYET AĞI — banka çalışanına "veri yok" deme.
+                #
+                # 535 promptluk persona koşusunda ölçüldü: analist görünümünde
+                #     "bankaların ortalama vadeleri nasıl"
+                #     "emekli segmentinde bankalar nasıl konumlanıyor"
+                #     "kobi segmentinde pazar dağılımı"
+                # soruları Mongo yoluna HİÇ girmiyordu ("segment", "nasıl" gibi
+                # kelimeler yorum sorusu sayılıyor) ve cevap "elimde pazar payı
+                # / ortalama vade bilgisi bulunmamaktadır" oluyordu — oysa o
+                # rakamların hepsi kodda hesaplanıyor.
+                #
+                # Kural YALNIZCA analist görünümünde ve yalnızca deterministik
+                # katman karar veremediğinde çalışır; müşteri tarafını hiç
+                # etkilemez. Tanım/süreç soruları dışarıda (bkz.
+                # intent.analist_veri_sorusu).
+                if (niyet.gorsel is None and view_mode != "musteri"
+                        and analist_veri_sorusu(user_message)):
+                    niyet.gorsel = "tablo"
+                    niyet.gorsel_kaynagi = "analist"
+                    logger.info(
+                        "🏦 Analist veri sorusu: tablo yolu açıldı "
+                        f"| mesaj={user_message[:70]!r}"
+                    )
+
                 if llm_gorsel_sorulmali(niyet):
                     await q.put({"type": "status", "content": "Görselleştirme niyeti değerlendiriliyor..."})
                     llm_gorsel = await gorsel_niyeti_sor(user_message)

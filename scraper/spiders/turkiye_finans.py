@@ -1199,12 +1199,7 @@ class TurkiyeFinansSpider(
                 continue
 
 
-            # Biten kampanyaları dışarıda bırak
-            if (
-                "Biten-Kampanyalar"
-                in tam_url
-            ):
-                continue
+            # Biten kampanyaları da dahil et (atlanmıyor)
 
 
             # Kategori/liste sayfalarını alma

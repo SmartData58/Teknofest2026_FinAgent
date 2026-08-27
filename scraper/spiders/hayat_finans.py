@@ -968,28 +968,23 @@ class HayatFinansSpider(
 
 
             # ------------------------------------------------
-            # SÜRESİ GEÇMİŞ KONTROLÜ
+            # SÜRESİ GEÇMİŞ KONTROLÜ (LOGLAMA)
             # ------------------------------------------------
 
             ham_metin_kucuk = (
                 ham_metin.lower()
             )
 
-
             sureli = any(
                 ifade in ham_metin_kucuk
                 for ifade in SURESI_GECMIS_IFADELERI
             )
 
-
             if sureli:
-
                 print(
                     f"    SÜRESİ GEÇMİŞ, "
-                    f"atlandı: {url}"
+                    f"işleniyor: {url}"
                 )
-
-                continue
 
 
             # ------------------------------------------------

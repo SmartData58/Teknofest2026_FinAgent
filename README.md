@@ -18,7 +18,7 @@
 
 ## 📌 Proje Hakkında
 
-**SmartData BiQuery**, Türkiye'deki katılım bankalarının kampanya ve ürün bilgilerini otomatik olarak toplayan, NLP (Doğal Dil İşleme) modelleriyle anlamlandıran, yapılandırılmış veriye dönüştüren ve kullanıcılara dinamik RAG tabanlı bir chatbot ve gösterge panelleri (dashboard) üzerinden sunan uçtan uca bir finansal analiz platformudur. **Teknofest 2026 FinAgent** yarışması gereksinimlerine göre özel olarak optimize edilmiştir.
+**SmartData BiQuery**, Türkiye'deki katılım bankalarının kampanya ve ürün bilgilerini otomatik olarak toplayan, NLP (Doğal Dil İşleme) modelleriyle anlamlandıran, yapılandırılmış veriye dönüştüren ve kullanıcılara dinamik RAG tabanlı bir chatbot ve gösterge panelleri (dashboard) üzerinden sunan uçtan uca bir finansal analiz platformudur. **Teknofest 2026 FinAgent** yarışması gereksinimlerine göre özel olarak optimize edilmiştir.    
 
 Bankaların heterojen (farklı yapılardaki) veri formatlarını tek bir standart veri modeline oturtarak, kullanıcıların doğal dilde karmaşık finansal sorular sormasına ve net, görsellerle desteklenmiş (tablo/grafik) analitik cevaplar almasına olanak tanır.
 

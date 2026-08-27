@@ -944,7 +944,7 @@ class TomKatilimSpider(
 
 
                 # =================================================
-                # SÜRESİ GEÇMİŞ Mİ?
+                # SÜRESİ GEÇMİŞ KONTROLÜ (LOGLAMA)
                 # =================================================
 
                 if (
@@ -956,10 +956,8 @@ class TomKatilimSpider(
                     print(
                         "    SÜRESİ GEÇMİŞ "
                         f"({bitis_tarihi.strftime('%d.%m.%Y')}), "
-                        f"atlandı: {url}"
+                        f"işleniyor: {url}"
                     )
-
-                    continue
 
 
                 # =================================================

@@ -105,12 +105,12 @@ const menuItems = computed(() => [
     icon: '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>'
   },
   {
-    name: t('menu.financing', 'Finansman Oranları'),
+    name: t('menu.financing', 'Finansman Karşılaştırmaları'),
     path: '/finansman',
     icon: '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>'
   },
   {
-    name: t('menu.katilim_hesap', 'Katılım Hesapları'),
+    name: t('menu.katilim_hesap', 'Katılım Hesabı Karşılaştırmaları'),
     path: '/katilim-hesap',
     icon: '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6H2.25m0 0v8.25m0-8.25A2.25 2.25 0 0 1 4.5 3h15A2.25 2.25 0 0 1 21.75 5.25m0 0V18a2.25 2.25 0 0 1-2.25 2.25m0 0H3.75m18-15A2.25 2.25 0 0 0 19.5 3m0 0h-15m15 0a2.25 2.25 0 0 1 2.25 2.25v12.75M9 9.75h6m-6 3h6m-3-6v9" /></svg>'
   },

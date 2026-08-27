@@ -5,7 +5,7 @@
     <!-- ================= ORTALANMIŞ BAŞLIK ================= -->
     <div class="flex flex-col items-center text-center gap-3 max-w-2xl mx-auto">
       <h1 class="reveal-title text-4xl md:text-5xl font-bold bg-clip-text text-transparent gradient-text pb-1">
-        {{ $t('katilim_hesap.title', 'Katılım Hesapları') }}
+        {{ $t('katilim_hesap.title', 'Katılım Hesabı Karşılaştırmaları') }}
       </h1>
       <p class="text-sm md:text-base text-neutral-500 dark:text-neutral-400">
         {{ $t('katilim_hesap.subtitle', 'Katılım bankalarının güncel kâr payı dağıtım oranları, brüt/net getiri tutarları ve vade sonu birikimlerini karşılaştırın.') }}
@@ -176,10 +176,10 @@
       <!-- B. Banka & Tier Filtreleri (Yan Yana - Çoklu Seçim) -->
       <div class="flex flex-col md:flex-row items-start md:items-center gap-4 flex-wrap">
         
-        <!-- Banka Filtresi -->
+        <!-- Banka -->
         <div class="space-y-1.5">
           <div class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-            {{ $t('katilim_hesap.filter_bank', 'Banka Filtresi') }}
+            {{ $t('katilim_hesap.filter_bank', 'Banka') }}
           </div>
           <div class="inline-flex flex-wrap items-center p-1 rounded-xl border border-neutral-300/50 dark:border-neutral-700/50 bg-neutral-100/60 dark:bg-neutral-800/60 backdrop-blur-sm shadow-sm gap-1">
             <button 
@@ -189,16 +189,18 @@
               :class="selectedBanks.includes(b.code) ? 'bg-white dark:bg-neutral-700 text-emerald-600 dark:text-emerald-400 shadow-sm font-bold' : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium'"
               class="px-3 py-1.5 text-xs rounded-lg transition-all flex items-center gap-2 group"
             >
-              <img :src="b.logo_url" :alt="b.name" class="w-4 h-4 object-contain rounded group-hover:scale-110 transition-transform" />
+              <div class="w-5 h-5 rounded-md bg-white p-0.5 flex items-center justify-center shrink-0 shadow-2xs border border-neutral-200/60 dark:border-white/20 overflow-hidden">
+                <img :src="b.logo_url" :alt="b.name" class="w-full h-full max-w-full max-h-full object-contain group-hover:scale-110 transition-transform" />
+              </div>
               <span>{{ b.name }}</span>
             </button>
           </div>
         </div>
 
-        <!-- Tier Filtresi -->
+        <!-- Tier -->
         <div v-if="availableTiers.length" class="space-y-1.5">
           <div class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-            {{ $t('katilim_hesap.filter_tier', 'Tier Filtresi') }}
+            {{ $t('katilim_hesap.filter_tier', 'Tier') }}
           </div>
           <div class="inline-flex flex-wrap items-center p-1 rounded-xl border border-neutral-300/50 dark:border-neutral-700/50 bg-neutral-100/60 dark:bg-neutral-800/60 backdrop-blur-sm shadow-sm gap-1">
             <button 
@@ -218,38 +220,39 @@
       <!-- C. Tutar, Vade & Sıralama Kontrolleri -->
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 pt-3 border-t border-neutral-100 dark:border-neutral-800 items-start">
         
-        <!-- Yatırılan Tutar Seçici (5 Kolon) -->
-        <div class="lg:col-span-5 space-y-1.5">
+        <!-- Yatırılan Tutar Seçici (6 Kolon) -->
+        <div class="lg:col-span-6 space-y-1.5">
           <label class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">
             {{ $t('katilim_hesap.filter_amount', 'Yatırılan Tutar') }}
           </label>
-          <div class="flex flex-wrap items-center p-1 rounded-xl border border-neutral-300/50 dark:border-neutral-700/50 bg-neutral-100/60 dark:bg-neutral-800/60 backdrop-blur-sm shadow-sm gap-1">
+          <div class="flex flex-nowrap items-center p-1 rounded-xl border border-neutral-300/50 dark:border-neutral-700/50 bg-neutral-100/60 dark:bg-neutral-800/60 backdrop-blur-sm shadow-sm gap-1 overflow-x-auto">
             <button 
               v-for="amt in availableAmounts" 
               :key="amt"
               @click="selectedAmount = selectedAmount === amt ? null : amt"
               :class="selectedAmount === amt ? 'bg-white dark:bg-neutral-700 text-emerald-600 dark:text-emerald-400 shadow-sm font-bold' : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium'"
-              class="flex-1 min-w-[65px] px-2 py-1.5 text-center text-xs rounded-lg transition-all"
+              class="flex-1 min-w-0 whitespace-nowrap px-2 py-1.5 text-center text-xs rounded-lg transition-all"
             >
               {{ formatCompactNumber(amt) }} ₺
             </button>
           </div>
         </div>
 
-        <!-- Vade Seçici (4 Kolon) -->
-        <div class="lg:col-span-4 space-y-1.5">
+        <!-- Vade Seçici (3 Kolon) -->
+        <div class="lg:col-span-3 space-y-1.5">
           <label class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">
-            {{ $t('katilim_hesap.filter_term', 'Vade Süresi') }}
+            {{ $t('katilim_hesap.filter_term', 'Vade') }}
           </label>
-          <div class="flex flex-wrap items-center p-1 rounded-xl border border-neutral-300/50 dark:border-neutral-700/50 bg-neutral-100/60 dark:bg-neutral-800/60 backdrop-blur-sm shadow-sm gap-1">
+          <div class="flex flex-nowrap items-center p-1 rounded-xl border border-neutral-300/50 dark:border-neutral-700/50 bg-neutral-100/60 dark:bg-neutral-800/60 backdrop-blur-sm shadow-sm gap-1 overflow-x-auto no-scrollbar">
             <button 
               v-for="term in availableTerms" 
               :key="term"
+              :title="term"
               @click="selectedTerm = selectedTerm === term ? null : term"
               :class="selectedTerm === term ? 'bg-white dark:bg-neutral-700 text-emerald-600 dark:text-emerald-400 shadow-sm font-bold' : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium'"
-              class="flex-1 min-w-[50px] px-2 py-1.5 text-center text-xs rounded-lg transition-all"
+              class="flex-1 min-w-[50px] whitespace-nowrap px-2 py-1.5 text-center text-xs rounded-lg transition-all"
             >
-              {{ term }}
+              {{ formatTermLabel(term) }}
             </button>
           </div>
         </div>
@@ -352,7 +355,7 @@
           >
             <!-- Sol Alan: Banka Bilgisi, Logo & Vade -->
             <div class="flex items-center gap-3 sm:gap-4 lg:w-64 shrink-0">
-              <div class="w-12 h-12 rounded-2xl bg-neutral-50 dark:bg-neutral-700/60 border border-neutral-200 dark:border-neutral-600 flex items-center justify-center p-2 shrink-0 group-hover:scale-105 transition-transform">
+              <div class="w-12 h-12 rounded-2xl bg-white border border-neutral-200/80 dark:border-white/20 flex items-center justify-center p-2 shrink-0 shadow-xs group-hover:scale-105 transition-transform">
                 <img :src="account.logo_url" :alt="account.banka_adi" class="w-full h-full object-contain" />
               </div>
               <div class="min-w-0">
@@ -453,8 +456,8 @@
           <div 
             v-for="account in filteredAccounts" 
             :key="account.id"
+            class="p-5 rounded-3xl transition-all flex flex-col justify-between group cursor-pointer active:scale-[0.99] relative overflow-hidden"
             @click="openAccountDetails(account)"
-            class="p-5 rounded-3xl transition-all flex flex-col justify-between group cursor-pointer active:scale-[0.995] relative overflow-hidden"
             :class="isHighlighted(account) 
               ? 'bg-gradient-to-br from-emerald-500/[0.07] via-white to-white dark:from-emerald-500/[0.08] dark:via-neutral-800/95 dark:to-neutral-800/95 border-2 border-emerald-500/60 dark:border-emerald-500/50 shadow-md shadow-emerald-500/10 hover:border-emerald-500' 
               : 'bg-white dark:bg-neutral-800/90 border border-neutral-200/80 dark:border-neutral-700/80 shadow-sm hover:shadow-md hover:border-emerald-300 dark:hover:border-emerald-700'"
@@ -463,7 +466,7 @@
             <div>
               <div class="flex items-start justify-between gap-3 pb-3 border-b border-neutral-100 dark:border-neutral-700/60">
                 <div class="flex items-center gap-2.5">
-                  <div class="w-10 h-10 rounded-2xl bg-neutral-50 dark:bg-neutral-700/60 border border-neutral-200 dark:border-neutral-600 flex items-center justify-center p-1.5 shrink-0">
+                  <div class="w-10 h-10 rounded-2xl bg-white border border-neutral-200/80 dark:border-white/20 flex items-center justify-center p-1.5 shrink-0 shadow-xs">
                     <img :src="account.logo_url" :alt="account.banka_adi" class="w-full h-full object-contain" />
                   </div>
                   <div>
@@ -601,7 +604,9 @@
               @click="openAccountDetails(account)"
             >
               <td class="py-3.5 px-4 font-bold text-neutral-900 dark:text-white flex items-center gap-2.5">
-                <img :src="account.logo_url" :alt="account.banka_adi" class="w-5 h-5 object-contain rounded" />
+                <div class="w-6 h-6 rounded-md bg-white p-0.5 flex items-center justify-center shrink-0 shadow-2xs border border-neutral-200/60 dark:border-white/20">
+                  <img :src="account.logo_url" :alt="account.banka_adi" class="w-full h-full object-contain" />
+                </div>
                 <div class="flex items-center gap-1.5 flex-wrap">
                   <span>{{ account.banka_adi }}</span>
                   <span v-if="isMaxNetRate(account)" class="px-1.5 py-0.5 text-[9px] font-bold rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
@@ -677,7 +682,7 @@
             <!-- Modal Başlığı -->
             <div class="flex items-center justify-between pb-4 border-b border-neutral-100 dark:border-neutral-800">
               <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-neutral-50 dark:bg-neutral-800 p-1.5 border border-neutral-200 dark:border-neutral-700 flex items-center justify-center">
+                <div class="w-10 h-10 rounded-xl bg-white border border-neutral-200/80 dark:border-white/20 p-1.5 flex items-center justify-center shrink-0 shadow-sm">
                   <img :src="selectedAccount.logo_url" :alt="selectedAccount.banka_adi" class="w-full h-full object-contain" />
                 </div>
                 <div>
@@ -819,7 +824,7 @@ let lenis = null
 let lenisRafId = null
 
 useHead({
-  title: computed(() => t('page_titles.katilim_hesap', 'Katılım Hesapları'))
+  title: computed(() => t('page_titles.katilim_hesap', 'Katılım Hesabı Karşılaştırmaları'))
 })
 
 // Global Görünüm Modu (Müşteri vs Banka Çalışanı)
@@ -1036,7 +1041,19 @@ const fetchAccountsData = async () => {
       allAccounts.value = data.accounts || []
       availableBanks.value = data.filters?.banks || []
       availableAmounts.value = data.filters?.amounts || []
-      availableTerms.value = data.filters?.terms || []
+      
+      const rawTerms = data.filters?.terms || []
+      const parseTermDays = (term) => {
+        if (!term) return 0
+        const match = term.match(/(\d+)\s*G[üu]n/i)
+        if (match) return parseInt(match[1], 10)
+        const monthMatch = term.match(/(\d+)\s*Ay/i)
+        if (monthMatch) return parseInt(monthMatch[1], 10) * 30
+        const yearMatch = term.match(/(\d+)\s*Y[ıi]l/i)
+        if (yearMatch) return parseInt(yearMatch[1], 10) * 365
+        return 999
+      }
+      availableTerms.value = [...rawTerms].sort((a, b) => parseTermDays(a) - parseTermDays(b))
     }
   } catch (err) {
     console.error('Katılım hesapları verileri çekilemedi:', err)
@@ -1085,6 +1102,15 @@ const askAiAboutAccount = async (account) => {
 }
 
 // Yardımcı Formatlayıcılar
+const formatTermLabel = (term) => {
+  if (!term) return ''
+  if (term.includes('/')) {
+    const parts = term.split('/')
+    return parts[1]?.trim() || term
+  }
+  return term.replace(/\s*Vadeli/i, '').trim()
+}
+
 const formatCurrency = (val) => {
   if (val === undefined || val === null || isNaN(val) || val <= 0) return '-'
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 2 }).format(val)
@@ -1195,5 +1221,13 @@ onUnmounted(() => {
   100% {
     filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.5)) drop-shadow(0 0 8px rgba(6, 182, 212, 0.35));
   }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 </style>

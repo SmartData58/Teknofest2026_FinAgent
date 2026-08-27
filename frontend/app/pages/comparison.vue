@@ -58,8 +58,10 @@
               >
                 <div>
                   <div class="font-medium text-sm text-neutral-800 dark:text-neutral-200">{{ camp.baslik }}</div>
-                  <div class="text-xs text-neutral-500 flex items-center gap-1.5 mt-0.5">
-                    <img v-if="getBankaLogo(camp.banka)" :src="getBankaLogo(camp.banka)" class="w-3.5 h-3.5 object-contain" @error="(e) => e.target.style.display = 'none'" />
+                  <div class="text-xs text-neutral-500 flex items-center gap-2 mt-0.5">
+                    <div v-if="getBankaLogo(camp.banka)" class="w-5 h-5 rounded-md bg-white p-0.5 flex items-center justify-center shrink-0 border border-neutral-200/60 dark:border-white/20 shadow-2xs">
+                      <img :src="getBankaLogo(camp.banka)" class="w-full h-full object-contain" @error="(e) => e.target.style.display = 'none'" />
+                    </div>
                     <span>{{ getBankaAd(camp.banka) }}</span>
                   </div>
                 </div>
@@ -118,7 +120,9 @@
                   <td class="p-4 text-neutral-700 dark:text-neutral-300">
                     <span class="inline-flex items-center gap-2 font-semibold text-neutral-900 dark:text-neutral-100">
                       <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-indigo-500 to-purple-500 text-white">{{ ri + 1 }}</span>
-                      <img v-if="getBankaLogo(camp.genel_bilgi?.banka_id)" :src="getBankaLogo(camp.genel_bilgi?.banka_id)" class="w-4 h-4 object-contain" @error="(e) => e.target.style.display = 'none'" />
+                      <div v-if="getBankaLogo(camp.genel_bilgi?.banka_id)" class="w-6 h-6 rounded-lg bg-white p-0.5 flex items-center justify-center shrink-0 border border-neutral-200/60 dark:border-white/20 shadow-2xs">
+                        <img :src="getBankaLogo(camp.genel_bilgi?.banka_id)" class="w-full h-full object-contain" @error="(e) => e.target.style.display = 'none'" />
+                      </div>
                       {{ getBankaAd(camp.genel_bilgi?.banka_id) }}
                     </span>
                   </td>
@@ -130,7 +134,7 @@
 
                   <!-- Tür -->
                   <td v-if="hasAnyValidRow(c => c.genel_bilgi?.kampanya_turu)" class="p-4 text-neutral-600 dark:text-neutral-400">
-                    {{ camp.genel_bilgi?.kampanya_turu || '-' }}
+                    {{ formatTur(camp.genel_bilgi?.kampanya_turu) }}
                   </td>
 
                   <!-- Kâr Payı -->
@@ -170,7 +174,7 @@
 
                   <!-- Hedef Kitle -->
                   <td v-if="hasAnyValidRow(c => c.genel_bilgi?.hedef_kitle)" class="p-4 text-neutral-600 dark:text-neutral-400">
-                    {{ isValidVal(camp.genel_bilgi?.hedef_kitle) ? (Array.isArray(camp.genel_bilgi?.hedef_kitle) ? camp.genel_bilgi?.hedef_kitle.join(', ') : camp.genel_bilgi?.hedef_kitle) : '-' }}
+                    {{ formatHedefKitle(camp.genel_bilgi?.hedef_kitle) }}
                   </td>
                 </tr>
               </tbody>
@@ -230,7 +234,9 @@
                         
                         <!-- Banka Kolonu (Logolu & Düzgün İsimli) -->
                         <span v-if="col.key === 'banka'" class="inline-flex items-center gap-2 font-semibold text-neutral-900 dark:text-neutral-100">
-                          <img v-if="getBankaLogo(row.banka)" :src="getBankaLogo(row.banka)" class="w-4 h-4 object-contain" @error="(e) => e.target.style.display = 'none'" />
+                          <div v-if="getBankaLogo(row.banka)" class="w-6 h-6 rounded-lg bg-white p-0.5 flex items-center justify-center shrink-0 border border-neutral-200/60 dark:border-white/20 shadow-2xs">
+                            <img :src="getBankaLogo(row.banka)" class="w-full h-full object-contain" @error="(e) => e.target.style.display = 'none'" />
+                          </div>
                           {{ getBankaAd(row.banka) }}
                         </span>
 
@@ -329,13 +335,13 @@
               <!-- Tür -->
               <div v-if="hasValue(selectedModalCampaign.genel_bilgi?.kampanya_turu || selectedModalCampaign.tur)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
                 <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.tur', 'Tür') }}</div>
-                <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200 truncate">{{ selectedModalCampaign.genel_bilgi?.kampanya_turu || selectedModalCampaign.tur }}</div>
+                <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200 truncate">{{ formatTur(selectedModalCampaign.genel_bilgi?.kampanya_turu || selectedModalCampaign.tur) }}</div>
               </div>
 
               <!-- Kategori -->
               <div v-if="hasValue(selectedModalCampaign.genel_bilgi?.kategori)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
                 <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">{{ $t('comparison.columns.kategori', 'Kategori') }}</div>
-                <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200 truncate">{{ selectedModalCampaign.genel_bilgi?.kategori }}</div>
+                <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200 truncate">{{ formatKategori(selectedModalCampaign.genel_bilgi?.kategori) }}</div>
               </div>
 
               <!-- Kâr Payı -->
@@ -391,7 +397,7 @@
             <div v-if="hasValue(selectedModalCampaign.genel_bilgi?.hedef_kitle || selectedModalCampaign.hedefKitle)" class="bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
               <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">{{ $t('comparison.columns.hedefKitle', 'Hedef Kitle') }}</div>
               <div class="text-xs font-medium text-neutral-700 dark:text-neutral-300">
-                {{ Array.isArray(selectedModalCampaign.genel_bilgi?.hedef_kitle || selectedModalCampaign.hedefKitle) ? (selectedModalCampaign.genel_bilgi?.hedef_kitle || selectedModalCampaign.hedefKitle).join(', ') : (selectedModalCampaign.genel_bilgi?.hedef_kitle || selectedModalCampaign.hedefKitle) }}
+                {{ formatHedefKitle(selectedModalCampaign.genel_bilgi?.hedef_kitle || selectedModalCampaign.hedefKitle) }}
               </div>
             </div>
 
@@ -418,8 +424,10 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Lenis from 'lenis'
+import { useTaxonomy } from '~/composables/useTaxonomy'
 
 const { t } = useI18n()
+const { formatTur, formatHedefKitle, formatKategori } = useTaxonomy()
 
 useHead({
   title: computed(() => t('page_titles.comparison', 'Karşılaştırma'))
