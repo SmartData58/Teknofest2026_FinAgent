@@ -22,6 +22,7 @@ if mevcut_dizin not in sys.path:
 
 import vakif_katilim_hesap  
 import ziraat_katilim_hesap
+import albaraka_katilim_hesap
 
 
 try:
@@ -63,7 +64,12 @@ def topla_sonuclar():
         tum_sonuclar.extend(ziraat_katilim_hesap.run())
     except Exception as e:
         print(f"Ziraat Katılım hesaplanırken hata oluştu: {e}")
-
+        
+    print("Albaraka Katılım hesaplanıyor...")
+    try:
+        tum_sonuclar.extend(albaraka_katilim_hesap.run())
+    except Exception as e:
+        print(f"Albaraka Katılım hesaplanırken hata oluştu: {e}")
     return tum_sonuclar
 
 

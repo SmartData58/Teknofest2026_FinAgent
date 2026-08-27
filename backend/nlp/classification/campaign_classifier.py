@@ -12,18 +12,18 @@ GECERLI_TURLER = {
     "konut_finansmani",
     "tasit_finansmani",
     "finansman_diger",
+    "kart_kampanyasi",
+    "alisveris_puani",
     "yeni_musteri",
     "mgm_kampanyasi",
     "yatirim_urunu",
-    "alisveris_puani",
-    "kart_kampanyasi",
 }
 
 _R = re.IGNORECASE
 _ERKEN_KARAKTER = 250
 
 _KURALLAR: tuple[tuple[str, str, re.Pattern], ...] = (
-    # --- FİNANSMAN KAMPANYALARI ---
+    # 1. FİNANSMAN KAMPANYALARI
     (
         "ihtiyac_finansmani",
         "hepsi",
@@ -47,49 +47,8 @@ _KURALLAR: tuple[tuple[str, str, re.Pattern], ...] = (
             _R,
         ),
     ),
-    # --- KAZANIM & BAĞLILIK KAMPANYALARI ---
-    (
-        "mgm_kampanyasi",
-        "hepsi",
-        re.compile(
-            r"arkada[şs][ıi]n[ıi]\s+(?:davet\s+et|getir)"
-            r"|arkada[şs][ıi]n[ıi]z[ıi]\s+(?:davet\s+edin|getirin)"
-            r"|arkada[şs]\w*\s+getir\w*"
-            r"|arkada[şs]\w*\s+davet\s+et\w*"
-            r"|yak[ıi]n[ıi]\s+davet\s+et\w*"
-            r"|yak[ıi]n[ıi]n[ıi]z[ıi]\s+davet\s+edin"
-            r"|davet\s+et(?:tiğin|tiğiniz)?\s+arkada[şs]"
-            r"|referans\s+(?:kod|link|bağlant)"
-            r"|referans[ıi]n\w*\s+ile"
-            r"|getir\s+kazan",
-            _R,
-        ),
-    ),
-    (
-        "yeni_musteri",
-        "baslik",
-        re.compile(
-            r"mü[şs]teri(si|miz)?\s+ol|yeni\s+.*mü[şs]teri"
-            r"|ho[şs]\s*geldin|gelenlere|(türklü|finanslı|katılımlı)\s+ol",
-            _R,
-        ),
-    ),
-    # --- YATIRIM & TASARRUF ---
-    ("yatirim_urunu", "baslik", re.compile(r"günlük\s+hesap", _R)),
-    (
-        "yatirim_urunu",
-        "erken",
-        re.compile(
-            r"kat[ıi]l[ıi]?ma?\s+hesab|yat[ıi]r[ıi]m\s+hesab"
-            r"|\bbes\b|emeklilik\s+plan|döviz|\bfx\b"
-            r"|k[ıi]ymetli\s+maden|gümü[şs]|alt[ıi]n\s+hesab"
-            r"|getiri\s+oran|payla[şs][ıi]m\s+oran|kur\s+f[ıi]rsat"
-            r"|benzersiz\s+kur|dar\s+makas",
-            _R,
-        ),
-    ),
-    # --- HARCAMA & KART KAMPANYALARI ---
-    # Not: Öncelik sıralaması düzeltildi; özel kart isimleri/kelimeleri önce kontrol ediliyor.
+
+    # 2. KART & HARCAMA KAMPANYALARI (Önceliği yükseltildi)
     (
         "kart_kampanyasi",
         "hepsi",
@@ -101,11 +60,57 @@ _KURALLAR: tuple[tuple[str, str, re.Pattern], ...] = (
         ),
     ),
     (
-        "alisveris_kampanyası",
+        "alisveris_puani",
         "erken",
         re.compile(
             r"parafpara|worldpuan|puan|\bmil\b|mil'e|\biade\b|bonus"
             r"|kazand[ıi]ran|(harcad[ıi]k[çc]a|yapt[ıi]k[çc]a)\s+kazan",
+            _R,
+        ),
+    ),
+
+    # 3. YENİ MÜŞTERİ KAMPANYALARI
+    (
+        "yeni_musteri",
+        "baslik",
+        re.compile(
+            r"mü[şs]teri(si|miz)?\s+ol|yeni\s+.*mü[şs]teri"
+            r"|ho[şs]\s*geldin|gelenlere|(türklü|finanslı|katılımlı)\s+ol",
+            _R,
+        ),
+    ),
+
+    # 4. MGM (DAVET ET KAZAN) - Regex daha güvenli hale getirildi
+    (
+        "mgm_kampanyasi",
+        "hepsi",
+        re.compile(
+            r"arkada[şs][ıi]n[ıi]\s+(?:davet\s+et|getir)"
+            r"|arkada[şs][ıi]n[ıi]z[ıi]\s+(?:davet\s+edin|getirin)"
+            r"|arkada[şs]\w*\s+getir\w*"
+            r"|arkada[şs]\w*\s+davet\s+et\w*"
+            r"|yak[ıi]n[ıi]\s+davet\s+et\w*"
+            r"|yak[ıi]n[ıi]n[ıi]z[ıi]\s+davet\s+edin"
+            r"|davet\s+et(?:tiğin|tiğiniz)?\s+arkada[şs]"
+            r"|davet\s+(?:kodu|linki|bağlantısı)"
+            r"|(?:davet|arkadaş|üyelik)\s+referans\s*(?:kodu?|linki?)"  # Sadece davet referans kodları
+            r"|referans[ıi]n\w*\s+ile\s+(?:üye|müşteri|kayıt)"
+            r"|getir\s+kazan",
+            _R,
+        ),
+    ),
+
+    # 5. YATIRIM & TASARRUF
+    ("yatirim_urunu", "baslik", re.compile(r"günlük\s+hesap", _R)),
+    (
+        "yatirim_urunu",
+        "erken",
+        re.compile(
+            r"kat[ıi]l[ıi]?ma?\s+hesab|yat[ıi]r[ıi]m\s+hesab"
+            r"|\bbes\b|emeklilik\s+plan|döviz|\bfx\b"
+            r"|k[ıi]ymetli\s+maden|gümü[şs]|alt[ıi]n\s+hesab"
+            r"|getiri\s+oran|payla[şs][ıi]m\s+oran|kur\s+f[ıi]rsat"
+            r"|benzersiz\s+kur|dar\s+makas",
             _R,
         ),
     ),
