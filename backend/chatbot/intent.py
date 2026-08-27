@@ -1354,6 +1354,22 @@ def niyet_bul(soru: str, gecmis: Sequence[Mesaj] = (), dil: str = "tr") -> Niyet
             # generate_response kendi tespitini yapar, yanlış sütun dayatılmaz.
             return Niyet("karsilastirma", alan=metrik_bul(soru), **ortak)
 
+    # 🚨 İKİ BANKA ADI GEÇİYORSA TABLO ŞART.
+    #
+    # 535'lik koşuda ölçüldü:
+    #     soru  : "Albaraka Türk ve Hayat Finans'tan hangisi"
+    #     cevap : "Hayat Finans'a ait herhangi bir kampanya kaydı MEVCUT
+    #              DEĞİLDİR; iki bankayı karşılaştırmam mümkün değil"
+    #     veri  : Hayat Finans'ın 10 kampanyası VAR
+    # Cümlede "karşılaştır/kıyasla" fiili geçmediği için görsel kararı None
+    # kaldı, Mongo yolu çalışmadı ve model yalnızca vektör aramasından gelen
+    # Albaraka parçalarını gördü — göremediği bankayı "yok" saydı.
+    #
+    # Kullanıcı iki bankayı YAN YANA ANDIYSA kıyas istiyordur; fiil aramaya
+    # gerek yok. Bu, "kıyaslamada eksik banka" hatalarının kökündeki desendi.
+    if ortak["gorsel"] is None and len(banka_kodlari) > 1 and not aciklayici:
+        ortak["gorsel"] = "tablo"
+
     if banka and _LISTE.search(soru):
         # 🛠️ "Türkiye Finans'ta neler var" niyeti banka_listesi olarak DOĞRU
         # sınıflandırılıyordu ama gorsel=None kalıyordu: cümlede "listele/

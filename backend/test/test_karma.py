@@ -456,8 +456,16 @@ _TAVSIYE_REDDI = re.compile(
     re.IGNORECASE)
 
 # 🏦 Analist ölçütleri
+# 🛠️ İNGİLİZCE YÜZDE BİÇİMİ. 535'lik koşuda `analist/ingilizce` %74'te kaldı;
+# incelendiğinde cevaplar DOĞRUYDU ("38.8% market share", "108 active
+# campaigns"). Kalıp yalnızca Türkçe "%45" biçimini (işaret ÖNDE) arıyordu;
+# İngilizce "38.8%" (işaret ARKADA) hiç eşleşmiyordu. Testin dile kör kalması,
+# doğru davranışı hata diye raporlattı.
 _PAY_SIRALAMA = re.compile(
-    r"%\s*\d+[.,]?\d*|pazar pay|kampanya pay|\bs[ıi]ra\w*|\blider\w*|\b\d+/\d+\b",
+    r"%\s*\d+[.,]?\d*|\d+[.,]?\d*\s*%"
+    r"|pazar pay|kampanya pay|\bs[ıi]ra\w*|\blider\w*|\b\d+/\d+\b"
+    r"|market share|\brank\w*|\bleads?\b|\bleader\w*|\bdominat\w*"
+    r"|\bactive campaigns?\b|\bout\s+of\s+\d+",
     re.IGNORECASE)
 _BOSLUK = re.compile(
     r"bo[şs]luk|hi[çc]\s+kampanya|kampanyas[ıi]\s+yok|eksik|kay[ıi]tl[ıi]\s+de[ğg]il"
