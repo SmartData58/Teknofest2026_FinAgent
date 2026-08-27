@@ -1003,6 +1003,93 @@ def metrik_bul(soru: str):
     return None
 
 
+# =============================================================================
+# 🏦 ANALİST VERİ SORUSU — banka çalışanına "veri yok" dememek için.
+#
+# 535 promptluk persona koşusunda ölçüldü. Analist görünümünde şu sorular
+# tabloya HİÇ ulaşmıyordu:
+#     "bankaların ortalama vadeleri nasıl"      -> "ortalama vade bilgisi YOK"
+#     "emekli segmentinde bankalar nasıl konumlanıyor" -> tablo yok
+#     "kobi segmentinde pazar dağılımı"         -> "pazar dağılımı bilgisi YOK"
+#     "sektörde pazar payları nasıl dağılıyor"  -> "pazar payı bilgisi YOK"
+# Hepsinin cevabı elimizde: medyan vade, kategori dağılımı, pazar payı hepsi
+# kodda hesaplanıyor. Sorun, sorunun Mongo yoluna hiç girmemesiydi.
+#
+# İki ayrı kalıp aynı işi yapmaya çalışırken AYRIŞMIŞTI:
+#   intent.BANKA_KIYAS_SORUSU        -> tablo çizilsin mi
+#   generate_response._BANKA_DUZEYINDE_KIYAS -> kıyas kümesi ne olsun
+# Biri "pazar payı"nı tanıyor, diğeri tanımıyordu. Bu projede daha önce tam
+# olarak böyle bir kopya ayrışması yaşandı (bkz. intent.py başındaki not).
+#
+# Bu fonksiyon üçüncü bir kopya DEĞİL: yalnızca ANALİST görünümünde ve yalnızca
+# deterministik katman "görsel yok" dediğinde çalışan bir emniyet ağı.
+# Müşteri görünümünü hiç etkilemez.
+#
+# ⚠️ TANIM SORULARI DIŞARIDA: analist de "murabaha nedir" diye sorabilir ve
+# ona tablo çizmek yanlış olur.
+# =============================================================================
+_ANALIST_VERI_ALANI = re.compile(
+    r"\bbanka\w*|\bsekt[öo]r\w*|\bpiyasa\w*|\bpazar\w*|\brekabet\w*|\brakip\w*"
+    r"|\bsegment\w*|\bkategori\w*|\bportf[öo]y\w*|\bkampanya\w*|\bpay\w*"
+    r"|\bhedef\s+kitle\w*|\b[üu]r[üu]n\s+grub\w*|\baksiyon\w*"
+    r"|\bbench|\bpeer\w*|\bmarket\b|\bcompetit\w*|\bcategor\w*|\bcampaign\w*"
+    r"|\baction\w*|\bstrateg\w*",
+    re.IGNORECASE)
+
+_TANIM_SORUSU = re.compile(
+    r"\bnedir\b|\bne\s+demek\b|\bne\s+anlama\s+gel\w*|\bne\s+demektir\b"
+    r"|\bnas[ıi]l\s+[çc]al[ıi][şs]\w*|\btan[ıi]m[ıi]\b"
+    r"|\bwhat\s+(?:is|are|does)\b.{0,24}\bmean\b|\bdefine\b",
+    re.IGNORECASE)
+
+# Analist de "nasıl başvurulur", "koşullar neler" diye sorabilir; bunlar SÜREÇ
+# sorusudur, veri sorusu değil. Tablo çizmek cevabı iyileştirmez.
+_SUREC_SORUSU = re.compile(
+    r"\bba[şs]vur\w*|\bko[şs]ul\w*|\b[şs]art\w*|\bgerekli\s+belge|\bbelge\w*\s+neler"
+    r"|\bs[üu]re[çc]\w*|\bnas[ıi]l\s+yararlan\w*|\bkimler\s+yararlan\w*"
+    r"|\bapply\b|\bcondition\w*|\brequirement\w*|\beligib\w*|\bhow\s+do\s+i\b",
+    re.IGNORECASE)
+
+# "…ile KIYASLANDIĞINDA hangi segmentte daha yüksek getiri sağlıyor?" —
+# `-dığında/-diğinde` bir ÇERÇEVELEME cümleciğidir, istek değil. "X'i kıyasla"
+# ise istektir. Bu ayrım olmadan, projede özellikle not düşülmüş bir yorum
+# sorusu tekrar tablo üretmeye başlıyordu.
+_CERCEVELEME = re.compile(
+    r"k[ıi]yasland[ıi][ğg][ıi]nda|kar[şs][ıi]la[şs]t[ıi]r[ıi]ld[ıi][ğg][ıi]nda"
+    r"|de[ğg]erlendirildi[ğg]inde|bak[ıi]ld[ıi][ğg][ıi]nda",
+    re.IGNORECASE)
+
+# Veri/agrega ipucu: soru gerçekten bir SAYIYA mı dayanıyor?
+_AGREGA_IPUCU = re.compile(
+    r"\bda[ğg][ıi]l[ıi]m\w*|\bpay\w*|\bortalama\w*|\bmedyan\w*|\bs[ıi]ra\w*|\bkonum\w*"
+    r"|\bka[çç]\b|\bsay[ıi]s[ıi]\w*|\boran\w*|\btablo\w*|\bliste\w*|\banaliz\w*"
+    r"|\bk[ıi]yas\w*|\bkar[şs][ıi]la[şs]t[ıi]r\w*|\brekabet\w*|\blider\w*|\ba[çç][ıi][ğg]\w*"
+    r"|\beksi\w*|\bbo[şs]luk\w*|\bg[üu][çç]l[üu]\w*|\bzay[ıi]f\w*|\baksiyon\w*|\b[öo]ner\w*"
+    r"|\ben\s+(?:y[üu]ksek|d[üu][şs][üu]k|[çç]ok|az|uzun|k[ıi]sa|iyi)"
+    r"|\bshare\b|\brank\w*|\bdistribut\w*|\baverage\b|\bmedian\b|\bcompar\w*"
+    r"|\bposition\w*|\bgap\w*|\bleader\w*|\bhighest\b|\blowest\b|\bbenchmark\b"
+    r"|\bmissing\b|\bsuggest\w*|\banalys\w*|\banalyz\w*|\bconcrete\b",
+    re.IGNORECASE)
+
+
+def analist_veri_sorusu(soru: str) -> bool:
+    """Analist görünümünde bu soru veri/tablo gerektiriyor mu?
+
+    Yalnızca `niyet.gorsel is None` kaldığında, son çare olarak sorulur.
+    """
+    metin = soru or ""
+    if (_TANIM_SORUSU.search(metin) or _SUREC_SORUSU.search(metin)
+            or _CERCEVELEME.search(metin) or KOD_YAZMA_ISTEGI.search(metin)):
+        return False
+    if gorsel_reddedildi(metin):          # "tablo verme" dendiyse çizme
+        return False
+    if anlamsiz_soru(metin) and not bankalari_bul(metin):
+        return False
+    # Hem VERİ ALANINA değmeli hem de bir AGREGA/karar ipucu taşımalı.
+    return bool(_ANALIST_VERI_ALANI.search(metin)
+                and _AGREGA_IPUCU.search(metin))
+
+
 _ANLAMLI_HARF = re.compile(r"[a-zçğıöşüA-ZÇĞİÖŞÜ]")
 
 

@@ -122,6 +122,14 @@ _KOD_TO_ETIKET = {
     "diger": "Diğer",
 }
 
+# `hedef_kitle` LİSTE değerlidir ve kural tabanlı çıkarıcı (rule_based.
+# _HEDEF_KALIPLARI) yalnızca şu dört kodu üretir. LLM'in başka bir şey
+# yazması, aynı alanda iki değer uzayı demek olurdu — `urun_kategori`'de
+# yaşanan sorunun aynısı (bkz. _KOD_TO_ETIKET notu).
+_GECERLI_HEDEF_KITLELER = {
+    "yeni_musteri", "mevcut_musteri", "maas_musterisi", "segment",
+}
+
 SORULABILIR_ALANLAR = list(ALAN_SEMASI) + ["hedef_kitle", "urun_kategori"]
 
 
@@ -171,6 +179,111 @@ def llm_hazir() -> bool:
         return False
 
 
+# =============================================================================
+# 🔌 API ÇAĞRISI — `chatbot.evren_client` ÜZERİNDEN.
+#
+# Bu modül kendi `requests` çağrısını kuruyordu: ayrı anahtar okuma, ayrı
+# zaman aşımı, ayrı hata yönetimi. Sonuç, aynı API'ye giden İKİ ayrı istemci
+# oldu ve ikisi ayrıştı — biri (.env gölgelemesi yüzünden) anahtarsız kalıp
+# 401 alırken diğeri sorunsuz çalışıyordu.
+#
+# Artık asıl yol evren_client: anahtar yükleme, "düşünme modu" yedeği, boş
+# cevap ayrımı ve TOKEN MUHASEBESİ oradan geliyor — yani bu çıkarımın maliyeti
+# de /health'teki kullanım raporunda görünüyor.
+#
+# ⚠️ evren_client ASENKRON (httpx); NLP boru hattı SENKRON. Köprü `asyncio.run`
+# ile kuruluyor. Zaten çalışan bir olay döngüsü varsa (ör. bir servis içinden
+# çağrılırsa) `requests` yoluna düşülüyor — sessizce çökmek yerine.
+# =============================================================================
+def _evren_ile_sor(prompt: str, max_tokens: int) -> str | None:
+    """evren_client üzerinden tek seferlik çağrı; kullanılamazsa None."""
+    try:
+        import asyncio
+        from chatbot.evren_client import sohbet_tek_seferlik
+    except Exception:
+        return None
+    try:
+        asyncio.get_running_loop()
+        return None                    # olay döngüsü meşgul: yedek yola düş
+    except RuntimeError:
+        pass
+    try:
+        return asyncio.run(sohbet_tek_seferlik(
+            [{"role": "user", "content": prompt}],
+            model=MODEL, max_tokens=max_tokens, temperature=0.0,
+            timeout=ZAMAN_ASIMI,
+        ))
+    except Exception as hata:
+        print(f"    evren_client çağrısı başarısız ({hata.__class__.__name__}); "
+              "requests yoluna düşülüyor")
+        return None
+
+
+def _json_ayikla(ham: str) -> dict | None:
+    """Model çıktısındaki JSON'u çıkarır (```json bloğu, <think> vb. temizler)."""
+    if not ham:
+        return None
+    metin = ham.strip()
+    try:
+        return json.loads(metin)
+    except json.JSONDecodeError:
+        pass
+    metin = re.sub(r"<think>[\s\S]*?</think>", "", metin).strip()
+    metin = re.sub(r"```(?:json)?\s*([\s\S]*?)\s*```", r"\1", metin).strip()
+    esles = re.search(r"\{[\s\S]*\}", metin)
+    if esles:
+        try:
+            return json.loads(esles.group(0))
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def _kampanya_promptu(metin: str, alanlar: list[str]) -> str:
+    """İstenen kampanya alanlarını TEK çağrıda soran prompt.
+
+    Alan tarifleri ALAN_SEMASI'ndan geliyor — o sözlük zaten her alanın
+    "DİKKAT: şu şey bu alan DEĞİLDİR" uyarılarını taşıyor. Bunlar boşuna
+    yazılmamış: mil/puan oranını kâr payı, ATM limitini finansman tutarı
+    sanmak bu boru hattında yaşanmış hatalar.
+    """
+    satirlar = [ALAN_SEMASI[a] for a in alanlar if a in ALAN_SEMASI]
+    if "hedef_kitle" in alanlar:
+        satirlar.append(
+            '"hedef_kitle": liste|null  (yalnızca şunlardan seç: '
+            '"yeni_musteri", "mevcut_musteri", "maas_musterisi", "segment"; '
+            "belirli bir meslek/yaş grubuna özelse 'segment' yaz)"
+        )
+    govde = "\n".join(f"- {x}" for x in satirlar)
+    return (
+        "Türkçe katılım bankası KAMPANYA metninden aşağıdaki alanları çıkar.\n"
+        "Metinde açıkça YAZMAYAN hiçbir alanı TAHMİN ETME — emin değilsen null yaz.\n"
+        "Sayıları birimsiz ver (TL, %, ay yazma).\n\n"
+        f"{govde}\n\n"
+        "Yalnızca JSON döndür.\n\n"
+        f"METİN: {metin[:2000]}\n\nJSON:"
+    )
+
+
+def _sayiya_cevir(ham):
+    """'1.500,50' / '1500.5' / 1500 -> float; çözülemezse None."""
+    if ham is None or isinstance(ham, bool):
+        return None
+    if isinstance(ham, (int, float)):
+        return float(ham)
+    metin = re.sub(r"[^0-9,.\-]", "", str(ham)).strip()
+    if not metin:
+        return None
+    if "," in metin and "." in metin:            # 1.500,50 -> 1500.50
+        metin = metin.replace(".", "").replace(",", ".")
+    elif "," in metin:
+        metin = metin.replace(",", ".")
+    try:
+        return float(metin)
+    except ValueError:
+        return None
+
+
 def _urun_kategori_promptu(metin: str) -> str:
     """Sadece ürün kategorisini sınıflandıran prompt."""
     return (
@@ -188,8 +301,19 @@ def _urun_kategori_promptu(metin: str) -> str:
     )
 
 
-def _llm_api_json(prompt: str) -> dict | None:
-    """OpenAI Uyumlu Chat Completions API'sine istek atıp JSON yanıtı döndürür."""
+def _llm_api_json(prompt: str, max_tokens: int = 100) -> dict | None:
+    """JSON yanıt döndürür. ÖNCE evren_client, olmazsa doğrudan requests."""
+    ham = _evren_ile_sor(prompt, max_tokens)
+    if ham:
+        cozum = _json_ayikla(ham)
+        if cozum is not None:
+            return cozum
+        print(f"    evren_client yanıtı JSON'a çevrilemedi: {ham[:80]!r}")
+    return _requests_ile_json(prompt, max_tokens)
+
+
+def _requests_ile_json(prompt: str, max_tokens: int = 100) -> dict | None:
+    """Yedek yol: OpenAI uyumlu Chat Completions'a doğrudan istek."""
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json",
@@ -201,7 +325,7 @@ def _llm_api_json(prompt: str) -> dict | None:
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.0,
-        "max_tokens": 100,
+        "max_tokens": max_tokens,
         "response_format": {"type": "json_object"}
     }
 
@@ -251,38 +375,103 @@ def _llm_api_json(prompt: str) -> dict | None:
         return None
 
 
+# Alan bazinda makul araliklar. LLM'in "1200 ay vade" ya da "%450 kar payi"
+# gibi acikca imkansiz bir sayi uretmesi nadir degil; kayda gecmeden once
+# eleniyor. Sinirlar genis tutuldu — amac uydurmayi engellemek, gercek uc
+# degerleri kirpmak degil.
+_SAYISAL_SINIRLAR = {
+    "kar_payi_orani":   (0.0, 100.0),
+    "vade_ay":          (1, 600),
+    "taksit_sayisi":    (1, 120),
+    "finansman_tutari": (1.0, 100_000_000.0),
+    "odul_tutari_tl":   (1.0, 100_000_000.0),
+}
+_TAMSAYI_ALANLAR = {"vade_ay", "taksit_sayisi"}
+
+
+def _alan_dogrula(alan: str, ham):
+    """Ham LLM degerini alanin tipine/araligina gore dogrular; gecersizse None."""
+    if alan == "hedef_kitle":
+        if isinstance(ham, str):
+            ham = [ham]
+        if not isinstance(ham, list):
+            return None
+        temiz = [str(x).strip().lower().replace(" ", "_") for x in ham if x]
+        gecerli = [x for x in temiz if x in _GECERLI_HEDEF_KITLELER]
+        return gecerli or None
+
+    sayi = _sayiya_cevir(ham)
+    if sayi is None:
+        return None
+    alt, ust = _SAYISAL_SINIRLAR.get(alan, (None, None))
+    if alt is not None and not (alt <= sayi <= ust):
+        print(f"    ⚠️ '{alan}' icin makul olmayan deger atlandi: {ham!r}")
+        return None
+    return int(sayi) if alan in _TAMSAYI_ALANLAR else sayi
+
+
 def llm_ile_cikar(metin: str, istenen_alanlar: list[str]) -> dict[str, AlanBulgusu]:
-    """Ürün metinleri için SADECE ürün kategorisi çıkarımı yapacak şekilde filtrelenmiştir."""
+    """Kural tabanlinin bulamadigi alanlari LLM ile cikarir.
+
+    🚨 BU FONKSIYON KAMPANYA ALANLARINI HIC CIKARMIYORDU.
+    Onceki surumde yalnizca `urun_kategori` dali vardi ve dosya basligi da
+    "SADECE Urun Kategorisi Cikarimi" diyordu. Oysa hybrid.py KAMPANYA
+    kayitlari icin su alanlari soruyor:
+        kar_payi_orani, vade_ay, taksit_sayisi, finansman_tutari,
+        odul_tutari_tl, hedef_kitle
+    Bu listede `urun_kategori` ASLA yok. Sonuc: her kampanya kaydinda
+        "🧠 LLM calistiriliyor... (5 eksik alan sorgulaniyor)"
+        "   └─ ⚠️ LLM ... herhangi bir veri bulamadi."
+    yaziliyor, ama API'ye ISTEK BILE ATILMIYORDU (loglarda token satiri yok).
+    Boru hatti "LLM calisti, bulamadi" diye raporluyordu — oysa hic calismadi.
+
+    Artik istenen alanlar TEK cagrida soruluyor; her deger tipine ve makul
+    araligina gore dogrulaniyor ve `yontem="llm"` / `guven=LLM_GUVEN` ile
+    kaydediliyor (bkz. AlanBulgusu notu).
+    """
     if not metin:
         return {}
-    
-    bulgular: dict[str, AlanBulgusu] = {}
 
-    if "urun_kategori" in istenen_alanlar:
+    bulgular: dict[str, AlanBulgusu] = {}
+    istenen = list(istenen_alanlar or [])
+
+    # ------------------------------------------------ 1) KAMPANYA ALANLARI
+    kampanya_alanlari = [a for a in istenen
+                         if a in ALAN_SEMASI or a == "hedef_kitle"]
+    if kampanya_alanlari:
+        # Alan basina ~25 token yeter; JSON kisa.
+        butce = max(120, 40 * len(kampanya_alanlari))
+        ham_json = _llm_api_json(
+            _kampanya_promptu(metin, kampanya_alanlari), max_tokens=butce
+        ) or {}
+        for alan in kampanya_alanlari:
+            deger = _alan_dogrula(alan, ham_json.get(alan))
+            if deger is None:
+                continue
+            bulgular[alan] = AlanBulgusu(
+                deger, f"LLM cikarimi: {alan}={deger}", f"llm:{MODEL}",
+                yontem="llm", guven=LLM_GUVEN,
+            )
+            print(f" └─ 🎯 [LLM TESPİTİ] -> {alan}: {deger}")
+
+    # ------------------------------------------------ 2) URUN KATEGORISI
+    if "urun_kategori" in istenen:
         ham_json = _llm_api_json(_urun_kategori_promptu(metin)) or {}
         ham_deger = ham_json.get("urun_kategori")
-        # Yakın yazım hatalarını kurtarır, uzak olanı yine reddeder.
+        # Yakin yazim hatalarini kurtarir, uzak olani yine reddeder.
         deger = _kategori_normalize(ham_deger)
 
         if deger in _GECERLI_URUN_KATEGORILERI:
-            # Kanonik etikete çevir (bkz. _KOD_TO_ETIKET notu): kural tabanlı
-            # çıkarıcıyla AYNI değer uzayında kalmak zorundayız.
+            # Kanonik etikete cevir (bkz. _KOD_TO_ETIKET notu): kural tabanli
+            # cikariciyla AYNI deger uzayinda kalmak zorundayiz.
             etiket = _KOD_TO_ETIKET.get(deger, deger)
-            # 🛠️ `yontem` ve `guven` AÇIKÇA VERİLİYOR.
-            # AlanBulgusu'nun varsayılanları `yontem="regex", guven=1.0`.
-            # Üç konumlu argümanla çağrıldığında LLM'in TAHMİNİ, kayda
-            # "regex ile bulundu, güven 1.0" diye giriyordu — yani bir dil
-            # modelinin çıkarımı deterministik bir eşleşmeyle aynı ağırlığa
-            # sahip oluyordu. Dosyada tanımlı LLM_GUVEN (0.7) ise hiçbir yerde
-            # kullanılmıyordu. Aşağı akıştaki denetim/ayıklama bu ayrımı
-            # görebilmeli.
             bulgular["urun_kategori"] = AlanBulgusu(
                 etiket, f"LLM siniflandirmasi: {deger}", f"llm:{MODEL}",
                 yontem="llm", guven=LLM_GUVEN,
             )
             print(f" └─ 🎯 [LLM TESPİTİ] -> Kategori: '{etiket}' (kod: {deger})")
         else:
-            print(" └─ ⚠️ LLM kategoriyi belirleyemedi veya geçersiz kategori "
-                  f"döndü: {ham_deger!r}")
+            print(" └─ ⚠️ LLM kategoriyi belirleyemedi veya gecersiz kategori "
+                  f"dondu: {ham_deger!r}")
 
     return bulgular
