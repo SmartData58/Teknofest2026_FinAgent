@@ -20,8 +20,8 @@ mevcut_dizin = os.path.dirname(os.path.abspath(__file__))
 if mevcut_dizin not in sys.path:
     sys.path.append(mevcut_dizin)
 
-import vakif_katılım_hesap  
-import ziraat_katılım_hesap
+import vakif_katilim_hesap  
+import ziraat_katilim_hesap
 
 
 try:
