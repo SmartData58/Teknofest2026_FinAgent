@@ -69,7 +69,7 @@ en özgün özelliğimizi aynı anda göstermek.
 **Çekim:**
 1. `http://localhost:3000/campaigns` açık. Tablo dolu (599 kampanya).
 2. **Sağ üstten "Banka Çalışanı" moduna geç** (analist görünümü açık olsun).
-3. Arama kutusuna `konut` yaz — liste anında daralsın (filtrenin hızını göster).
+3. Arama kutusuna `ihtiyac` yaz — liste anında daralsın (filtrenin hızını göster).
 4. Bir konut finansmanı kampanyasına tıkla.
 5. Sayfa alt panelde **Çıkarım Kanıtları** tablosu açılır.
 6. **Bu tabloya yakınlaş (zoom).** Şu sütunlar net okunmalı:
@@ -83,7 +83,7 @@ en özgün özelliğimizi aynı anda göstermek.
 > ifadeden, hangi yöntemle ve ne güvenle çıkardığını da gösteriyor."
 
 > 💡 **Hazırlık:** Çekimden önce kanıt paneli dolu bir kampanya bulup not alın
-> (örn. Albaraka "Dijitale Özel Konut ve Taşıt Finansmanı Kampanyası" —
+> (örn. Albaraka ihtiyac kampanyası" —
 > `kar_payi_orani = 2.87`, kaynak ifade `"%2,87 'den başlayan"`). Kayıt sırasında
 > arayıp bulmaya çalışmayın.
 
@@ -99,6 +99,18 @@ en özgün özelliğimizi aynı anda göstermek.
    katar, ama hızlandırılmış olabilir):
 
    > `Albaraka mı daha avantajlı, Dünya Katılım mı?`
+
+3. Gönder. **İlk kelimelerin 0,2 saniyede geldiğini** göster — kesme yapma.
+4. Tablo belirdiğinde yakınlaş: iki bankanın satırları net görünsün.
+5. Altındaki yorum metninden bir cümle görünür kalsın (pazar payı karşılaştırması).
+
+**Ekran üstü yazı:** `Şartname Senaryo 2 — birebir soru`
+
+1. `/chat` sayfasına geç. **Müşteri modu açık kalsın.**
+2. Soruyu **yazarken göster** (kopyala-yapıştır yapma; yazma efekti canlılık
+   katar, ama hızlandırılmış olabilir):
+
+   > `kuveyttürk'ün konut finansmanı oranı nedir?`
 
 3. Gönder. **İlk kelimelerin 0,2 saniyede geldiğini** göster — kesme yapma.
 4. Tablo belirdiğinde yakınlaş: iki bankanın satırları net görünsün.
@@ -139,8 +151,36 @@ en özgün özelliğimizi aynı anda göstermek.
 > kaydı bozar. Sadece düğmelerin göründüğünden emin olun.
 
 ---
+## Sahne 5 — Finansman Karşılaştırma (00:43–00:52) ⭐
+1. `/finansman` aç.
+2. müsteri görünümünde kal
+3. Aşağı kaydır
+4.yön çubuğu göster (yüksek mi düşük mü ortalamaya göre)
+5. 2 saniye sabit tut — jürinin okumasına izin ver.
 
-## Sahne 5 — Kurum içi kanıt (00:43–00:52) ⭐ **FARKLILAŞTIRICI**
+## Sahne 6 — Finansman Karşılaştırma (00:43–00:52) ⭐
+1. `/finansman` aç.
+2. banka çalışanı görünümünde kal
+3. Aşağı kaydır
+4.yön çubuğu göster (yüksek mi düşük mü ortalamaya göre)
+5. 2 saniye sabit tut — jürinin okumasına izin ver.
+
+---
+## Sahne 7 — Katılım Hesabı Karşılaştırma (00:43–00:52) ⭐
+1. `/katilim-hesap` aç.
+2. müsteri görünümünde kal
+3. Aşağı kaydır
+4.yön çubuğu göster (yüksek mi düşük mü ortalamaya göre)
+5. 2 saniye sabit tut — jürinin okumasına izin ver.
+---
+## Sahne 8 — Katılım Hesabı Karşılaştırma (00:43–00:52) ⭐
+1. `/katilim-hesap` aç.
+2. çalışan görünümünde kal
+3. Aşağı kaydır
+4.yön çubuğu göster (yüksek mi düşük mü ortalamaya göre)
+5. 2 saniye sabit tut — jürinin okumasına izin ver.
+
+## Sahne 9 — Kurum içi kanıt (00:43–00:52) ⭐ **FARKLILAŞTIRICI**
 
 **Amaç:** On-Prem kriterini (%20) iddia olarak değil kanıt olarak göstermek.
 
@@ -171,7 +211,7 @@ normalizasyon  : %1,89 -> 1.89 | 50.000 TL -> 50000.0 | 120 aya kadar -> 120
 
 ---
 
-## Sahne 6 — Kapanış (00:52–01:00)
+## Sahne 10 — Kapanış (00:52–01:00)
 
 **Çekim:**
 1. Siyah/koyu zemine geçiş.
