@@ -237,6 +237,179 @@ konut finansmanı fırsatı      → kampanya_turu  = konut_finansmani
 
 ---
 
+# METRİK KÜNYESİ — üç bölümün tüm sayıları
+
+> Bu bölüm slaytta **olduğu gibi gösterilmez.** Amacı iki şey: (1) slaytlardaki
+> her sayının nereden geldiğini tek yerde tutmak, (2) jüri "peki kaç kayıt,
+> hangi aralıkta" diye sorduğunda anında cevap verebilmek.
+>
+> Tüm değerler çalışan sistemden canlı çekildi. Veri güncellenirse bu tablolar
+> da yenilenmeli.
+
+---
+
+## A. KAMPANYA — 599 kayıt · 9 banka
+
+### A1. Banka dağılımı
+
+| Banka | Kampanya | Pay |
+|---|---:|---:|
+| Ziraat Katılım | 209 | %34,9 |
+| Kuveyt Türk | 107 | %17,9 |
+| TOM Katılım | 86 | %14,4 |
+| Emlak Katılım | 67 | %11,2 |
+| Albaraka Türk | 48 | %8,0 |
+| Dünya Katılım | 45 | %7,5 |
+| Vakıf Katılım | 24 | %4,0 |
+| Hayat Finans | 11 | %1,8 |
+| Türkiye Finans | 2 | %0,3 |
+| Adil Katılım | 0 | — |
+
+### A2. Çıkarılan finansal alanlar
+
+| Alan | Dolu kayıt | En düşük | En yüksek | Ortalama |
+|---|---:|---:|---:|---:|
+| Kâr payı oranı | 8 | %1,99 | %4,99 | %3,19 |
+| Vade (ay) | 73 | 2 | 60 | 12,0 |
+| Finansman tutarı | 49 | 1.000 TL | 1.000.000 TL | 97.286 TL |
+| Taksit sayısı | 273 | 2 | 36 | 6,3 |
+| Ödül tutarı | 219 | 25 TL | 150.000 TL | 3.968 TL |
+| Nakit iade oranı | 41 | %1 | %75 | %16,0 |
+| MGM kişi başı kazanç | 9 | 500 TL | 22.000 TL | 5.806 TL |
+| Tahsis ücreti | 6 | 4,20 TL | 75 TL | 28,53 TL |
+
+> **Jüri sorarsa:** "Kâr payı neden sadece 8 kampanyada?" → 599 kampanyanın
+> 484'ü kart kampanyası; bunlar tanım gereği oran yayımlamaz. Oranlar finansman
+> ürünlerinde ve orada 48 kaydın 47'si dolu. Geri çağırma testi metinde oran
+> göstergesi olan **8 kampanyanın 8'inde de** yakaladığımızı gösteriyor (%100).
+
+### A3. Kampanya türü sınıflandırması (12 tür)
+
+| Tür | Adet |
+|---|---:|
+| Kart kampanyası | 484 |
+| Alışveriş puanı | 31 |
+| İndirim kampanyası | 17 |
+| Finansman (diğer) | 16 |
+| MGM kampanyası | 15 |
+| Yatırım ürünü | 8 |
+| Hediye/promosyon | 7 |
+| Yeni müşteri | 7 |
+| İhtiyaç finansmanı | 6 |
+| Taşıt finansmanı | 4 |
+| Konut finansmanı | 1 |
+| Belirlenemedi | 3 |
+
+**Sınıflandırma başarısı: 596/599 = %99,5**
+
+### A4. Dashboard'daki 7 lider kampanya kriteri
+
+`Düşük Kâr Payı` · `Yüksek Ödül` · `Uzun Vade` · `Düşük Masraf` ·
+`Yüksek Limit` · `MGM Davet` · `Nakit İade`
+
+Şartname 5.7'nin saydığı kriterlerin tamamını kapsıyor.
+
+---
+
+## B. FİNANSMAN ÜRÜNLERİ — 48 kayıt · 4 banka
+
+Bankalar: Albaraka Türk · Dünya Katılım · Vakıf Katılım · Ziraat Katılım
+
+### B1. Ürün bazında kâr oranı aralıkları ⭐ **SLAYTA EN UYGUN TABLO**
+
+| Ürün | Kayıt | En düşük | En yüksek | Ortalama |
+|---|---:|---:|---:|---:|
+| **Konut finansmanı** | 10 | **%2,90** | %3,19 | %3,01 |
+| **Taşıt finansmanı** | 6 | **%3,21** | %3,39 | %3,32 |
+| **İhtiyaç finansmanı** | 32 | **%3,90** | %4,99 | %4,24 |
+
+> Bu tablo bir slaytta tek başına durabilir: üç ürün, üç bant, aralarındaki fark
+> net görünüyor. "Karşılaştırılabilir hale getirmek" iddiasının en somut kanıtı.
+
+### B2. Tüm finansman metrikleri
+
+| Metrik | Dolu | En düşük | En yüksek | Ortalama |
+|---|---:|---:|---:|---:|
+| Kâr oranı | 47/48 | %2,90 | %4,99 | %3,88 |
+| Vade | 48 | 12 ay | **120 ay** | 42,3 ay |
+| Finansman tutarı | 48 | 50.000 TL | 2.000.000 TL | 433.333 TL |
+| Aylık taksit | 48 | 3.058,76 TL | 65.308,18 TL | 19.085,56 TL |
+| Toplam geri ödeme | 48 | 68.411,05 TL | 7.836.981,60 TL | 1.311.711,31 TL |
+| Tahsis ücreti | 12 | 287,50 TL | 10.000,00 TL | 2.040,62 TL |
+
+> **Kritik vurgu:** Aylık taksit ve toplam geri ödeme **hesaplanmıyor** —
+> bankaların yayımladığı gerçek değerler. Formül uygulamak gerçek veriyi
+> tahminle değiştirmek olurdu. Bu, sunumda söylenmesi gereken bir cümle.
+
+### B3. Ek çıkarılan alanlar (şartname tablosunun ötesinde)
+
+`tahsis_ucreti` · `ipotek_tesis_ucreti` · `ekspertiz_ucreti` · `urun_kodu` ·
+`guncellenme_tarihi`
+
+---
+
+## C. KATILIM HESABI — 4 kayıt · 2 banka
+
+Bankalar: Vakıf Katılım · Ziraat Katılım
+Vadeler: `1 Ay Vadeli` · `32 gün / 1 Ay` — Tutarlar: 100.000 TL · 250.000 TL
+
+### C1. Getiri metrikleri
+
+| Metrik | En düşük | En yüksek | Ortalama |
+|---|---:|---:|---:|
+| Brüt kâr payı oranı | %28,00 | %31,50 | %29,75 |
+| Net kâr payı oranı | %23,10 | **%25,99** | %24,55 |
+| Brüt getiri | 2.377,67 TL | 6.687,90 TL | 4.421,23 TL |
+| Net getiri | 1.961,57 TL | 5.517,51 TL | 3.647,51 TL |
+| Vade sonu toplam | 101.961,57 TL | 255.517,51 TL | 178.647,51 TL |
+
+### C2. Anlatılacak fark
+
+Stopaj kesintisi ayrı bir alan olarak tutuluyor: brüt ile net arasındaki fark
+kullanıcıya açıkça gösteriliyor. 100.000 TL / 1 ay örneğinde Vakıf Katılım
+brüt %31,50 → net %25,99; yani müşterinin cebine giren 2.207,01 TL.
+
+> **Jüri sorarsa:** "Neden sadece 2 banka?" → Katılım hesabı hesaplayıcısı
+> yayımlayan banka sayısı sınırlı; kazıyıcı mimarisi banka başına modüler,
+> kapsam genişletmek yeni modül yazmak demek, mimari değiştirmek değil.
+
+---
+
+## D. Sunumda kullanılacak "en güçlü tek sayılar"
+
+Slaytlarda ve konuşmada tekrarlanacak çekirdek sayılar. Fazlasını ezberlemeye
+çalışmayın; bu sekizi yeter.
+
+| Sayı | Ne anlatıyor | Hangi slayt |
+|---|---|---|
+| **599** | Toplanan kampanya | 1 |
+| **10** | BDDK listesindeki banka | 1 |
+| **%99,3** | Çıkarım kesinliği | 4 |
+| **%100** | 7 alanın 6'sında yakalama | 4 |
+| **%2,90 – %4,99** | Finansman oran bandı (üç üründe) | 5 |
+| **120 ay** | En uzun vade (konut) | 5 |
+| **0,2 sn** | Chatbot ilk yanıt | 5 |
+| **0** | Kurum içi modda dış çağrı | 6 |
+
+---
+
+## E. Metriklerin slaytlara dağılımı
+
+Aşağıdaki üç ek, mevcut 7 slaytlık akışı **bozmadan** yerleştirilebilir:
+
+| Slayt | Eklenecek metrik | Nasıl |
+|---|---|---|
+| Slayt 1 | 599 kampanya · 9 bankada veri · 12 kampanya türü | Alt şeride tek satır |
+| Slayt 4 | A2 tablosundan 3 satır (kâr payı, ödül, nakit iade) | Yakalama tablosunun yanına |
+| Slayt 5 | **B1 tablosunun tamamı** | Ekranın sol yarısı — en güçlü görsel |
+
+> **Uyarı:** 4 dakikada bu tabloların hiçbiri okunmaz. Slayta koyulacaksa
+> yalnızca **B1** konsun (üç satır, üç sütun); gerisi yedek slayt ve konuşma
+> malzemesi olarak kalsın. Slayt tasarımının birinci kuralı: slayt başına tek
+> fikir.
+
+---
+
 # YEDEK SLAYTLAR (yalnızca soru gelirse)
 
 ## Y1 — "Türkçe için özel ne yaptınız?"
