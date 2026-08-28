@@ -175,12 +175,28 @@ const kismiEtiketMi = (buf) => {
 //   msg.chart.values[i] / (stats ? stats.max : Math.max(...values)) * 100
 // yazıyordu. values[i] eksikse NaN%, max 0 ise Infinity% üretiyordu
 // (tarayıcı bunları sessizce yok sayıp barı hiç çizmiyordu).
+// Özet kutularının birimi satır değerlerininkiyle AYNI mı?
+// (`stats_birim` yoksa eski davranış: aynı kabul ediliyor.)
+const ozetBirimiEslesiyor = (chart) => {
+  const ozetB = (chart?.stats_birim ?? '').trim();
+  if (!ozetB) return true;
+  const satirB = `${chart?.prefix ?? ''}${chart?.suffix ?? ''}`.trim();
+  return ozetB === satirB;
+};
+
 const barGenislik = (chart, i) => {
   const degerler = Array.isArray(chart?.values) ? chart.values : [];
   const v = degerler[i];
   if (typeof v !== 'number' || Number.isNaN(v)) return '0%';
   const sayilar = degerler.filter(x => typeof x === 'number' && !Number.isNaN(x));
-  const maks = (chart?.stats && typeof chart.stats.max === 'number' && chart.stats.max > 0)
+  // 🚨 stats.max YALNIZCA satırlarla aynı birimdeyse bölen olabilir.
+  // Finansman/katılım kartlarında satırlar TL taksit, stats ise kâr payı
+  // ORANI (%) üzerinden geliyordu: 30.025 / 3.19 > 1 çıkıp Math.min(100)
+  // ile kırpılınca TÜM çubuklar %100 doluyordu — grafik hiçbir şey ayırt
+  // etmiyordu. Birim uyuşmuyorsa ölçek satır değerlerinden alınır.
+  const maks = (ozetBirimiEslesiyor(chart)
+                && chart?.stats && typeof chart.stats.max === 'number'
+                && chart.stats.max > 0)
     ? chart.stats.max
     : (sayilar.length ? Math.max(...sayilar) : 0);
   if (!maks || !Number.isFinite(maks) || maks <= 0) return '0%';
@@ -814,7 +830,7 @@ const exportToPDF = async (index) => {
               const kutu = (etiket, deger) => `
                   <div style="flex: 1; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; text-align: center;">
                       <strong style="font-size: 10px; color: #6b7280; display: block;">${etiket}</strong>
-                      <span style="font-size: 18px; font-weight: bold;">${escapeHtml(degeriBicimlendir(chart, deger))}</span>
+                      <span style="font-size: 18px; font-weight: bold;">${escapeHtml(istatistikDeger(chart, deger))}</span>
                   </div>`;
               html += `<div style="display: flex; gap: 15px; margin-bottom: 20px;">
                   ${kutu('ORTALAMA', chart.stats.avg)}
@@ -1650,7 +1666,7 @@ const sendMessage = async () => {
                                                 </div>
                                                 <div class="h-2 sm:h-2.5 bg-neutral-100 dark:bg-neutral-900/60 rounded-full overflow-hidden shadow-inner relative group-hover:bg-neutral-200 dark:group-hover:bg-neutral-800 transition-colors">
                                                     <div class="h-full relative rounded-full anim-bar"
-                                                         :class="msg.chart.stats && msg.chart.values[i] === msg.chart.stats.min ? 'bg-gradient-to-r from-green-500 via-green-400 to-emerald-400' : 'bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-400'"
+                                                         :class="msg.chart.stats && ozetBirimiEslesiyor(msg.chart) && msg.chart.values[i] === msg.chart.stats.min ? 'bg-gradient-to-r from-green-500 via-green-400 to-emerald-400' : 'bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-400'"
                                                          :style="{ width: barGenislik(msg.chart, i), ...gecikme(i, 60) }">
                                                     </div>
                                                 </div>
