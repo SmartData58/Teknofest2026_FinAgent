@@ -37,10 +37,16 @@ from playwright.sync_api import sync_playwright
 TABAN = os.getenv("SUNUM_TABAN", "http://frontend:3000")
 CIKIS = "/tmp/sahne"
 
-# Kayit her zaman 1080p yaziliyor; goruntu alani sahneye gore degisiyor.
+# KALITE: goruntu alani = kayit boyutu. Playwright, ikisi farkli oldugunda
+# kareyi olcekliyor ve metin yumusuyordu (2304 -> 1920 = 0.83 kucultme).
+# Olceksiz kayit gozle gorulur derecede daha keskin.
+#
+# Daha buyuk kadraj (2560/2880) DENENDI ve birakildi: icerik sutunu `max-width`
+# ile sinirli oldugu icin genisletmek metni buyutmuyor, yalnizca yanlarda beyaz
+# bosluk aciyor. Metnin piksel boyutu her iki durumda da ayni.
 KAYIT = {"width": 1920, "height": 1080}
-GENIS = {"width": 2304, "height": 1296}   # genis kadraj — %69 dolgu
-NORMAL = {"width": 1920, "height": 1080}  # dogal olcek, en okunakli
+GENIS = KAYIT
+NORMAL = KAYIT
 
 BAYRAKLAR = [
     "--disable-background-timer-throttling",
@@ -58,14 +64,56 @@ def kubik(t: float) -> float:
     return 4 * t * t * t if t < 0.5 else 1 - ((-2 * t + 2) ** 3) / 2
 
 
-def kaydir(s, hedef, sure=1.8, adim=54):
-    bas = s.evaluate("() => document.getElementById('main-scroller')?.scrollTop"
-                     " ?? window.scrollY")
-    for i in range(adim + 1):
-        y = bas + (hedef - bas) * kubik(i / adim)
-        s.evaluate("(y) => { const e = document.getElementById('main-scroller');"
-                   " if (e) e.scrollTop = y; else window.scrollTo(0, y); }", y)
-        time.sleep(sure / adim)
+# Kaydirma animasyonu SAYFANIN ICINDE calisiyor, disaridan adim adim degil.
+#
+# NEDEN: Onceki surum her karede bir `page.evaluate` yapiyordu. Ana sayfa gibi
+# surekli animasyonlu (parcacik/starfield) sayfalarda ana is parcacigi mesgul
+# oldugu icin her gidis-donus saniyelere ciktı ve kayit 18 dakika surup asili
+# kaldi. rAF ile sayfa kendi icinde kaydiginda hem kilitlenme olmuyor hem de
+# hareket ekran tazeleme hiziyla senkron, yani daha akici.
+KAYDIRMA_JS = """([hedef, sureMs]) => new Promise((bitti) => {
+  const kap = document.getElementById('main-scroller');
+  const oku = () => kap ? kap.scrollTop : window.scrollY;
+  const yaz = (y) => { if (kap) kap.scrollTop = y; else window.scrollTo(0, y); };
+  const bas = oku();
+  const fark = hedef - bas;
+  if (Math.abs(fark) < 2 || sureMs <= 0) { yaz(hedef); return bitti(oku()); }
+  const t0 = performance.now();
+  const kubik = (t) => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+  let kapandi = false;
+  const kapat = () => { if (!kapandi) { kapandi = true; bitti(oku()); } };
+  // BEKCI: Lenis gibi bir yumusak-kaydirma motoru sayfayi devraldiginda
+  // rAF zinciri kopabiliyor ve promise hic cozulmuyordu — sahne 9 kaydi bu
+  // yuzden 8 dakikaya cikti. Sure asilirsa her halukarda cikiyoruz.
+  setTimeout(kapat, sureMs + 1500);
+  const adim = (simdi) => {
+    if (kapandi) return;
+    const t = Math.min(1, (simdi - t0) / sureMs);
+    yaz(bas + fark * kubik(t));
+    if (t < 1) requestAnimationFrame(adim); else kapat();
+  };
+  requestAnimationFrame(adim);
+})"""
+
+
+def kaydir(s, hedef, sure=1.8, adim=None):
+    """Kubik egriyle yumusak kaydirma (adim parametresi artik kullanilmiyor)."""
+    s.evaluate(KAYDIRMA_JS, [hedef, int(sure * 1000)])
+    time.sleep(0.15)
+
+
+def kaydir_guvenli(s, hedef, sure=1.8):
+    """Ana sayfa icin: Lenis varsa onunla, yoksa normal yolla kaydirir.
+
+    Ana sayfa (index) Lenis + ScrollTrigger kullaniyor. Disaridan `scrollTop`
+    yazmak Lenis'in kendi dongusuyle carpisiyor. Lenis'in kendi API'siyle
+    kaydirmak hem catismayi bitiriyor hem de sitenin gercek his verdigi
+    hareketi kaydediyor.
+    """
+    # Sayfada `window.lenis` GORUNUYOR ama uzerinde `scrollTo` yok (surumu
+    # farkli bir nesne aciyor). O yola guvenmek yerine normal kaydirma
+    # kullaniliyor; asili kalma riskini KAYDIRMA_JS'teki bekci kapatiyor.
+    kaydir(s, hedef, sure=sure)
 
 
 def imlec(s, x0, y0, x1, y1, sure=0.8, adim=30):
@@ -73,6 +121,21 @@ def imlec(s, x0, y0, x1, y1, sure=0.8, adim=30):
         t = kubik(i / adim)
         s.mouse.move(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)
         time.sleep(sure / adim)
+
+
+def dibe_in(s, sure=2.6, bekle=1.5):
+    """Sayfayi en alta kadar kubik egriyle indirir ve orada bekler.
+
+    Kadraja sigmayan sayfalarda (dashboard, finansman, index) icerigin tamami
+    ancak boyle goruntuye giriyor.
+    """
+    dip = s.evaluate("""() => { const e = document.getElementById('main-scroller');
+        return e ? e.scrollHeight - e.clientHeight
+                 : document.body.scrollHeight - window.innerHeight; }""")
+    if dip and dip > 40:
+        kaydir(s, dip, sure=sure)
+        time.sleep(bekle)
+    return dip
 
 
 def mod(s, ad):
@@ -108,6 +171,52 @@ def tur_sec(s, secenek):
         imlec(s, k["x"] + 60, k["y"] + 18, ks["x"] + 70, ks["y"] + 14, sure=0.8)
     sec.click()
     time.sleep(1.5)                                 # tablo daralma animasyonu
+
+
+def pdf_goster(s, pdf_yolu, baslik="FinAgent Raporu"):
+    """Indirilen PDF'i AYNI kayitta ekranda gosterir ve bastan asagi kaydirir.
+
+    NEDEN DOGRUDAN ACMIYORUZ: headless Chromium `file://...pdf` adresini
+    goruntulemiyor, indirmeye basliyor ("Page.goto: Download is starting").
+    Bu yuzden sayfalar PyMuPDF ile yuksek cozunurlukte PNG'ye cevrilip
+    tek bir HTML'de alt alta diziliyor — ekranda gorunen, sistemin urettigi
+    GERCEK PDF'in kendisi.
+    """
+    import base64
+    import fitz
+
+    belge = fitz.open(pdf_yolu)
+    gorseller = []
+    for sayfa in belge:
+        pix = sayfa.get_pixmap(dpi=150)
+        gorseller.append(base64.b64encode(pix.tobytes("png")).decode())
+    belge.close()
+
+    kutular = "".join(
+        f'<img src="data:image/png;base64,{g}" alt="sayfa {i+1}">'
+        for i, g in enumerate(gorseller))
+    html = f"""<!doctype html><html lang="tr"><head><meta charset="utf-8">
+<title>{baslik}</title><style>
+  html,body{{margin:0;background:#f1f5f9;font-family:'Segoe UI',system-ui,sans-serif}}
+  .cerceve{{max-width:1080px;margin:0 auto;padding:40px 0 80px}}
+  .ust{{position:sticky;top:0;background:#ffffffee;backdrop-filter:blur(8px);
+       border-bottom:1px solid #e2e8f0;padding:14px 24px;font-size:15px;
+       font-weight:600;color:#0f172a;z-index:5}}
+  .ust span{{color:#2563eb}}
+  img{{display:block;width:100%;margin:0 auto 26px;border-radius:10px;
+      box-shadow:0 10px 30px rgba(15,23,42,.14);background:#fff}}
+</style></head><body>
+<div class="ust">{baslik} — <span>sistemin urettigi PDF ciktisi</span> ·
+ {len(gorseller)} sayfa</div>
+<div class="cerceve">{kutular}</div></body></html>"""
+
+    yol = "/tmp/rapor_onizleme.html"
+    with open(yol, "w", encoding="utf-8") as f:
+        f.write(html)
+    s.goto("file://" + yol, wait_until="load", timeout=30000)
+    time.sleep(1.8)
+    dibe_in(s, sure=4.2, bekle=1.8)      # raporu bastan asagi gez
+    print(f"    PDF ekranda gosterildi ({len(gorseller)} sayfa)")
 
 
 def yaz(s, kutu, metin, gecikme=38):
@@ -183,7 +292,8 @@ def sahne_02_cikarim_kanit(s):
         time.sleep(2.0)
     except Exception:
         pass
-    time.sleep(2.0)                     # juri okusun
+    time.sleep(1.6)
+    dibe_in(s, sure=2.8, bekle=2.2)     # islenmis metnin tamami gorunsun
 
 
 def sahne_03_dashboard_pdf(s):
@@ -215,16 +325,21 @@ def sahne_03_dashboard_pdf(s):
     except Exception as e:
         print(f"    ! banka karti: {str(e)[:70]}")
 
-    kaydir(s, 700, sure=1.9)            # karsilastirma alanina in
-    time.sleep(1.6)
+    dibe_in(s, sure=3.6, bekle=1.6)     # rekabet analizinin tamami
+    time.sleep(0.8)
 
     try:
-        with s.expect_download(timeout=45000):
+        with s.expect_download(timeout=45000) as bekleyen:
             s.locator("button[title*='PDF']").first.click(timeout=10000)
-        print("    PDF indirildi")
+        indirilen = bekleyen.value
+        pdf = "/tmp/sahne/dashboard-raporu.pdf"
+        indirilen.save_as(pdf)
+        print(f"    PDF indirildi: {indirilen.suggested_filename}")
+        time.sleep(2.2)                 # "hazirlaniyor" bildirimi ekranda kalsin
+        pdf_goster(s, pdf, "Rekabet Analizi Raporu")
     except Exception as e:
-        print(f"    ! PDF: {str(e)[:70]}")
-    time.sleep(2.6)
+        print(f"    ! PDF: {type(e).__name__}: {str(e)[:80]}")
+        time.sleep(2.0)
 
 
 def sahne_05_finansman(s):
@@ -247,7 +362,8 @@ def sahne_05_finansman(s):
     except Exception as e:
         print(f"    ! ok: {str(e)[:70]}")
     kaydir(s, 560, sure=1.6)
-    time.sleep(1.4)
+    time.sleep(1.2)
+    dibe_in(s, sure=5.0, bekle=1.8)     # 48 finansman urununun tamami
 
 
 def sahne_06_katilim_chat(s):
@@ -269,7 +385,8 @@ def sahne_06_katilim_chat(s):
         print(f"    ! FinAgent logosu: {str(e)[:70]}")
     time.sleep(18.0)                    # otomatik analiz aksin
     kaydir(s, 420, sure=1.5)
-    time.sleep(1.6)
+    time.sleep(1.2)
+    dibe_in(s, sure=2.6, bekle=1.8)     # cevabin sonu + kaynak satirlari
 
 
 def sahne_07_chatbot_excel(s):
@@ -283,8 +400,7 @@ def sahne_07_chatbot_excel(s):
     time.sleep(0.4)
     kutu.press("Enter")
     time.sleep(12.0)
-    kaydir(s, 380, sure=1.4)
-    time.sleep(1.8)
+    dibe_in(s, sure=2.4, bekle=1.8)     # 1. cevabin tamami
 
     # 2. soru — musteri modu + Excel
     s.goto(f"{TABAN}/chat", wait_until="networkidle", timeout=60000)
@@ -294,6 +410,7 @@ def sahne_07_chatbot_excel(s):
     yaz(s, kutu, "kuveyttürk'ün konut finansmanı oranı nedir?", 34)
     kutu.press("Enter")
     time.sleep(12.0)
+    dibe_in(s, sure=2.4, bekle=1.5)     # 2. cevabin tamami
 
     try:
         with s.expect_download(timeout=40000):
@@ -313,11 +430,23 @@ def sahne_09_kapanis(s):
     # color-mode ilk yuklemede cerezden okunmadiysa elle zorla
     s.evaluate("() => { document.documentElement.classList.add('dark');"
                " document.documentElement.style.colorScheme = 'dark'; }")
-    time.sleep(2.4)                     # kahraman bolumu animasyonlari
-    kaydir(s, 900, sure=2.2)
-    time.sleep(1.6)
-    kaydir(s, 1900, sure=2.0)
+    time.sleep(2.6)                     # kahraman bolumu animasyonlari
+
+    # Sayfanin gercek yuksekligini oku ve duraklari ORANLA yerlestir; sabit
+    # piksel hedefleri icerik degisince anlamsizlasiyordu.
+    dip = s.evaluate("""() => { const e = document.getElementById('main-scroller');
+        return e ? e.scrollHeight - e.clientHeight
+                 : document.body.scrollHeight - window.innerHeight; }""")
+    print(f"    ana sayfa kaydirma payi: {dip} px")
+    for oran in (0.12, 0.28, 0.46, 0.64, 0.82, 1.0):
+        kaydir_guvenli(s, int(dip * oran), sure=1.4)
+        time.sleep(0.85)
     time.sleep(2.0)
+    # NOT: Basa donus denendi ve BIRAKILDI. Ana sayfada ScrollTrigger ana is
+    # parcacigini tikaniyor; bu durumda KAYDIRMA_JS'teki setTimeout bekcisi de
+    # gecikiyor ve tek bir cagri dakikalara yayilabiliyor (klip 36 sn yerine
+    # 132 sn cikti). Sahne dipte bitiyor; kapanis karesini kurguda secmek
+    # daha guvenli.
 
 
 SAHNELER = [

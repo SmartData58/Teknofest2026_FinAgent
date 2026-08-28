@@ -88,3 +88,5 @@ $RECYCLE.BIN/
 *.swp
 *.swo
 .DS_Storefrontend.zip
+*~$*.pptx
+~$*

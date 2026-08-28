@@ -332,12 +332,21 @@ const birimEtiketi = (chart) =>
 // davranış korunuyor — kampanya kartlarında iki birim zaten aynı.
 const istatistikBirimi = (chart) => (chart?.stats_birim ?? '').trim();
 
+// Kartın alt satırları "kâr oranı %2,90" diye Türkçe ondalık virgülle
+// yazarken özet kutuları "%3.02" diyordu. Yalnızca GÖSTERİM biçimlendirmesi —
+// Excel'e ham sayı gitmeye devam ediyor.
+const sayiyiBicimlendir = (v) =>
+  typeof v === 'number' && Number.isFinite(v)
+    ? v.toLocaleString('tr-TR', { maximumFractionDigits: 2 })
+    : v;
+
 const istatistikDeger = (chart, deger) => {
   if (deger === null || deger === undefined || deger === '') return '-';
+  const s = sayiyiBicimlendir(deger);
   const birim = istatistikBirimi(chart);
-  if (!birim) return `${chart?.prefix ?? ''}${deger}${chart?.suffix ?? ''}`;
+  if (!birim) return `${chart?.prefix ?? ''}${s}${chart?.suffix ?? ''}`;
   // Türkçede yüzde işareti sayının ÖNÜNE gelir: %3,02
-  return birim === '%' ? `%${deger}` : `${deger} ${birim}`;
+  return birim === '%' ? `%${s}` : `${s} ${birim}`;
 };
 
 // ---------------------------------------------------------------------------

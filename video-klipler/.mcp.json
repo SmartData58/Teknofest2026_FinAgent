@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "AfterEffectsMCP": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\GOKSU\\after-effects-mcp\\build\\index.js"
+      ]
+    }
+  }
+}
