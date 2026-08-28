@@ -55,11 +55,11 @@ Proje 5 ana bileşenden (pipeline) oluşur:
 - **Çıktı:** Ham verileri MongoDB'deki `ham_kampanya` koleksiyonlarına yazar.
 
 ### 2. Bilgi Çıkarımı (NLP Pipeline) Katmanı
-- **Teknoloji:** Regex, NER (Varlık İsmi Tanıma), Evren LLM
+- **Teknoloji:** Regex, Evren LLM
 - **İşlev:** "kâr payı oranı", "vade sayısı", "ödül miktarı" gibi bilgileri yapılandırır.
 - **Çıktı:** Normalize edilmiş veriler `smartdata.islenmis_kampanyalar` koleksiyonuna kaydedilir.
 
-### 3. Vektörleştirme (Embedding)
+
 ### 3. Vektörleştirme (Embedding) ve Reranker Kararı
 - **Teknoloji:** Evren API (`bge-m3-embed`) ve Qdrant Vector DB
 - **İşlev:** İşlenmiş kampanya metinleri anlamsal arama yapılabilmesi için Qdrant'a indekslenir.
@@ -68,7 +68,7 @@ Proje 5 ana bileşenden (pipeline) oluşur:
 > [!NOTE]
 > **💡 Mimari Karar: Neden Reranker Kullanılmıyor?**
 > Sistemimizde varsayılan olarak Reranker kapalı tutulmaktadır. Embedding modeli (BGE) ve Reranker (Qwen vb.) farklı ailelerden olsa dahi teknik bir uyuşmazlık yaratmazlar; zira Reranker (cross-encoder) hiçbir vektör işlemi yapmadan doğrudan ham metin üzerinden alaka skoru üretir.
-> Ancak asıl sorun **kalibrasyon ve performans düşüşüdür**. Yapılan ölçümlerde Evren'in kendi rerank modelinin, `bge-m3-embed`'in hâlihazırda **0,95 (tavana yakın)** olan R@1 (ilk sıradaki isabet) başarısını **0,55'e düşürdüğü** görülmüştür. Katılım bankacılığına özgü, kısa ve Türkçe metinlerde genel amaçlı bir Reranker'ın kalibrasyonu ana arama motorundan daha zayıf kalabilmekte; kazandıracağı marj çok küçükken isabeti bozma riski büyük olmaktadır.
+> Ancak asıl sorun **kalibrasyon ve performans düşüşüdür**. Yapılan ölçümlerde Evren'in kendi rerank modelinin, `bge-m3-embed`'in hâlihazırda **0,95** olan R@1 (ilk sıradaki isabet) başarısını **0,55'e düşürdüğü** görülmüştür. Katılım bankacılığına özgü, kısa ve Türkçe metinlerde genel amaçlı bir Reranker'ın kalibrasyonu ana arama motorundan daha zayıf kalabilmekte; kazandıracağı marj çok küçükken isabeti bozma riski büyük olmaktadır.
 
 ### 4. RAG Tabanlı Chatbot Katmanı (Backend)
 - **Teknoloji:** FastAPI, LangChain, Evren LLM
@@ -76,7 +76,7 @@ Proje 5 ana bileşenden (pipeline) oluşur:
 
 ### 5. Arayüz (Frontend)
 - **Teknoloji:** Nuxt.js, Vue 3, Tailwind CSS
-- **İşlev:** Chat, Dashboard, Kampanyalar ve Karşılaştırma modülleri sunar. 
+- **İşlev:** Chat, Dashboard, Kampanyalar Karşılaştırma modülleri sunar. 
 
 ---
 
