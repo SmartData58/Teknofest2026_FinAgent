@@ -302,6 +302,29 @@ const birimEtiketi = (chart) =>
   `${chart?.prefix ?? ''}${chart?.suffix ?? ''}`.trim() || '-';
 
 // ---------------------------------------------------------------------------
+// ÖZET KUTULARININ BİRİMİ, SATIR DEĞERLERİNİNKİNDEN FARKLI OLABİLİR.
+//
+// Bildirilen hata: "ziraat katılımın konut finansmanı kâr payı oranı nedir"
+// sorusunda kart "ORTALAMA DEĞER 3.02 TL" yazıyordu. 3,02 doğru sayı ama
+// yanlış birim — o, kâr payı oranlarının (%2,90 · %2,99 · %3,19) ortalaması,
+// yani "%3,02". Kartın satırları ise TL cinsinden AYLIK TAKSİT tutarları
+// (30.025 TL, 61.595 TL …); ikisi farklı metrik.
+//
+// Backend bunu zaten doğru bildiriyordu (`stats_birim`, bkz. urun_verisi.py ve
+// generate_response.py), fakat arayüz bu alanı hiç okumuyor, kutularda satır
+// değerlerinin birimini (`suffix`) basıyordu. `stats_birim` yoksa eski
+// davranış korunuyor — kampanya kartlarında iki birim zaten aynı.
+const istatistikBirimi = (chart) => (chart?.stats_birim ?? '').trim();
+
+const istatistikDeger = (chart, deger) => {
+  if (deger === null || deger === undefined || deger === '') return '-';
+  const birim = istatistikBirimi(chart);
+  if (!birim) return `${chart?.prefix ?? ''}${deger}${chart?.suffix ?? ''}`;
+  // Türkçede yüzde işareti sayının ÖNÜNE gelir: %3,02
+  return birim === '%' ? `%${deger}` : `${deger} ${birim}`;
+};
+
+// ---------------------------------------------------------------------------
 // YENİ ÖZELLİK — "Detaylı Kampanya Kıyaslaması" için banka filtresi.
 //
 // Kart başlığının (ör. "Kampanya Verileri") sağında, o sonuç kümesinde GEÇEN
@@ -706,9 +729,11 @@ const exportToExcel = async (index) => {
 
           if (chart.stats) {
               wsData.push([]);
-              wsData.push([t('chat.average', 'Ortalama Değer'), '-', chart.stats.avg ?? '-', birimEtiketi(chart)]);
-              wsData.push([t('chat.min_value', 'En Düşük'), '-', chart.stats.min ?? '-', birimEtiketi(chart)]);
-              wsData.push([t('chat.max_value', 'En Yüksek'), '-', chart.stats.max ?? '-', birimEtiketi(chart)]);
+              // Özetin birimi satırlarınkinden farklı olabilir (bkz. istatistikBirimi).
+              const ozetBirim = istatistikBirimi(chart) || birimEtiketi(chart);
+              wsData.push([t('chat.average', 'Ortalama Değer'), '-', chart.stats.avg ?? '-', ozetBirim]);
+              wsData.push([t('chat.min_value', 'En Düşük'), '-', chart.stats.min ?? '-', ozetBirim]);
+              wsData.push([t('chat.max_value', 'En Yüksek'), '-', chart.stats.max ?? '-', ozetBirim]);
           }
 
           const ws = window.XLSX.utils.aoa_to_sheet(wsData);
@@ -1530,17 +1555,17 @@ const sendMessage = async () => {
                                         <div v-if="msg.chart.stats" class="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
                                             <div :style="gecikme(0, 90)" class="anim-tile flex-1 sm:flex-none bg-white dark:bg-neutral-800 px-4 py-2 rounded-xl border border-blue-100 dark:border-blue-900/50 shadow-sm text-center transform transition-transform hover:-translate-y-0.5">
                                                 <span class="block text-[8px] text-blue-500 font-bold uppercase tracking-wider mb-0.5">{{ t('chat.avg_value', 'Ortalama Değer') }}</span>
-                                                <span class="text-sm font-black text-neutral-800 dark:text-neutral-100">{{ msg.chart.prefix || '' }}{{ msg.chart.stats.avg }}{{ msg.chart.suffix || '' }}</span>
+                                                <span class="text-sm font-black text-neutral-800 dark:text-neutral-100">{{ istatistikDeger(msg.chart, msg.chart.stats.avg) }}</span>
                                             </div>
                                             <div :style="gecikme(1, 90)" class="anim-tile flex-1 sm:flex-none bg-white dark:bg-neutral-800 px-4 py-2 rounded-xl border border-green-100 dark:border-green-900/50 shadow-sm text-center relative overflow-hidden transform transition-transform hover:-translate-y-0.5">
                                                 <div class="absolute top-0 right-0 w-6 h-6 bg-green-500/10 rounded-bl-full"></div>
                                                 <span class="block text-[8px] text-green-500 font-bold uppercase tracking-wider mb-0.5">{{ t('chat.min_value', 'En Düşük') }}</span>
-                                                <span class="text-sm font-black text-green-600 dark:text-green-400">{{ msg.chart.prefix || '' }}{{ msg.chart.stats.min }}{{ msg.chart.suffix || '' }}</span>
+                                                <span class="text-sm font-black text-green-600 dark:text-green-400">{{ istatistikDeger(msg.chart, msg.chart.stats.min) }}</span>
                                             </div>
                                             <div :style="gecikme(2, 90)" class="anim-tile flex-1 sm:flex-none bg-white dark:bg-neutral-800 px-4 py-2 rounded-xl border border-red-100 dark:border-red-900/50 shadow-sm text-center relative overflow-hidden transform transition-transform hover:-translate-y-0.5">
                                                 <div class="absolute top-0 right-0 w-6 h-6 bg-red-500/10 rounded-bl-full"></div>
                                                 <span class="block text-[8px] text-red-500 font-bold uppercase tracking-wider mb-0.5">{{ t('chat.max_value', 'En Yüksek') }}</span>
-                                                <span class="text-sm font-black text-red-600 dark:text-red-400">{{ msg.chart.prefix || '' }}{{ msg.chart.stats.max }}{{ msg.chart.suffix || '' }}</span>
+                                                <span class="text-sm font-black text-red-600 dark:text-red-400">{{ istatistikDeger(msg.chart, msg.chart.stats.max) }}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -1567,7 +1592,7 @@ const sendMessage = async () => {
                                                  göstermiyoruz (bkz. stats_karisik). -->
                                             <div v-if="msg.chart.stats" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                                                 <span class="block text-[10px] font-bold text-neutral-400">{{ t('chat.average', 'Ortalama') }}</span>
-                                                <span class="text-xl font-black text-neutral-800 dark:text-white">{{ msg.chart.prefix || '' }}{{ msg.chart.stats.avg }}{{ msg.chart.suffix || '' }}</span>
+                                                <span class="text-xl font-black text-neutral-800 dark:text-white">{{ istatistikDeger(msg.chart, msg.chart.stats.avg) }}</span>
                                             </div>
                                             <div v-else-if="msg.chart.stats_karisik" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-4 text-center">
                                                 <span class="block text-[9px] font-bold text-neutral-400 leading-tight">{{ t('chat.mixed_units', 'Birimler karışık (TL / %) — ortalama alınamaz') }}</span>
