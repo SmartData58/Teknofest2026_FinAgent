@@ -1761,6 +1761,7 @@ def grafigi_hazirla_mongo_dinamik(
     # 🔎 KONU FİLTRESİ (bkz. _konuya_gore_suz notu): kullanıcının sorduğu
     # konuya ait kayıtlar varsa havuz ONLARA daraltılır.
     konu_notu = ""
+    konu_notu_kullanici = ""
     _konu_kelime = _konu_kelimeleri(user_query)
     if temel_havuz and _konu_kelime:
         _konulu = _konuya_gore_suz(temel_havuz, _konu_kelime)
@@ -1785,6 +1786,18 @@ def grafigi_hazirla_mongo_dinamik(
                 f"eşleşen kampanya YOK; aşağıdaki satırlar GENEL listedir ve "
                 f"soruyla doğrudan ilgili DEĞİLDİR. Bunu açıkça söyle, bu "
                 f"satırları soruya cevapmış gibi sunma."
+            )
+            # 🛠️ İKİNCİ SIZINTI (ekran kaydında yakalandı): yukarıdaki metin
+            # MODELE yazılmış bir talimat ("...gibi sunma") ama kapsam notuna
+            # eklendiği için arayüzdeki tablo altyazısında KULLANICIYA da
+            # görünüyordu. Süresi dolmuş kampanya notunda aynı hatayı daha önce
+            # düzeltmiştik; bu, aynı sınıftan ikinci vakaydı.
+            konu_notu_kullanici = (
+                f"No campaign matches “{', '.join(_konu_kelime[:3])}”; a general "
+                f"list is shown instead."
+                if dil == "en" else
+                f"“{', '.join(_konu_kelime[:3])}” konusuyla eşleşen kampanya "
+                f"bulunamadı; genel liste gösteriliyor."
             )
             logger.info(f"🔎 Konu filtresi {_konu_kelime}: eşleşme yok, genel liste.")
 
@@ -1981,7 +1994,9 @@ def grafigi_hazirla_mongo_dinamik(
             (gecerlilik_notu_kullanici or gecerlilik_notu)).strip()
     if konu_notu:
         kapsam_notu = (kapsam_notu + " " + konu_notu).strip()
-        kapsam_notu_kullanici = (kapsam_notu_kullanici + " " + konu_notu).strip()
+        kapsam_notu_kullanici = (
+            kapsam_notu_kullanici + " " +
+            (konu_notu_kullanici or konu_notu)).strip()
 
     # 🛠️ HATA DÜZELTMESİ: "düşükten yükseğe sıralasana" dediğinizde sıralama
     # TERSTEN (yüksekten düşüğe) çıkıyordu. Sebep: \bdüşük\b deseni, "düşük"ün

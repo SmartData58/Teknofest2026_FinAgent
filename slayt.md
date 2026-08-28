@@ -1,7 +1,7 @@
 # SmartData BiQuery — Sunum Akışı ve Plan
 
 > **Format:** 4 dakika sunum + 1 dakika demo videosu.
-> **Slayt sayısı:** 7 ana slayt + 4 yedek (yalnızca soru-cevapta).
+> **Slayt sayısı:** 9 slayt (kapak dahil) + 4 yedek (yalnızca soru-cevapta).
 >
 > 4 dakika = **240 saniye**. Bu, slayt başına ortalama 34 saniye demek.
 > Aşağıdaki her slaytın yanında saniye bütçesi var; **prova ederken kronometre
@@ -39,15 +39,41 @@ plandan **çıkarıldı**; yerlerine gerçek ve en az onlar kadar güçlü olanl
 
 Üç kelime: **Kanıtlanabilir · Karşılaştırılabilir · Kurum içi**
 
+### Anlatı biçimi: her slayt bir "neden" sorusunu yanıtlar
+
+Sunum "ne yaptık" diye değil, **izleyicinin o an kafasındaki soruyu yanıtlayarak**
+ilerliyor. Yapı her slaytta aynı:
+
+> **Üst etiket = soru** (mavi, izleyicinin sorduğu)
+> **Başlık = cevap** (siyah, bizim iddiamız)
+
+| # | Soru (üst etiket) | Cevap (başlık) |
+|---|---|---|
+| 2 | Neden bu iş hâlâ elle yapılıyor? | Aynı bilgi, on farklı biçimde yazılıyor |
+| 3 | Neden sadece kazımak yetmiyor? | Veri geniş ama dengesiz |
+| 4 | Neden LLM'e tek başına güvenmiyoruz? | Önce kural, sonra LLM |
+| 5 | Neden bu sayıya güvenelim? | Her değerin kaynağı görünür |
+| 6 | Peki ne kadar doğru? | İddia etmiyoruz, ölçüyoruz |
+| 7 | Analist bununla ne yapıyor? | On banka, tek tabloda |
+| 8 | Neden bir banka bunu kurabilir? | Veri kurumdan hiç çıkmıyor |
+
+Konuşurken her slayta **soruyu yüksek sesle sorarak** girin ("Neden bu iş hâlâ elle
+yapılıyor?"), sonra cevabı verin. Bu, dinleyiciyi anlatının içinde tutar ve jürinin
+zaten soracağı soruları siz sormuş olursunuz.
+
 ### 4 dakikanın puan ağırlığına göre dağılımı
 
 | Kriter | Ağırlık | Ayrılan süre | Slayt |
 |---|---:|---:|---|
-| Model Başarısı ve Anlamlandırma | %30 | ~75 sn | 2, 3, 4 |
-| On-Prem Uygulanabilirlik | %20 | ~40 sn | 6 |
-| Fonksiyonellik ve Senaryo Kapsamı | %20 | ~45 sn | 1, 5 |
-| Teknik İmplementasyon ve Mimari | %20 | ~40 sn | 2 |
-| Yenilikçilik ve Yaratıcılık | %10 | ~25 sn | 3, 7 |
+| Model Başarısı ve Anlamlandırma | %30 | ~102 sn | 4, 5, 6 |
+| On-Prem Uygulanabilirlik | %20 | ~40 sn | 8 |
+| Fonksiyonellik ve Senaryo Kapsamı | %20 | ~56 sn | 3, 7 |
+| Teknik İmplementasyon ve Mimari | %20 | ~32 sn | 4 |
+| Yenilikçilik ve Yaratıcılık | %10 | ~10 sn | 5, 9 |
+
+**Saniye bütçesi (toplam 240):**
+kapak 10 · problem 22 · veri 25 · mimari 32 · kanıtlar 40 · başarı 30 ·
+ürün 31 · on-prem 40 · kapanış 10
 
 ### 4 dakikada anlatılmayacaklar (bilinçli feda)
 
@@ -59,181 +85,205 @@ i18n, OCR belge girdisi, performans tabloları.
 
 # SLAYTLAR
 
+Her slaytta **üst etiket soruyu**, **başlık cevabı** taşıyor. Konuşurken soruyu
+yüksek sesle sorun, sonra cevaplayın.
+
 ---
 
-## Slayt 1 — Problem ve çözüm (aynı slaytta) · **30 sn**
+## Slayt 1 — Kapak · **10 sn**
 
-**Görsel:** Üstte üç bankanın kampanya metninden gerçek kesit — aynı bilgi üç
-farklı yazımda (`%1,89` / `% 1.89` / `yüzde 1,89`). Altta tek satırlık çözüm
-şeridi: **Kanıtlanabilir · Karşılaştırılabilir · Kurum içi**
+**Görsel:** TEKNOFEST resmî final sunumu görseli (şablondan). Alt-orta bantta yarı
+saydam künye kutusu: ürün adı + slogan.
 
 **Ekranda:**
-- 10 katılım bankası · **599 kampanya** · her biri farklı formatta
-- Bir analistin tek bir konut finansmanı kıyası için taraması gereken sayfa: **10+**
+> **SmartData BiQuery**
+> Katılım bankacılığı için kanıtlanabilir kampanya zekâsı
 
 **Konuşma notu:**
-> "Katılım bankacılığının kendine ait bir dili var: faiz yerine kâr payı, kredi
-> yerine finansman. Ve bu dil her bankada farklı yazılıyor. Bir analist 'en
-> uygun konut finansmanı hangisi' sorusu için on ayrı siteyi elle tarıyor.
->
-> Biz bu metinleri kanıtlanabilir veriye çeviriyoruz, on bankayı tek tabloda
-> karşılaştırılabilir kılıyoruz ve bunu bankanın kendi sunucusunda yapıyoruz."
+> "Bir banka çalışanı bugün 'en uygun konut finansmanı hangisi' sorusuna cevap vermek
+> için on ayrı bankanın sitesini elle tarıyor. Biz bu işi otomatikleştirdik — ve
+> yaptığımız her çıkarımın kaynağını gösterebiliyoruz."
 
-⏱️ *Burada durma, hemen geç. Problemi herkes zaten biliyor.*
+⏱️ *Takım tanıtımını uzatma; asıl anlatı bir sonraki slaytta başlıyor.*
 
 ---
 
-## Slayt 2 — Hibrit çıkarım mimarisi · **40 sn**
+## Slayt 2 — Neden bu iş hâlâ elle yapılıyor? · **22 sn**
 
-**Görsel:** Tek akış şeması:
-`Ham metin → [1] Kural tabanlı (deterministik) → [2] LLM tamamlayıcı → Yapılandırılmış JSON`
-Kenarda kırmızı anahtar: `FINAGENT_LLM=0` → sadece katman 1.
-Altta küçük bir şerit: `%2,05` · `% 2.05` · `yüzde 2,05` → **2.05**
+**Başlık:** Aynı bilgi, on farklı biçimde yazılıyor
 
-**Ekranda:**
-- **Katman 1:** ~2.000 satır Türkçe morfoloji farkındalıklı kural — deterministik, açıklanabilir, **dış ağ gerektirmez**
-- **Katman 2:** LLM yalnızca kuralın boş bıraktığı alanlarda devreye girer
-- Normalizasyon: para · oran · vade · tarih → tek standart biçim
+**Görsel:** Üç kart — aynı oran üç yazımda (`%1,89` / `% 1.89` / `yüzde 1,89`).
+Sağda iki büyük sayı: **10** katılım bankası, **599** kampanya metni. Altta koyu
+şeritte üç kelime.
 
 **Konuşma notu:**
-> "Neden hibrit? Kâr payı oranı gibi bir alanda halüsinasyon kabul edilemez.
-> Kural katmanı bunu deterministik çıkarıyor — aynı metin her zaman aynı sonuç.
-> LLM sadece kuralın yakalayamadığı serbest ifadelerde devreye giriyor.
+> "NEDEN bu iş hâlâ elle yapılıyor? Çünkü katılım bankacılığının kendine ait bir dili
+> var — faiz yerine kâr payı, kredi yerine finansman — ve bu dil her bankada farklı
+> yazılıyor. Ekranda aynı oran üç farklı biçimde. Tek bir kıyas için on sayfa.
 >
-> Kritik nokta: LLM'i tamamen kapatsak bile sistem çalışmaya devam ediyor.
-> Bu, birazdan göstereceğim kurum içi iddiasının temeli."
+> Cevabımız üç kelime: kanıtlanabilir, karşılaştırılabilir, kurum içi. Sırayla
+> nedenlerini anlatacağım."
 
-⏱️ *Türkçe tuzaklarını burada anlatma — yedek slaytta duruyor.*
+**Puan kalemi:** Fonksiyonellik %20 — problem tanımı.
 
 ---
 
-## Slayt 3 — ⭐ Çıkarım Kanıtları · **40 sn**
+## Slayt 3 — Neden sadece kazımak yetmiyor? · **25 sn**
 
-**Görsel:** `/campaigns` alt panelinin ekran görüntüsü — kanıt tablosu net
-okunacak şekilde büyütülmüş.
+**Başlık:** Veri geniş ama dengesiz
 
-**Ekranda:**
-> "Sistemin her değeri metindeki **hangi ifadeden** ve **hangi yöntemle**
-> çıkardığını görün."
+**Görsel:** İki **yerel PowerPoint grafiği**.
+- Sol: yatay çubuk — 9 bankanın kampanya sayısı (Ziraat 209 → Türkiye Finans 2)
+- Sağ: halka — tür dağılımı, Kart %81 baskın
+- Altta mavi kutu: anlatı köprüsü
 
-| Alan | Metindeki ifade | Değer | Yöntem | Güven |
-|---|---|---|---|---|
-| kar_payi_orani | "%2,87 'den başlayan kâr oranları" | 2.87 | REGEX | 0.94 |
+**Konuşma notu:**
+> "NEDEN sadece kazımak yetmiyor? Çünkü veri dengesiz. Dokuz bankadan 599 kampanya
+> topladık, ama sağdaki halkaya bakın: portföyün yüzde 81'i kart kampanyası ve kart
+> kampanyaları kâr payı oranı yayımlamaz.
+>
+> Yani doğru bilgiyi bulmak için metni gerçekten ANLAMAK gerekiyor — nerede oran var,
+> nerede yok."
+
+> **Bu slaydın gizli işi:** Jürinin soracağı "kâr payı neden sadece 8 kampanyada dolu"
+> sorusunu, sorulmadan önce görselle yanıtlıyor.
+
+**Puan kalemi:** Fonksiyonellik %20 (şartname 5.1 veri toplama).
+
+---
+
+## Slayt 4 — Neden LLM'e tek başına güvenmiyoruz? · **32 sn**
+
+**Başlık:** Önce kural, sonra LLM
+
+**Görsel:** Dört düğümlü boru hattı
+`Ham metin → Kural tabanlı → LLM tamamlayıcı → Yapılandırılmış JSON`
+Altta iki kutu: `FINAGENT_LLM=0` anahtarı ve normalizasyon örneği.
+
+**Konuşma notu:**
+> "NEDEN LLM'e tek başına güvenmiyoruz? Çünkü kâr payı oranı gibi bir alanda
+> halüsinasyon kabul edilemez. Yanlış oran müşteriye yansır.
+>
+> Bu yüzden kural katmanı önce çalışıyor — deterministik, aynı metin her zaman aynı
+> sonuç. LLM yalnızca kuralın yakalayamadığı serbest ifadelerde devreye giriyor. Ve
+> tamamen kapatılabiliyor; bu birazdanki kurum içi iddiasının temeli."
+
+**Puan kalemi:** Model Başarısı %30 + Teknik %20 + On-Prem %20.
+
+---
+
+## Slayt 5 — ⭐ Neden bu sayıya güvenelim? · **40 sn**
+
+**Başlık:** Her değerin kaynağı görünür
+
+**Görsel:** Üç satırlık kanıt tablosu — `Alan · Metindeki ifade · Değer · Yöntem · Güven`.
+İlk satır mavi vurguda.
 
 **Konuşma notu — SUNUMUN EN ÖNEMLİ 40 SANİYESİ:**
-> "Şunu özellikle vurgulamak istiyoruz. Çoğu NLP çözümü size bir sonuç verir ve
-> 'güven bana' der. Biz her değerin **kaynağını** gösteriyoruz: metnin hangi
-> ifadesinden, hangi yöntemle, ne güvenle çıkarıldı.
+> "NEDEN bu sayıya güvenelim? Çoğu NLP çözümü bir sonuç verir ve 'güven bana' der.
+> Biz her değerin kaynağını gösteriyoruz: metnin hangi ifadesinden, hangi yöntemle,
+> ne güvenle çıkarıldı.
 >
-> Bir banka için bu süs değil zorunluluk. Yanlış bir kâr payı oranı müşteriye
-> yansırsa denetim ekibi 'bu sayı nereden geldi' diye soracak. Bizde cevabı bir
-> tık uzakta.
->
-> Ekrandaki örnek gerçek bir Albaraka metni — kesme işaretinden önce boşluk var,
-> standart bir regex burada tökezler."
+> Bir banka için bu süs değil zorunluluk — denetim ekibi 'bu sayı nereden geldi' diye
+> sorduğunda cevap bir tık uzakta. Ekrandaki örnek gerçek bir Albaraka metni; kesme
+> işaretinden önce boşluk var, standart bir regex burada tökezler."
+
+**Puan kalemi:** Yenilikçilik %10 + Model Başarısı %30.
 
 ---
 
-## Slayt 4 — Ölçülmüş başarı · **35 sn**
+## Slayt 6 — Peki ne kadar doğru? · **30 sn**
 
-**Görsel:** Solda dev punto **%99,3**, sağda kompakt yakalama tablosu.
+**Başlık:** İddia etmiyoruz, ölçüyoruz
 
-**Ekranda:**
-
-**Kesinlik %99,3** — 599 kayıtta 4 kusur
-
-| Alan grubu | Yakalama |
-|---|---:|
-| kâr payı · vade · taksit · tutar · ödül · nakit iade | **%100** |
-| bitiş tarihi | %93 |
-
-*Ölçüm araçları boru hattına gömülü — her çalıştırmada yeniden koşuyor.*
+**Görsel:** Solda dev **%99,3** + %99,5 sınıflandırma kartı. Sağda dört satırlık
+yakalama listesi (üçü yeşil %100, biri %93).
 
 **Konuşma notu:**
-> "Bu sayıları iddia etmiyoruz, ölçüyoruz — üstelik ölçüm araçları boru hattının
-> içinde, her çalıştırmada otomatik koşuyor.
+> "Peki NE KADAR doğru? Bu sayıları iddia etmiyoruz, ölçüyoruz — üstelik ölçüm
+> araçları boru hattının içinde, her çalıştırmada otomatik koşuyor.
 >
 > İki yönden bakıyoruz: çıkardığımız değer metinde gerçekten var mı, ve metinde
 > gösterge varken alanı boş mu bıraktık? Yedi alanın altısında kaçak sıfır."
 
-⏱️ *"Kâr payı neden 10 kampanyada" sorusu gelirse yedek slayt Y2'ye geç.*
+⏱️ *"Kâr payı neden az kampanyada" sorusu gelirse: slayt 3'teki halkaya geri dön.*
+
+**Puan kalemi:** Model Başarısı %30.
 
 ---
 
-## Slayt 5 — Ürün · **45 sn**
+## Slayt 7 — Analist bununla ne yapıyor? · **31 sn**
 
-**Görsel:** Üç ekran görüntüsü tek slaytta — dashboard (radar), chatbot (iki
-persona yan yana), finansman tablosu (ortalama okları görünür).
+**Başlık:** On banka, tek tabloda
 
-**Ekranda:**
-- **Pazar Analizi:** 7 kriterde lider kampanyalar · sektör radarı · PNG/Excel/PDF
-- **Çift persona chatbot:** müşteri sade dil ↔ analist pazar payı ve rakip boşluğu
-- **Finansman/Katılım:** ortalamaya göre ok göstergeleri; taksit **hesaplanmıyor**, bankanın yayımladığı değer kullanılıyor
+**Görsel:** Solda **aralık grafiği** — üç finansman ürününün oran bantları ortak
+eksende, çakışmadıkları görünüyor. Sağda üç numaralı ürün yüzeyi + taksit notu.
 
 **Konuşma notu:**
-> "Analistin ekranı: şartname 5.7'de sayılan karşılaştırma kriterlerinin tamamı
-> kart olarak duruyor.
+> "Analist bununla NE YAPIYOR? Soldaki grafik en somut cevap: üç ürün, üç ayrı bant,
+> aralarında hiç çakışma yok. Konut yüzde 2,90'dan başlıyor, ihtiyaç 4,99'a çıkıyor.
+> Bu tabloyu elle çıkarmak saatler sürerdi.
 >
-> Chatbot'ta aynı veri iki dille anlatılıyor — müşteriye 'pazar payı %13,4'
-> demenin anlamı yok, analiste 'çok avantajlı' demenin de.
->
-> Bir şeyi özellikle söyleyeyim: taksit tutarlarını biz hesaplamıyoruz. Banka ne
-> yayımladıysa onu gösteriyoruz. Formül uygulamak gerçek veriyi tahminle
-> değiştirmek olurdu."
+> Chatbot'ta aynı veri iki dille anlatılıyor: müşteriye sade, analiste pazar payı ve
+> rakip boşluğu. Taksit tutarlarını biz hesaplamıyoruz — banka ne yayımladıysa o."
 
-⏱️ *Bu slaytta üç ürünü de saymaya çalışma; video zaten gösterecek.*
+**Puan kalemi:** Fonksiyonellik %20 + Yenilikçilik %10.
 
 ---
 
-## Slayt 6 — ⭐ On-Premise: iddia değil kanıt · **40 sn**
+## Slayt 8 — ⭐ Neden bir banka bunu kurabilir? · **40 sn**
 
-**Görsel:** Üstte şartname 5.9'un dört maddesi ve dört yeşil tik. Altta gerçek
-terminal çıktısının ekran görüntüsü.
+**Başlık:** Veri kurumdan hiç çıkmıyor
 
-**Ekranda:**
-
-| Şartname 5.9 | Durum |
-|---|---|
-| Kurum içi sunucuda çalıştırılabilir | ✅ |
-| Veri güvenliği | ✅ Ticari LLM sağlayıcı yok |
-| Verilerin kurum dışına çıkmaması | ✅ |
-| Dış servise bağımlı olmadan çalışma | ✅ |
-
-**Dış ağ tamamen engelliyken:**
-```
-%1,89 kâr payı oranı          → kar_payi_orani = 1.89
-31 Aralık 2026 tarihine kadar → bitis_tarihi   = 2026-12-31
-konut finansmanı fırsatı      → kampanya_turu  = konut_finansmani
-```
+**Görsel:** Solda şartname 5.9'un dört maddesi, dördü de yeşil tikli. Sağda koyu
+terminal kutusu — dış ağ engelliyken alınan gerçek çıktı.
 
 **Konuşma notu:**
-> "Burada 'çalışır' demiyoruz, gösteriyoruz. Python'un ağ katmanını yamaladık;
-> localhost dışına çıkan her bağlantı hata veriyor. Sonra şartnamenin **kendi
-> örnek metnini** işledik. Sonuç ekranda: tek bir dış çağrı yapılmadan hepsi
-> doğru çıkarıldı.
+> "NEDEN bir banka bunu kurabilir? Çünkü veri kurumdan hiç çıkmıyor — ve bunu iddia
+> etmiyoruz, gösteriyoruz.
 >
-> Kurum içi moda geçmek kod değişikliği gerektirmiyor; LLM, embedding ve vektör
-> adreslerinin üçü de ortam değişkeni. Bir banka için bu pazarlama cümlesi
-> değil, satın alma şartı."
+> Python'un ağ katmanını yamaladık; localhost dışına çıkan her bağlantı hata veriyor.
+> Sonra şartnamenin KENDİ örnek metnini işledik. Sonuç ekranda: tek bir dış çağrı
+> yapılmadan hepsi doğru çıkarıldı.
+>
+> Bir banka için bu pazarlama cümlesi değil, satın alma şartı."
+
+**Puan kalemi:** On-Prem %20. **İkinci en önemli slayt.**
 
 ---
 
-## Slayt 7 — Kapanış ve yol haritası · **10 sn**
+## Slayt 9 — Kapanış · **10 sn**
 
-**Görsel:** Slayt 1'deki üç kelimenin tekrarı + takım adı + QR (depo/demo).
+**Görsel:** Koyu zemin. Üç kelime çerçeve içinde, altında dört künye sayısı.
 
 **Ekranda:**
 > **Kanıtlanabilir · Karşılaştırılabilir · Kurum içi**
->
-> 599 kampanya · %99,3 kesinlik · 0,2 sn ilk yanıt · sıfır dış bağımlılık
->
-> **Sıradaki:** finansman kapsamını 10 bankaya çıkarmak · geçmiş veriden
-> sezonsal kampanya açığı analizi
+> 599 kampanya · %99,3 kesinlik · 0,2 sn ilk yanıt · 0 dış çağrı
 
 **Konuşma notu:**
 > "Kapsam eksiğimizi biliyoruz, sıradaki işimiz o. Teşekkürler."
 
-⏱️ *Burada durma. Soru-cevaba geç.*
+⏱️ *Burada durma, soru-cevaba geç.*
+
+---
+
+## Morph geçiş koreografisi
+
+Geçişler dekoratif değil; ardışık slaytlarda aynı adı taşıyan şekiller birbirine
+dönüşüyor. PowerPoint'te **Slayt Gösterisi** ile açıldığında görünür.
+
+| Geçiş | Tür | Süre | Ne dönüşüyor |
+|---|---|---:|---|
+| 1 → 2 | byObject | 1,10 sn | Kapak künyesi yerine oturur |
+| 2 → 3 | byObject | 1,20 sn | Sayılar grafiklere açılır |
+| 3 → 4 | byObject | 1,25 sn | Kartlar boru hattına akar |
+| 4 → 5 | byObject | 1,25 sn | REGEX düğümü kanıt satırına dönüşür |
+| 5 → 6 | **byChar** | 1,40 sn | `0.94` güven skoru `%99,3`'e sayaç gibi çözülür |
+| 6 → 7 | byObject | 1,25 sn | Yakalama kartları oran bantlarına |
+| 7 → 8 | byObject | 1,25 sn | Kartlar sol sütuna toplanır |
+| 8 → 9 | byObject | 1,40 sn | Üç kelime şeridi merkeze büyür |
+
+Toplam geçiş süresi ~9,9 sn — 240 saniyelik bütçenin içinde.
 
 ---
 
